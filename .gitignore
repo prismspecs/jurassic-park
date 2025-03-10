@@ -1,0 +1,11 @@
+# node ignores
+node_modules
+npm-debug.log
+# OS ignores
+.DS_Store
+Thumbs.db
+# IDE ignores
+.idea
+.vscode
+# build ignores
+dist
