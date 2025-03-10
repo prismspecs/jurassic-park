@@ -1,3 +1,9 @@
+# dependencies
+```
+sudo apt-get install espeak
+pip install piper-tts       # better TTS
+```
+
 # Setting up Reolink camera
 + Install Reolink app on Android/iPhone
 + Use the app to scan the QR code on the camera
