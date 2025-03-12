@@ -1,0 +1,185 @@
+{
+    "shots": [
+        {
+            "id": "Front",
+            "ins-outs": [
+                {
+                    "in": 100,
+                    "out": 250,
+                    "sequence": 1
+                },
+                {
+                    "in": 300,
+                    "out": 450,
+                    "sequence": 2
+                }
+            ],
+            "camera": {
+                "movements": [
+                    {
+                        "pan": 5,
+                        "tilt": 2,
+                        "zoom": 3,
+                        "height": 1.4,
+                        "time": 2
+                    },
+                    {
+                        "pan": -3,
+                        "tilt": 0,
+                        "zoom": 2,
+                        "height": 1.2,
+                        "time": 3
+                    }
+                ]
+            },
+            "actors": {
+                "Alan Grant": {
+                    "grid-position": "A2",
+                    "lines": [
+                        {
+                            "text": "Ellie, this one was always my favorite when I was a kid, and now I've seen him...",
+                            "time-in": 105,
+                            "time-out": 120
+                        }
+                    ],
+                    "movement": [
+                        {
+                            "text": "slowly stands up in the car",
+                            "time-in": 120,
+                            "time-out": 125
+                        }
+                    ],
+                    "directions": [
+                        {
+                            "text": "takes off sunglasses in shock",
+                            "time-in": 125,
+                            "time-out": 130
+                        }
+                    ],
+                    "props": "sunglasses"
+                },
+                "Ellie Sattler": {
+                    "grid-position": "B3",
+                    "lines": [
+                        {
+                            "text": "Oh... my... God!",
+                            "time-in": 110,
+                            "time-out": 112
+                        }
+                    ],
+                    "movement": [
+                        {
+                            "text": "leans forward",
+                            "time-in": 112,
+                            "time-out": 114
+                        }
+                    ],
+                    "directions": [
+                        {
+                            "text": "puts hand on Alan’s shoulder",
+                            "time-in": 114,
+                            "time-out": 116
+                        }
+                    ],
+                    "props": "none"
+                }
+            }
+        },
+        {
+            "id": "Back",
+            "ins-outs": [
+                {
+                    "in": 460,
+                    "out": 600,
+                    "sequence": 3
+                }
+            ],
+            "camera": {
+                "movements": [
+                    {
+                        "pan": 10,
+                        "tilt": -1,
+                        "zoom": 4,
+                        "height": 1.6,
+                        "time": 4
+                    }
+                ]
+            },
+            "actors": {
+                "John Hammond": {
+                    "grid-position": "C1",
+                    "lines": [
+                        {
+                            "text": "Dr. Grant, my dear Dr. Sattler... welcome to Jurassic Park.",
+                            "time-in": 465,
+                            "time-out": 480
+                        }
+                    ],
+                    "movement": [
+                        {
+                            "text": "extends arm towards the dinosaurs",
+                            "time-in": 480,
+                            "time-out": 485
+                        }
+                    ],
+                    "directions": [
+                        {
+                            "text": "smiles proudly",
+                            "time-in": 485,
+                            "time-out": 490
+                        }
+                    ],
+                    "props": "walking cane"
+                }
+            }
+        },
+        {
+            "id": "Above",
+            "ins-outs": [
+                {
+                    "in": 610,
+                    "out": 780,
+                    "sequence": 4
+                }
+            ],
+            "camera": {
+                "movements": [
+                    {
+                        "pan": -8,
+                        "tilt": 3,
+                        "zoom": 6,
+                        "height": 1.8,
+                        "time": 5
+                    }
+                ]
+            },
+            "actors": {
+                "Ian Malcolm": {
+                    "grid-position": "D4",
+                    "lines": [
+                        {
+                            "text": "You did it. You crazy son of a bitch, you did it.",
+                            "time-in": 615,
+                            "time-out": 630
+                        }
+                    ],
+                    "movement": [
+                        {
+                            "text": "leans back in the car seat",
+                            "time-in": 630,
+                            "time-out": 635
+                        }
+                    ],
+                    "directions": [
+                        {
+                            "text": "shakes head in disbelief",
+                            "time-in": 635,
+                            "time-out": 640
+                        }
+                    ],
+                    "props": "none"
+                }
+            }
+        }
+    ]
+}

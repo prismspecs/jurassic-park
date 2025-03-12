@@ -19,7 +19,24 @@ pip install piper-tts       # better TTS
 + Download [Bottles](https://dl.flathub.org/repo/appstream/com.usebottles.bottles.flatpakref)
 
 
-
 ## Settings
 admin/jPark88912
 Name: Jurassic Camera
+
+## Database
+
++ database
+    + scenes
+        + 001 - see dinosaurs
+            + movie.mp4
+            + thumbnail.jpg
+            + A - shot description
+                + shot.mp4
+                + thumbnail.jpg
+            + B - ...
+            + C - ...
+            + D - ...
+        + 002 - run from dinosaurs
+            + A - shot description
+            + B - ...
+            + C - ...
