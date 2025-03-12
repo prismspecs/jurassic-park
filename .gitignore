@@ -10,4 +10,7 @@ Thumbs.db
 # build ignores
 dist
 
+# original videos from movie
 movie.mp4
+# all videos?
+*.mp4
