@@ -9,3 +9,5 @@ Thumbs.db
 .vscode
 # build ignores
 dist
+
+movie.mp4
