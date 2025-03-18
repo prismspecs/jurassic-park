@@ -4,9 +4,9 @@
  * Returns the entire HTML for the main page as a string.
  * We dynamically insert "shots" into the shot cards.
  *******************************************************/
-module.exports = function buildHomeHTML(shots) {
-    // Start building the page
-    let html = `
+module.exports = function buildHomeHTML(scenes) {
+  // Start building the page
+  let html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -22,14 +22,14 @@ module.exports = function buildHomeHTML(shots) {
     h1 {
       margin: 20px;
     }
-    .shot-container {
+    .scene-container {
       display: flex;
       flex-wrap: wrap;
       gap: 20px;
       justify-content: center;
       padding: 20px;
     }
-    .shot-card {
+    .scene-card {
       background: #fff;
       border: 1px solid #ccc;
       border-radius: 6px;
@@ -39,18 +39,23 @@ module.exports = function buildHomeHTML(shots) {
       cursor: pointer;
       transition: transform 0.2s ease;
     }
-    .shot-card:hover {
+    .scene-card:hover {
       transform: translateY(-3px);
     }
-    .shot-title {
+    .scene-card img {
+      width: 100%;  
+      height: 100%;
+      object-fit: cover;
+    }
+    .scene-title {
       font-weight: bold;
       margin-bottom: 5px;
     }
-    .shot-camera, .shot-instructions {
+    .scene-camera, .scene-instructions {
       font-size: 0.9em;
       margin-bottom: 5px;
     }
-    .shot-instructions {
+    .scene-instructions {
       color: #444;
     }
     #buttons {
@@ -83,25 +88,24 @@ module.exports = function buildHomeHTML(shots) {
   <div class="shot-container">
 `;
 
-    // Generate the shot cards from the array
-    shots.forEach((shot, idx) => {
-        html += `
-    <div class="shot-card" onclick="startShot(${idx})">
-      <div class="shot-title">Shot #${idx + 1}: ${shot.description}</div>
-      <div class="shot-camera">Camera: ${shot.cameraAngle}</div>
-      <div class="shot-instructions">${shot.instructions}</div>
-    </div>
-`;
-    });
-
-    // close the shot container, add a <div> for final videos, plus JS
+  // Generate the shot cards from the array
+  scenes.forEach((scene, idx) => {
     html += `
+      <div class="scene-card" onclick="initScene('${encodeURIComponent(scene.directory)}')">
+        <div class="scene-title">Scene #${idx + 1}: ${scene.description}</div>
+        <img src="./database/scenes/${scene.directory}/thumbnail.jpg" alt="${scene.description}" />
+      </div>
+    `;
+  });
+
+  // close the shot container, add a <div> for final videos, plus JS
+  html += `
   </div>
   <div id="videos"></div>
 
   <script>
-    function startShot(idx) {
-      fetch('/startShot/' + idx)
+    function initScene(directory) {
+      fetch('/initScene/' + encodeURIComponent(directory)) // Encode again to be safe
         .then(res => {
           if (!res.ok) alert('Error starting shot ' + idx);
         })
@@ -136,5 +140,5 @@ module.exports = function buildHomeHTML(shots) {
 </html>
 `;
 
-    return html;
+  return html;
 };

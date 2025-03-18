@@ -1,7 +1,7 @@
 /*******************************************************
  * index.js
  *   - Imports homeView to generate the big HTML
- *   - Contains routes for /startShot/:index, /recordVideo, etc.
+ *   - Contains routes for /initScene/:index, /recordVideo, etc.
  *******************************************************/
 const express = require('express');
 const http = require('http');
@@ -9,8 +9,11 @@ const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs');
 
+// import config
+const config = require('./config.json');
+const scenes = require(config.scenes);
+
 // Our custom modules
-const shots = require('./shots');
 const cameraControl = require('./cameraControl');
 const fileManager = require('./fileManager');
 const aiVoice = require('./aiVoice');
@@ -46,24 +49,31 @@ function initializeSystem() {
 }
 
 /** Basic shot logic */
-function startShot(index) {
-  if (index < 0 || index >= shots.length) {
-    console.log(`Invalid shot index: ${index}`);
+function initScene(directory) {
+
+  // console.log(directory);
+
+  const scene = scenes.find(s => s.directory === directory);
+  if (!scene) {
+    console.log(`Scene ${directory} not found`);
     return;
   }
-  currentShotIndex = index;
+  // log scene description
+  console.log(`Scene ${scene.description}`);
+  aiVoice.speak(`Please prepare for scene ${scene.description}`);
 
-  const shot = shots[currentShotIndex];
-  console.log(`Starting shot #${currentShotIndex + 1}: ${shot.description}`);
-  aiVoice.speak(`Please prepare for shot number ${currentShotIndex + 1}. ${shot.instructions}`);
 
-  cameraControl.setCameraAngle(shot.cameraAngle);
-  fileManager.startRecordingShot(shot);
+  // const shot = shots[currentShotIndex];
+  // console.log(`Starting shot #${currentShotIndex + 1}: ${shot.description}`);
+  // aiVoice.speak(`Please prepare for shot number ${currentShotIndex + 1}. ${shot.instructions}`);
+
+  // cameraControl.setCameraAngle(shot.cameraAngle);
+  // fileManager.startRecordingShot(shot);
+
 
   broadcast({
     type: 'SHOT_START',
-    index: currentShotIndex,
-    shotData: shot,
+    scene: scene,
   });
 }
 
@@ -73,7 +83,7 @@ function completeCurrentShot() {
 
   currentShotIndex += 1;
   if (currentShotIndex < shots.length) {
-    setTimeout(() => startShot(currentShotIndex), 2000);
+    setTimeout(() => initScene(currentShotIndex), 2000);
   } else {
     console.log('All shots completed! Performance finished.');
     broadcast({ type: 'ALL_SHOTS_DONE' });
@@ -106,24 +116,25 @@ wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'WELCOME', message: 'Connected to AI Director System.' }));
 });
 
-// Serve final videos from the current directory
+// Static files and directories
 app.use('/video', express.static(__dirname));
+app.use('/database', express.static(path.join(__dirname, 'database')));
 
 /** 
  * The home route uses the separate HTML from homeView.js 
  */
 app.get('/', (req, res) => {
-  const html = buildHomeHTML(shots);
+  const html = buildHomeHTML(scenes);
   res.send(html);
 });
 
 /** 
- * startShot route
+ * initScene route
  */
-app.get('/startShot/:index', (req, res) => {
-  const idx = parseInt(req.params.index, 10);
-  startShot(idx);
-  res.json({ success: true, message: 'Shot started', shotIndex: idx });
+app.get('/initScene/:directory', (req, res) => {
+  const directory = decodeURIComponent(req.params.directory); // Decode spaces & special chars
+  initScene(directory);
+  res.json({ success: true, message: 'Scene started', directory: directory });
 });
 
 /**
@@ -135,12 +146,12 @@ app.get('/startShot/:index', (req, res) => {
  */
 app.get('/recordVideo', async (req, res) => {
   try {
-    const RAW_DIR = path.join(__dirname, 'frames_raw');
-    const OVERLAY_DIR = path.join(__dirname, 'frames_overlay');
+    const RAW_DIR = path.join(__dirname, config.framesRawDir);
+    const OVERLAY_DIR = path.join(__dirname, config.framesOverlayDir);
 
-    const OUT_ORIG = 'video_original.mp4';
-    const OUT_OVER = 'video_overlay.mp4';
-    const TEMP_RECORD = 'recorded.mp4';
+    const OUT_ORIG = config.videoOriginal;
+    const OUT_OVER = config.videoOverlay;
+    const TEMP_RECORD = config.tempRecord;
 
     await ffmpegHelper.captureVideo(TEMP_RECORD, 3);
     await ffmpegHelper.extractFrames(TEMP_RECORD, RAW_DIR);

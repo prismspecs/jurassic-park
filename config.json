@@ -1,0 +1,8 @@
+{
+    "framesRawDir": "./temp/frames_raw",
+    "framesOverlayDir": "./temp/frames_overlay",
+    "videoOriginal": "./temp/video_original.mp4",
+    "videoOverlay": "./temp/video_overlay.mp4",
+    "tempRecord": "./temp/recorded.mp4",
+    "scenes": "./database/scenes.json"
+}

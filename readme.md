@@ -40,3 +40,16 @@ Name: Jurassic Camera
             + A - shot description
             + B - ...
             + C - ...
+
+
+## shots.json
+
+The notation for directions:
+*this is an action* such as: *you look at Dr. Grant*
+_this is a line of dialogue_ such as _It's... it's a dinosar_
+
+## Process for each scene
++ Call actors to the stage
+...
++ Action
+    + 
