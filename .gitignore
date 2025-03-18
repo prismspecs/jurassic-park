@@ -14,3 +14,6 @@ dist
 movie.mp4
 # all videos?
 *.mp4
+
+temp/*
+.DS_Store
