@@ -7,7 +7,6 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
-const fs = require('fs');
 
 // import config
 const config = require('./config.json');
@@ -19,16 +18,12 @@ const fileManager = require('./fileManager');
 const aiVoice = require('./aiVoice');
 const ffmpegHelper = require('./ffmpegHelper');
 const poseTracker = require('./poseTracker');
-
-// The newly separated HTML generator
 const buildHomeHTML = require('./homeView');
 
 const PORT = process.env.PORT || 3000;
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-
-let currentShotIndex = 0;
 
 /** Utility: broadcast JSON to connected WS clients */
 function broadcast(data) {
@@ -48,28 +43,15 @@ function initializeSystem() {
   console.log('System initialized. Ready to direct performance.');
 }
 
-/** Basic shot logic */
+/** Scene initialization */
 function initScene(directory) {
-
-  // console.log(directory);
-
   const scene = scenes.find(s => s.directory === directory);
   if (!scene) {
     console.log(`Scene ${directory} not found`);
     return;
   }
-  // log scene description
-  console.log(`Scene ${scene.description}`);
+  console.log(`Initializing scene: ${scene.directory}. Description: ${scene.description}`);
   aiVoice.speak(`Please prepare for scene ${scene.description}`);
-
-
-  // const shot = shots[currentShotIndex];
-  // console.log(`Starting shot #${currentShotIndex + 1}: ${shot.description}`);
-  // aiVoice.speak(`Please prepare for shot number ${currentShotIndex + 1}. ${shot.instructions}`);
-
-  // cameraControl.setCameraAngle(shot.cameraAngle);
-  // fileManager.startRecordingShot(shot);
-
 
   broadcast({
     type: 'SHOT_START',
@@ -77,42 +59,9 @@ function initScene(directory) {
   });
 }
 
-function completeCurrentShot() {
-  console.log(`Completing shot #${currentShotIndex + 1}`);
-  fileManager.stopRecordingShot();
-
-  currentShotIndex += 1;
-  if (currentShotIndex < shots.length) {
-    setTimeout(() => initScene(currentShotIndex), 2000);
-  } else {
-    console.log('All shots completed! Performance finished.');
-    broadcast({ type: 'ALL_SHOTS_DONE' });
-  }
-}
-
 /** WebSocket logic */
 wss.on('connection', (ws) => {
   console.log('📡 New WebSocket client connected.');
-
-  ws.on('message', async (raw) => {
-    let data;
-    try {
-      data = JSON.parse(raw);
-    } catch (err) {
-      console.log('Invalid JSON message:', raw);
-      return;
-    }
-
-    switch (data.type) {
-      case 'SHOT_DONE':
-        completeCurrentShot();
-        break;
-      default:
-        console.log('⚠️ Unknown WS message type:', data.type);
-        break;
-    }
-  });
-
   ws.send(JSON.stringify({ type: 'WELCOME', message: 'Connected to AI Director System.' }));
 });
 
@@ -120,35 +69,22 @@ wss.on('connection', (ws) => {
 app.use('/video', express.static(__dirname));
 app.use('/database', express.static(path.join(__dirname, 'database')));
 
-/** 
- * The home route uses the separate HTML from homeView.js 
- */
+/** Routes */
 app.get('/', (req, res) => {
   const html = buildHomeHTML(scenes);
   res.send(html);
 });
 
-/** 
- * initScene route
- */
 app.get('/initScene/:directory', (req, res) => {
-  const directory = decodeURIComponent(req.params.directory); // Decode spaces & special chars
+  const directory = decodeURIComponent(req.params.directory);
   initScene(directory);
   res.json({ success: true, message: 'Scene started', directory: directory });
 });
 
-/**
- * recordVideo route
- * 1) record 3s
- * 2) extract frames
- * 3) pose detection on each frame => overlay
- * 4) encode original + overlay => show them
- */
 app.get('/recordVideo', async (req, res) => {
   try {
     const RAW_DIR = path.join(__dirname, config.framesRawDir);
     const OVERLAY_DIR = path.join(__dirname, config.framesOverlayDir);
-
     const OUT_ORIG = config.videoOriginal;
     const OUT_OVER = config.videoOverlay;
     const TEMP_RECORD = config.tempRecord;

@@ -14,13 +14,8 @@ function makeTempWaveFile() {
 const PIPER_MODEL = 'en_US-ryan-medium';
 
 module.exports = {
-    /**
-     * speak(sceneName):
-     *  - If macOS, use `say`
-     *  - Otherwise, use Piper TTS with the "en_US-ryan-medium" voice
-     */
-    speak(sceneName) {
-        const text = `Please prepare for scene: ${sceneName}.`;
+
+    speak(text) {
         console.log(`[AI Voice]: ${text}`);
 
         if (process.platform === 'darwin') {
