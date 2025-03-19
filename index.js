@@ -1,6 +1,5 @@
 /*******************************************************
  * index.js
- *   - Imports homeView to generate the big HTML
  *   - Contains routes for /initScene/:index, /recordVideo, etc.
  *******************************************************/
 const express = require('express');
