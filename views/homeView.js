@@ -11,7 +11,7 @@ module.exports = function buildHomeHTML(scenes) {
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>AI Director Shots</title>
+  <title>AI Director Interface</title>
   <style>
     body {
       font-family: sans-serif;

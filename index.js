@@ -12,17 +12,22 @@ const config = require('./config.json');
 const scenes = require(config.scenes);
 
 // Our custom modules
-const cameraControl = require('./cameraControl');
-const fileManager = require('./fileManager');
-const aiVoice = require('./aiVoice');
-const ffmpegHelper = require('./ffmpegHelper');
-const poseTracker = require('./poseTracker');
-const buildHomeHTML = require('./homeView');
+const cameraControl = require('./services/cameraControl');
+const fileManager = require('./services/fileManager');
+const aiVoice = require('./services/aiVoice');
+const ffmpegHelper = require('./services/ffmpegHelper');
+const poseTracker = require('./services/poseTracker');
+const buildHomeHTML = require('./views/homeView');
+const mainRouter = require('./routes/main');
+const { initializeWebSocket } = require('./websocket/handler');
 
 const PORT = process.env.PORT || 3000;
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+
+// Make WebSocket server globally available
+global.wss = wss;
 
 /** Utility: broadcast JSON to connected WS clients */
 function broadcast(data) {
@@ -58,11 +63,10 @@ function initScene(directory) {
   });
 }
 
-/** WebSocket logic */
-wss.on('connection', (ws) => {
-  console.log('📡 New WebSocket client connected.');
-  ws.send(JSON.stringify({ type: 'WELCOME', message: 'Connected to AI Director System.' }));
-});
+
+
+// Initialize WebSocket
+initializeWebSocket(wss);
 
 // Static files and directories
 app.use('/video', express.static(__dirname));
@@ -74,12 +78,14 @@ app.get('/', (req, res) => {
   res.send(html);
 });
 
+// Initialize a scene
 app.get('/initScene/:directory', (req, res) => {
   const directory = decodeURIComponent(req.params.directory);
   initScene(directory);
   res.json({ success: true, message: 'Scene started', directory: directory });
 });
 
+// Record a video (test)
 app.get('/recordVideo', async (req, res) => {
   try {
     const RAW_DIR = path.join(__dirname, config.framesRawDir);
@@ -105,6 +111,9 @@ app.get('/recordVideo', async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+// Routes
+app.use('/', mainRouter);
 
 // Start server
 server.listen(PORT, () => {
