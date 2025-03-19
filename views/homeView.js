@@ -97,7 +97,8 @@ module.exports = function buildHomeHTML(scenes) {
     }
     .teleprompter-container {
       position: relative;
-      height: 200px;
+      width: 100%;
+      padding-top: 56.25%; /* 16:9 Aspect Ratio */
       overflow: hidden;
       background: #000;
       border-radius: 5px;
@@ -106,13 +107,16 @@ module.exports = function buildHomeHTML(scenes) {
       margin-top: 20px;
     }
     #teleprompter-frame {
+      position: absolute;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
       border: none;
       background: #000;
       border-radius: 5px;
       overflow: hidden;
-      font-size: 12px; /* Base font size for the preview */
+      font-size: 12px;
     }
     #teleprompter-frame::-webkit-scrollbar {
       width: 8px;
@@ -358,21 +362,15 @@ module.exports = function buildHomeHTML(scenes) {
     }
 
     function actorsReady() {
-      const btn = document.getElementById('actorsReadyBtn');
-      btn.disabled = true;
       document.getElementById('status').innerText = 'Notifying system that actors are ready...';
-      
       fetch('/actorsReady', { method: 'POST' })
         .then(res => res.json())
         .then(info => {
           document.getElementById('status').innerText = info.message;
-          appendToConsole('Actors ready notification sent', 'info');
         })
         .catch(err => {
           console.error(err);
           document.getElementById('status').innerText = 'Error: ' + err;
-          appendToConsole('Error sending actors ready notification: ' + err, 'error');
-          btn.disabled = false;
         });
     }
 
