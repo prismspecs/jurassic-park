@@ -1,19 +1,20 @@
 [
     {
-      "name": "Brad Pitt",
-      "score": 0,
-      "sceneCount": 1
+        "name": "Grayson Earle",
+        "score": 0,
+        "sceneCount": 2
     },
     {
-      "name": "Grayson Earle",
-      "score": 0
+        "name": "Brad Pitt",
+        "score": 0,
+        "sceneCount": 4
     },
     {
-      "name": "Johannes Büttner",
-      "score": 0
+        "name": "Johannes Büttner",
+        "score": 0
     },
     {
-      "name": "Tyra Banks",
-      "score": 0
+        "name": "Tyra Banks",
+        "score": 0
     }
-  ]
+]

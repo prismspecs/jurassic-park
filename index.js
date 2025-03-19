@@ -6,6 +6,7 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const fs = require('fs');
 
 // import config
 const config = require('./config.json');
@@ -19,6 +20,7 @@ const aiVoice = require('./services/aiVoice');
 const ffmpegHelper = require('./services/ffmpegHelper');
 const poseTracker = require('./services/poseTracker');
 const buildHomeHTML = require('./views/homeView');
+const buildTeleprompterHTML = require('./views/teleprompterView');
 const mainRouter = require('./routes/main');
 const { initializeWebSocket } = require('./websocket/handler');
 
@@ -51,6 +53,9 @@ function broadcastConsole(message, level = 'info') {
     level
   });
 }
+
+// Initialize aiVoice with broadcast function
+aiVoice.init(broadcastConsole);
 
 /** System init */
 function initializeSystem() {
@@ -109,7 +114,18 @@ function callActors(scene) {
     actor.sceneCount++;
     broadcastConsole(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
     aiVoice.speak(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
+
+    // Update the teleprompter text
+    broadcast({
+      type: 'TELEPROMPTER',
+      text: `Calling actor: ${actor.name} to play ${characterNames[index]}`,
+      image: `/database/actors/${actor.name}/headshot.jpg`
+    });
   });
+
+  // Save the updated callsheet back to the JSON file
+  fs.writeFileSync(config.callsheet, JSON.stringify(callsheet, null, 4));
+  broadcastConsole('Updated callsheet saved');
 
   // Broadcast that actors are being called
   broadcast({
@@ -117,6 +133,14 @@ function callActors(scene) {
     scene: scene
   });
 }
+
+function actorsReady() {
+  broadcastConsole('Actors are ready to perform');
+  broadcast({
+    type: 'ACTORS_READY'
+  });
+}
+
 
 // Initialize WebSocket
 initializeWebSocket(wss);
@@ -131,12 +155,34 @@ app.get('/', (req, res) => {
   res.send(html);
 });
 
+// Teleprompter page
+app.get('/teleprompter', (req, res) => {
+  const html = buildTeleprompterHTML();
+  res.send(html);
+});
+
+// Update teleprompter text
+app.post('/updateTeleprompter', express.json(), (req, res) => {
+  const { text, image } = req.body;
+  broadcast({
+    type: 'TELEPROMPTER',
+    text,
+    image
+  });
+  res.json({ success: true, message: 'Teleprompter updated' });
+});
+
+// Clear teleprompter
+app.post('/clearTeleprompter', (req, res) => {
+  broadcast({
+    type: 'CLEAR_TELEPROMPTER'
+  });
+  res.json({ success: true, message: 'Teleprompter cleared' });
+});
+
 // Handle actors ready state
 app.post('/actorsReady', (req, res) => {
-  broadcastConsole('Actors are ready to perform');
-  broadcast({
-    type: 'ACTORS_READY'
-  });
+  actorsReady();
   res.json({ success: true, message: 'Actors ready state received' });
 });
 

@@ -16,19 +16,33 @@ const PIPER_MODEL = 'en_US-ryan-medium';
 // Bypass flag - set to true to skip voice output
 let bypassEnabled = false;
 
+// Broadcast function
+let broadcastConsole = null;
+
 module.exports = {
+    // Initialize with broadcast function
+    init(broadcastFn) {
+        broadcastConsole = broadcastFn;
+    },
+
     // Enable/disable bypass mode
     setBypass(enabled) {
         bypassEnabled = enabled;
-        console.log(`[AI Voice]: Bypass mode ${enabled ? 'enabled' : 'disabled'}`);
+        if (broadcastConsole) {
+            broadcastConsole(`[AI Voice]: Bypass mode ${enabled ? 'enabled' : 'disabled'}`);
+        }
     },
 
     speak(text) {
-        console.log(`[AI Voice]: ${text}`);
+        if (broadcastConsole) {
+            broadcastConsole(`[AI Voice]: ${text}`);
+        }
         
         // If bypass is enabled, just log and return
         if (bypassEnabled) {
-            console.log(`[AI Voice Bypass]: Would have spoken: "${text}"`);
+            if (broadcastConsole) {
+                broadcastConsole(`[AI Voice Bypass]: Would have spoken: "${text}"`);
+            }
             return;
         }
 
@@ -37,11 +51,15 @@ module.exports = {
             try {
                 execSync(`say "${text}"`, { stdio: 'inherit' });
             } catch (err) {
-                console.error('macOS say error:', err.message);
+                if (broadcastConsole) {
+                    broadcastConsole('macOS say error: ' + err.message, 'error');
+                }
             }
         } else {
             // Non-macOS: use Piper
-            //console.log('(Using Piper TTS, since not on macOS)');
+            //if (broadcastConsole) {
+            //    broadcastConsole('(Using Piper TTS, since not on macOS)');
+            //}
 
             // Make a random wave file
             const waveFile = makeTempWaveFile();
@@ -56,7 +74,9 @@ module.exports = {
                 execSync(cmd, { stdio: ['ignore', 'ignore', 'ignore'] });
 
             } catch (err) {
-                console.error('Piper TTS error:', err.message);
+                if (broadcastConsole) {
+                    broadcastConsole('Piper TTS error: ' + err.message, 'error');
+                }
             } finally {
                 // Cleanup wave file
                 if (fs.existsSync(waveFile)) {
