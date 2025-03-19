@@ -6,5 +6,6 @@
     "tempRecord": "./temp/recorded.mp4",
     "scenes": "./database/scenes.json",
     "callsheet": "./database/actors/callsheet.json",
-    "waitTime": 1000
+    "waitTime": 1000,
+    "piperDir": "piper"
 }

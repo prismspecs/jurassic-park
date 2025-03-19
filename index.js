@@ -31,6 +31,7 @@ const wss = new WebSocket.Server({ server });
 
 // globals
 let sceneTakeIndex = 0;
+let currentScene = null;
 
 // Make WebSocket server globally available
 global.wss = wss;
@@ -68,6 +69,7 @@ function initializeSystem() {
 /** Scene initialization */
 function initScene(directory) {
   sceneTakeIndex = 0;
+  currentScene = directory;
 
   const scene = scenes.find(s => s.directory === directory);
   if (!scene) {
@@ -77,7 +79,6 @@ function initScene(directory) {
   broadcastConsole(`Initializing scene: ${scene.directory}. Description: ${scene.description}`);
   aiVoice.speak(`Please prepare for scene ${scene.description}`);
   
-
   // wait 5 seconds
   setTimeout(() => {
     callActors(scene);
@@ -119,7 +120,6 @@ function callActors(scene) {
       image: `/database/actors/${actor.name}/headshot.jpg`
     });
 
-
     actor.sceneCount++;
     broadcastConsole(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
     aiVoice.speak(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
@@ -138,12 +138,34 @@ function callActors(scene) {
 }
 
 function actorsReady() {
+  if (!currentScene) {
+    broadcastConsole('No scene is currently active', 'error');
+    return;
+  }
+
+  // use currentScene to get the setup
+  const scene = scenes.find(s => s.directory === currentScene);
+  if (!scene) {
+    broadcastConsole(`Scene ${currentScene} not found`, 'error');
+    return;
+  }
+
+  // Get the setup from the current take
+  const setup = scene.takes[sceneTakeIndex].setup;
+  if (!setup) {
+    broadcastConsole(`No setup found for scene ${currentScene}`, 'error');
+    return;
+  }
+
+  // aiSpeak the setup
+  aiVoice.speak(setup);
+
   broadcastConsole('Actors are ready to perform');
   broadcast({
-    type: 'ACTORS_READY'
+    type: 'ACTORS_READY',
+    scene: scene
   });
 }
-
 
 // Initialize WebSocket
 initializeWebSocket(wss);
@@ -186,7 +208,10 @@ app.post('/clearTeleprompter', (req, res) => {
 // Handle actors ready state
 app.post('/actorsReady', (req, res) => {
   actorsReady();
-  res.json({ success: true, message: 'Actors ready state received' });
+  res.json({ 
+    success: true, 
+    message: 'Actors ready state received' 
+  });
 });
 
 // Handle voice bypass toggle

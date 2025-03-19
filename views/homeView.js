@@ -345,15 +345,11 @@ module.exports = function buildHomeHTML(scenes) {
         });
     }
 
-    function actorsReady() {
-      document.getElementById('status').innerText = 'Notifying system that actors are ready...';
-      fetch('/actorsReady', { method: 'POST' })
+    function initScene(directory) {
+      fetch('/initScene/' + encodeURIComponent(directory))
         .then(res => res.json())
         .then(info => {
-          if (!info.success) {
-            document.getElementById('status').innerText = 'Error: ' + info.message;
-            return;
-          }
+          document.getElementById('status').innerText = info.message;
         })
         .catch(err => {
           console.error(err);
@@ -361,12 +357,23 @@ module.exports = function buildHomeHTML(scenes) {
         });
     }
 
-    function initScene(directory) {
-      fetch('/initScene/' + encodeURIComponent(directory)) // Encode again to be safe
-        .then(res => {
-          if (!res.ok) alert('Error starting shot ' + idx);
+    function actorsReady() {
+      const btn = document.getElementById('actorsReadyBtn');
+      btn.disabled = true;
+      document.getElementById('status').innerText = 'Notifying system that actors are ready...';
+      
+      fetch('/actorsReady', { method: 'POST' })
+        .then(res => res.json())
+        .then(info => {
+          document.getElementById('status').innerText = info.message;
+          appendToConsole('Actors ready notification sent', 'info');
         })
-        .catch(err => console.error(err));
+        .catch(err => {
+          console.error(err);
+          document.getElementById('status').innerText = 'Error: ' + err;
+          appendToConsole('Error sending actors ready notification: ' + err, 'error');
+          btn.disabled = false;
+        });
     }
 
     function recordVideo() {

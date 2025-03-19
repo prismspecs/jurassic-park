@@ -12,13 +12,11 @@ dist
 
 # directories
 temp/*
+piper/*
 
 # original videos from movie
 movie.mp4
 # all videos?
 *.mp4
-# language models
-*.onnx
-*.onnx.json
 
 .DS_Store

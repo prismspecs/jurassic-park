@@ -4,6 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+// Load config
+const config = require('../config.json');
+
 // Helper: random wave file in /tmp or OS temp dir
 function makeTempWaveFile() {
     const randomPart = Math.random().toString(36).slice(2);
@@ -12,6 +15,14 @@ function makeTempWaveFile() {
 
 // Model name for Piper (Linux, Windows, etc.)
 const PIPER_MODEL = 'en_US-ryan-medium';
+
+// Get model directory from config
+const PIPER_MODEL_DIR = path.join(__dirname, '..', config.piperDir || 'piper');
+
+// Ensure Piper model directory exists
+if (!fs.existsSync(PIPER_MODEL_DIR)) {
+    fs.mkdirSync(PIPER_MODEL_DIR, { recursive: true });
+}
 
 // Bypass flag - set to true to skip voice output
 let bypassEnabled = false;
@@ -65,8 +76,8 @@ module.exports = {
             const waveFile = makeTempWaveFile();
 
             try {
-                // 1) Generate WAV using Piper
-                let cmd = `echo "${text}" | piper --model ${PIPER_MODEL} --output_file "${waveFile}"`;
+                // 1) Generate WAV using Piper with custom model directory
+                let cmd = `echo "${text}" | piper --model "${PIPER_MODEL_DIR}/${PIPER_MODEL}.onnx" --output_file "${waveFile}"`;
                 execSync(cmd, { stdio: ['ignore', 'ignore', 'ignore'] });
 
                 // 2) Play the WAV (Linux example with `aplay`)
