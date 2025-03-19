@@ -17,17 +17,47 @@ module.exports = function buildHomeHTML(scenes) {
       font-family: sans-serif;
       margin: 0; padding: 0;
       background: #f0f0f0;
-      text-align: center;
+      display: flex;
+      min-height: 100vh;
+    }
+    .main-content {
+      flex: 3;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar {
+      flex: 1;
+      background: #fff;
+      padding: 20px;
+      border-left: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
     }
     h1 {
-      margin: 20px;
+      margin: 0 0 20px 0;
+      text-align: center;
+    }
+    .controls-section {
+      background: #f8f8f8;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      box-sizing: border-box;
+    }
+    .controls-section h2 {
+      margin: 0 0 15px 0;
+      font-size: 18px;
+      color: #333;
     }
     .scene-container {
       display: flex;
       flex-wrap: wrap;
       gap: 20px;
       justify-content: center;
-      padding: 20px;
+      margin-bottom: 20px;
     }
     .scene-card {
       background: #fff;
@@ -38,59 +68,112 @@ module.exports = function buildHomeHTML(scenes) {
       box-shadow: 0 2px 4px rgba(0,0,0,0.2);
       cursor: pointer;
       transition: transform 0.2s ease;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
     .scene-card:hover {
       transform: translateY(-3px);
     }
     .scene-card img {
-      width: 100%;  
-      height: 100%;
+      width: 100%;
+      height: 150px;
       object-fit: cover;
+      border-radius: 4px;
+      margin-bottom: 10px;
     }
     .scene-title {
       font-weight: bold;
       margin-bottom: 5px;
+      font-size: 14px;
     }
     .scene-camera, .scene-instructions {
       font-size: 0.9em;
       margin-bottom: 5px;
+      color: #666;
     }
     .scene-instructions {
       color: #444;
     }
-    #buttons {
-      margin: 20px;
+    .teleprompter-container {
+      position: relative;
+      height: 200px;
+      overflow: hidden;
+      background: #000;
+      border-radius: 5px;
+      display: flex;
+      flex-direction: column;
+      margin-top: 20px;
     }
-    button {
-      padding: 10px 20px;
-      cursor: pointer;
-      margin: 5px;
-      font-size: 16px;
+    #teleprompter-frame {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #000;
+      border-radius: 5px;
+      overflow: hidden;
+      font-size: 12px; /* Base font size for the preview */
     }
-    #status {
-      margin: 10px;
-      font-weight: bold;
+    #teleprompter-frame::-webkit-scrollbar {
+      width: 8px;
     }
-    video {
-      width: 640px;
-      margin: 10px auto;
-      display: block;
-      border: 2px solid #ccc;
+    #teleprompter-frame::-webkit-scrollbar-track {
+      background: #1a1a1a;
+    }
+    #teleprompter-frame::-webkit-scrollbar-thumb {
+      background: #444;
+      border-radius: 4px;
+    }
+    #teleprompter-frame::-webkit-scrollbar-thumb:hover {
+      background: #555;
     }
     #console-output {
       background: #1e1e1e;
       color: #fff;
       font-family: monospace;
       padding: 10px;
-      margin: 20px auto;
-      width: 80%;
-      max-width: 1200px;
+      width: 100%;
       height: 300px;
       overflow-y: auto;
       text-align: left;
       border-radius: 5px;
       font-size: 14px;
       line-height: 1.4;
+      margin-top: auto;
+      box-sizing: border-box;
+    }
+    #buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      cursor: pointer;
+      font-size: 14px;
+      width: 100%;
+      text-align: left;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fff;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background: #f0f0f0;
+    }
+    #status {
+      margin: 10px 0;
+      font-weight: bold;
+      text-align: center;
+      padding: 10px;
+      background: #f8f8f8;
+      border-radius: 4px;
+    }
+    video {
+      width: 640px;
+      margin: 10px auto;
+      display: block;
+      border: 2px solid #ccc;
     }
     #console-output .timestamp {
       color: #888;
@@ -104,18 +187,9 @@ module.exports = function buildHomeHTML(scenes) {
   </style>
 </head>
 <body>
-  <h1>AI Director Shots</h1>
-  <div id="buttons">
-    <button onclick="recordVideo()">Record 3s Video & Process Pose</button>
-    <button id="voiceBypassBtn" onclick="toggleVoiceBypass()">Enable Voice Bypass</button>
-    <button id="actorsReadyBtn" onclick="actorsReady()" style="display: none;">Actors are Ready</button>
-    <button onclick="openTeleprompter()">Open Teleprompter</button>
-    <button onclick="testTeleprompter()">Test Teleprompter</button>
-    <button onclick="clearTeleprompter()">Clear Teleprompter</button>
-  </div>
-  <div id="status"></div>
-  <div id="console-output"></div>
-  <div class="shot-container">
+  <div class="main-content">
+    <h1>AI Director Shots</h1>
+    <div class="scene-container">
 `;
 
   // Generate the shot cards from the array
@@ -128,10 +202,35 @@ module.exports = function buildHomeHTML(scenes) {
     `;
   });
 
-  // close the shot container, add a <div> for final videos, plus JS
+  // close the main content and add sidebar
   html += `
+    </div>
+    <div id="videos"></div>
+    <div class="controls-section">
+      <h2>Console Output</h2>
+      <div id="console-output"></div>
+    </div>
   </div>
-  <div id="videos"></div>
+  <div class="sidebar">
+    <div class="controls-section">
+      <h2>Controls</h2>
+      <div id="buttons">
+        <button onclick="recordVideo()">Record 3s Video & Process Pose</button>
+        <button id="voiceBypassBtn" onclick="toggleVoiceBypass()">Enable Voice Bypass</button>
+        <button id="actorsReadyBtn" onclick="actorsReady()" style="display: none;">Actors are Ready</button>
+        <button onclick="openTeleprompter()">Open Teleprompter</button>
+        <button onclick="testTeleprompter()">Test Teleprompter</button>
+        <button onclick="clearTeleprompter()">Clear Teleprompter</button>
+      </div>
+    </div>
+    <div id="status"></div>
+    <div class="controls-section">
+      <h2>Teleprompter Preview</h2>
+      <div class="teleprompter-container">
+        <iframe id="teleprompter-frame" src="/teleprompter"></iframe>
+      </div>
+    </div>
+  </div>
 
   <script>
     // WebSocket connection for real-time updates

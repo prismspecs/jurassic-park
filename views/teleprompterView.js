@@ -28,22 +28,23 @@ module.exports = function buildTeleprompterHTML() {
       flex-direction: column;
       justify-content: flex-start;
       align-items: center;
-      padding: 20px;
+      padding: 1.25rem;
       box-sizing: border-box;
-      font-size: 48px;
+      font-size: 3rem;
       line-height: 1.4;
       white-space: pre-wrap;
       word-wrap: break-word;
       transition: opacity 0.3s ease;
+      overflow-y: auto;
     }
     #teleprompter.fade {
       opacity: 0.5;
     }
     .message {
       max-width: 90%;
-      margin: 20px auto;
-      padding: 20px;
-      border-radius: 8px;
+      margin: 1.25rem auto;
+      padding: 1.25rem;
+      border-radius: 0.5rem;
       background: rgba(255, 255, 255, 0.1);
       backdrop-filter: blur(5px);
       transform: translateY(0);
@@ -51,7 +52,9 @@ module.exports = function buildTeleprompterHTML() {
       transition: all 0.5s ease;
       display: flex;
       align-items: center;
-      gap: 20px;
+      gap: 1.25rem;
+      width: 100%;
+      box-sizing: border-box;
     }
     .message.new {
       transform: translateY(-20px);
@@ -63,12 +66,17 @@ module.exports = function buildTeleprompterHTML() {
     }
     .message-content {
       flex: 1;
+      font-size: 1rem;
+      min-width: 0;
     }
     .message-image {
-      width: 200px;
-      height: 200px;
+      width: 25%;
+      max-width: 12.5rem;
+      height: auto;
+      aspect-ratio: 1;
       object-fit: cover;
-      border-radius: 4px;
+      border-radius: 0.25rem;
+      flex-shrink: 0;
     }
     .message.actor {
       background: rgba(0, 255, 0, 0.1);
