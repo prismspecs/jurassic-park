@@ -10,6 +10,7 @@ const path = require('path');
 // import config
 const config = require('./config.json');
 const scenes = require(config.scenes);
+const callsheet = require(config.callsheet);
 
 // Our custom modules
 const cameraControl = require('./services/cameraControl');
@@ -25,6 +26,9 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+
+// globals
+let sceneTakeIndex = 0;
 
 // Make WebSocket server globally available
 global.wss = wss;
@@ -49,6 +53,11 @@ function initializeSystem() {
 
 /** Scene initialization */
 function initScene(directory) {
+  
+  // aiVoice.setBypass(true);
+
+  sceneTakeIndex = 0;
+
   const scene = scenes.find(s => s.directory === directory);
   if (!scene) {
     console.log(`Scene ${directory} not found`);
@@ -56,6 +65,12 @@ function initScene(directory) {
   }
   console.log(`Initializing scene: ${scene.directory}. Description: ${scene.description}`);
   aiVoice.speak(`Please prepare for scene ${scene.description}`);
+  
+
+  // wait 5 seconds
+  setTimeout(() => {
+    callActors(scene);
+  }, config.waitTime);
 
   broadcast({
     type: 'SHOT_START',
@@ -63,7 +78,39 @@ function initScene(directory) {
   });
 }
 
+function callActors(scene) {
+  console.log(`Calling actors for scene: ${scene.description}`);
+  
+  // Get the actors object from the current take
+  const actors = scene.takes[sceneTakeIndex].actors;
+  
+  // Get the character names from the actors object
+  const characterNames = Object.keys(actors);
+  
+  // find how many actors are needed for the scene
+  const actorsNeeded = characterNames.length;
+  
+  console.log(`Actors needed: ${actorsNeeded} for characters: ${characterNames.join(', ')}`);
+  
+  // sort the callsheet by sceneCount
+  const sortedCallsheet = callsheet.sort((a, b) => a.sceneCount - b.sceneCount);
 
+  // get the top actorsNeeded actors
+  const actorsToCall = sortedCallsheet.slice(0, actorsNeeded);
+
+  // Call the actors
+  actorsToCall.forEach((actor, index) => {
+    actor.sceneCount++;
+    console.log(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
+    aiVoice.speak(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
+  });
+
+  // Broadcast that actors are being called
+  broadcast({
+    type: 'ACTORS_CALLED',
+    scene: scene
+  });
+}
 
 // Initialize WebSocket
 initializeWebSocket(wss);
@@ -76,6 +123,25 @@ app.use('/database', express.static(path.join(__dirname, 'database')));
 app.get('/', (req, res) => {
   const html = buildHomeHTML(scenes);
   res.send(html);
+});
+
+// Handle actors ready state
+app.post('/actorsReady', (req, res) => {
+  console.log('Actors are ready to perform');
+  broadcast({
+    type: 'ACTORS_READY'
+  });
+  res.json({ success: true, message: 'Actors ready state received' });
+});
+
+// Handle voice bypass toggle
+app.post('/setVoiceBypass', express.json(), (req, res) => {
+  const { enabled } = req.body;
+  aiVoice.setBypass(enabled);
+  res.json({ 
+    success: true, 
+    message: `Voice bypass ${enabled ? 'enabled' : 'disabled'}`
+  });
 });
 
 // Initialize a scene
@@ -118,5 +184,7 @@ app.use('/', mainRouter);
 // Start server
 server.listen(PORT, () => {
   console.log(`AI Director System listening on port ${PORT}`);
+  // write a clickable link to the page
+  console.log(`http://localhost:${PORT}`);
   initializeSystem();
 });

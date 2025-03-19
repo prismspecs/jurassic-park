@@ -13,10 +13,24 @@ function makeTempWaveFile() {
 // Model name for Piper (Linux, Windows, etc.)
 const PIPER_MODEL = 'en_US-ryan-medium';
 
+// Bypass flag - set to true to skip voice output
+let bypassEnabled = false;
+
 module.exports = {
+    // Enable/disable bypass mode
+    setBypass(enabled) {
+        bypassEnabled = enabled;
+        console.log(`[AI Voice]: Bypass mode ${enabled ? 'enabled' : 'disabled'}`);
+    },
 
     speak(text) {
         console.log(`[AI Voice]: ${text}`);
+        
+        // If bypass is enabled, just log and return
+        if (bypassEnabled) {
+            console.log(`[AI Voice Bypass]: Would have spoken: "${text}"`);
+            return;
+        }
 
         if (process.platform === 'darwin') {
             // macOS: use the built-in 'say' command
@@ -27,7 +41,7 @@ module.exports = {
             }
         } else {
             // Non-macOS: use Piper
-            console.log('(Using Piper TTS, since not on macOS)');
+            //console.log('(Using Piper TTS, since not on macOS)');
 
             // Make a random wave file
             const waveFile = makeTempWaveFile();
@@ -35,11 +49,11 @@ module.exports = {
             try {
                 // 1) Generate WAV using Piper
                 let cmd = `echo "${text}" | piper --model ${PIPER_MODEL} --output_file "${waveFile}"`;
-                execSync(cmd, { stdio: 'inherit' });
+                execSync(cmd, { stdio: ['ignore', 'ignore', 'ignore'] });
 
                 // 2) Play the WAV (Linux example with `aplay`)
                 cmd = `aplay "${waveFile}"`;
-                execSync(cmd, { stdio: 'inherit' });
+                execSync(cmd, { stdio: ['ignore', 'ignore', 'ignore'] });
 
             } catch (err) {
                 console.error('Piper TTS error:', err.message);

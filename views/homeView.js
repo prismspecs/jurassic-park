@@ -83,6 +83,8 @@ module.exports = function buildHomeHTML(scenes) {
   <h1>AI Director Shots</h1>
   <div id="buttons">
     <button onclick="recordVideo()">Record 3s Video & Process Pose</button>
+    <button id="voiceBypassBtn" onclick="toggleVoiceBypass()">Enable Voice Bypass</button>
+    <button id="actorsReadyBtn" onclick="actorsReady()" style="display: none;">Actors are Ready</button>
   </div>
   <div id="status"></div>
   <div class="shot-container">
@@ -104,6 +106,63 @@ module.exports = function buildHomeHTML(scenes) {
   <div id="videos"></div>
 
   <script>
+    // WebSocket connection for real-time updates
+    const ws = new WebSocket('ws://' + window.location.host);
+    
+    // Voice bypass state
+    let voiceBypassEnabled = false;
+    
+    function toggleVoiceBypass() {
+      voiceBypassEnabled = !voiceBypassEnabled;
+      const btn = document.getElementById('voiceBypassBtn');
+      btn.textContent = voiceBypassEnabled ? 'Disable Voice Bypass' : 'Enable Voice Bypass';
+      btn.style.backgroundColor = voiceBypassEnabled ? '#ff4444' : '#4CAF50';
+      
+      // Send the bypass state to the server
+      fetch('/setVoiceBypass', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ enabled: voiceBypassEnabled })
+      })
+      .then(res => res.json())
+      .then(info => {
+        document.getElementById('status').innerText = info.message;
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById('status').innerText = 'Error: ' + err;
+      });
+    }
+    
+    ws.onmessage = function(event) {
+      const data = JSON.parse(event.data);
+      if (data.type === 'ACTORS_CALLED') {
+        document.getElementById('actorsReadyBtn').style.display = 'inline-block';
+        document.getElementById('status').innerText = 'Waiting for actors to be ready...';
+      } else if (data.type === 'ACTORS_READY') {
+        document.getElementById('actorsReadyBtn').style.display = 'none';
+        document.getElementById('status').innerText = 'Actors are ready to perform!';
+      }
+    };
+
+    function actorsReady() {
+      document.getElementById('status').innerText = 'Notifying system that actors are ready...';
+      fetch('/actorsReady', { method: 'POST' })
+        .then(res => res.json())
+        .then(info => {
+          if (!info.success) {
+            document.getElementById('status').innerText = 'Error: ' + info.message;
+            return;
+          }
+        })
+        .catch(err => {
+          console.error(err);
+          document.getElementById('status').innerText = 'Error: ' + err;
+        });
+    }
+
     function initScene(directory) {
       fetch('/initScene/' + encodeURIComponent(directory)) // Encode again to be safe
         .then(res => {
