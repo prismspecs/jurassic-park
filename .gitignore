@@ -10,10 +10,15 @@ Thumbs.db
 # build ignores
 dist
 
+# directories
+temp/*
+
 # original videos from movie
 movie.mp4
 # all videos?
 *.mp4
+# language models
+*.onnx
+*.onnx.json
 
-temp/*
 .DS_Store
