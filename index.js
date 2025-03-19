@@ -111,9 +111,6 @@ function callActors(scene) {
 
   // Call the actors
   actorsToCall.forEach((actor, index) => {
-    actor.sceneCount++;
-    broadcastConsole(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
-    aiVoice.speak(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
 
     // Update the teleprompter text
     broadcast({
@@ -121,6 +118,12 @@ function callActors(scene) {
       text: `Calling actor: ${actor.name} to play ${characterNames[index]}`,
       image: `/database/actors/${actor.name}/headshot.jpg`
     });
+
+
+    actor.sceneCount++;
+    broadcastConsole(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
+    aiVoice.speak(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
+    
   });
 
   // Save the updated callsheet back to the JSON file
