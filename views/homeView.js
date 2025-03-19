@@ -77,6 +77,30 @@ module.exports = function buildHomeHTML(scenes) {
       display: block;
       border: 2px solid #ccc;
     }
+    #console-output {
+      background: #1e1e1e;
+      color: #fff;
+      font-family: monospace;
+      padding: 10px;
+      margin: 20px auto;
+      width: 80%;
+      max-width: 1200px;
+      height: 300px;
+      overflow-y: auto;
+      text-align: left;
+      border-radius: 5px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    #console-output .timestamp {
+      color: #888;
+    }
+    #console-output .error {
+      color: #ff6b6b;
+    }
+    #console-output .info {
+      color: #4ecdc4;
+    }
   </style>
 </head>
 <body>
@@ -87,6 +111,7 @@ module.exports = function buildHomeHTML(scenes) {
     <button id="actorsReadyBtn" onclick="actorsReady()" style="display: none;">Actors are Ready</button>
   </div>
   <div id="status"></div>
+  <div id="console-output"></div>
   <div class="shot-container">
 `;
 
@@ -144,8 +169,20 @@ module.exports = function buildHomeHTML(scenes) {
       } else if (data.type === 'ACTORS_READY') {
         document.getElementById('actorsReadyBtn').style.display = 'none';
         document.getElementById('status').innerText = 'Actors are ready to perform!';
+      } else if (data.type === 'CONSOLE') {
+        appendToConsole(data.message, data.level);
       }
     };
+
+    function appendToConsole(message, level = 'info') {
+      const console = document.getElementById('console-output');
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = level;
+      entry.innerHTML = '<span class="timestamp">[' + timestamp + ']</span> ' + message;
+      console.appendChild(entry);
+      console.scrollTop = console.scrollHeight;
+    }
 
     function actorsReady() {
       document.getElementById('status').innerText = 'Notifying system that actors are ready...';

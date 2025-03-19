@@ -43,27 +43,33 @@ function broadcast(data) {
   });
 }
 
+/** Utility: broadcast console message to connected WS clients */
+function broadcastConsole(message, level = 'info') {
+  broadcast({
+    type: 'CONSOLE',
+    message,
+    level
+  });
+}
+
 /** System init */
 function initializeSystem() {
   cameraControl.initCameras();
   poseTracker.loadModels();
   fileManager.prepareRecordingDirectory();
-  console.log('System initialized. Ready to direct performance.');
+  broadcastConsole('System initialized. Ready to direct performance.');
 }
 
 /** Scene initialization */
 function initScene(directory) {
-  
-  // aiVoice.setBypass(true);
-
   sceneTakeIndex = 0;
 
   const scene = scenes.find(s => s.directory === directory);
   if (!scene) {
-    console.log(`Scene ${directory} not found`);
+    broadcastConsole(`Scene ${directory} not found`, 'error');
     return;
   }
-  console.log(`Initializing scene: ${scene.directory}. Description: ${scene.description}`);
+  broadcastConsole(`Initializing scene: ${scene.directory}. Description: ${scene.description}`);
   aiVoice.speak(`Please prepare for scene ${scene.description}`);
   
 
@@ -79,7 +85,7 @@ function initScene(directory) {
 }
 
 function callActors(scene) {
-  console.log(`Calling actors for scene: ${scene.description}`);
+  broadcastConsole(`Calling actors for scene: ${scene.description}`);
   
   // Get the actors object from the current take
   const actors = scene.takes[sceneTakeIndex].actors;
@@ -90,7 +96,7 @@ function callActors(scene) {
   // find how many actors are needed for the scene
   const actorsNeeded = characterNames.length;
   
-  console.log(`Actors needed: ${actorsNeeded} for characters: ${characterNames.join(', ')}`);
+  broadcastConsole(`Actors needed: ${actorsNeeded} for characters: ${characterNames.join(', ')}`);
   
   // sort the callsheet by sceneCount
   const sortedCallsheet = callsheet.sort((a, b) => a.sceneCount - b.sceneCount);
@@ -101,7 +107,7 @@ function callActors(scene) {
   // Call the actors
   actorsToCall.forEach((actor, index) => {
     actor.sceneCount++;
-    console.log(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
+    broadcastConsole(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
     aiVoice.speak(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
   });
 
@@ -127,7 +133,7 @@ app.get('/', (req, res) => {
 
 // Handle actors ready state
 app.post('/actorsReady', (req, res) => {
-  console.log('Actors are ready to perform');
+  broadcastConsole('Actors are ready to perform');
   broadcast({
     type: 'ACTORS_READY'
   });
@@ -138,6 +144,7 @@ app.post('/actorsReady', (req, res) => {
 app.post('/setVoiceBypass', express.json(), (req, res) => {
   const { enabled } = req.body;
   aiVoice.setBypass(enabled);
+  broadcastConsole(`Voice bypass ${enabled ? 'enabled' : 'disabled'}`);
   res.json({ 
     success: true, 
     message: `Voice bypass ${enabled ? 'enabled' : 'disabled'}`
@@ -154,6 +161,7 @@ app.get('/initScene/:directory', (req, res) => {
 // Record a video (test)
 app.get('/recordVideo', async (req, res) => {
   try {
+    broadcastConsole('Starting video recording...');
     const RAW_DIR = path.join(__dirname, config.framesRawDir);
     const OVERLAY_DIR = path.join(__dirname, config.framesOverlayDir);
     const OUT_ORIG = config.videoOriginal;
@@ -161,11 +169,14 @@ app.get('/recordVideo', async (req, res) => {
     const TEMP_RECORD = config.tempRecord;
 
     await ffmpegHelper.captureVideo(TEMP_RECORD, 3);
+    broadcastConsole('Video captured, processing frames...');
     await ffmpegHelper.extractFrames(TEMP_RECORD, RAW_DIR);
     await poseTracker.processFrames(RAW_DIR, OVERLAY_DIR);
+    broadcastConsole('Frames processed, encoding videos...');
     await ffmpegHelper.encodeVideo(RAW_DIR, OUT_ORIG);
     await ffmpegHelper.encodeVideo(OVERLAY_DIR, OUT_OVER);
 
+    broadcastConsole('Video recording and processing complete!');
     res.json({
       success: true,
       message: 'Video recorded and pose processed!',
@@ -173,7 +184,7 @@ app.get('/recordVideo', async (req, res) => {
       overlayName: OUT_OVER
     });
   } catch (err) {
-    console.error(err);
+    broadcastConsole(err.message, 'error');
     res.status(500).json({ success: false, message: err.message });
   }
 });
