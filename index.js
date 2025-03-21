@@ -78,7 +78,7 @@ function initScene(directory) {
   }
   broadcastConsole(`Initializing scene: ${scene.directory}. Description: ${scene.description}`);
   aiVoice.speak(`Please prepare for scene ${scene.description}`);
-  
+
   // wait 5 seconds
   setTimeout(() => {
     callActors(scene);
@@ -92,18 +92,18 @@ function initScene(directory) {
 
 function callActors(scene) {
   broadcastConsole(`Calling actors for scene: ${scene.description}`);
-  
+
   // Get the actors object from the current take
   const actors = scene.takes[sceneTakeIndex].actors;
-  
+
   // Get the character names from the actors object
   const characterNames = Object.keys(actors);
-  
+
   // find how many actors are needed for the scene
   const actorsNeeded = characterNames.length;
-  
+
   broadcastConsole(`Actors needed: ${actorsNeeded} for characters: ${characterNames.join(', ')}`);
-  
+
   // sort the callsheet by sceneCount
   const sortedCallsheet = callsheet.sort((a, b) => a.sceneCount - b.sceneCount);
 
@@ -123,7 +123,7 @@ function callActors(scene) {
     actor.sceneCount++;
     broadcastConsole(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
     aiVoice.speak(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
-    
+
   });
 
   // Save the updated callsheet back to the JSON file
@@ -173,6 +173,7 @@ initializeWebSocket(wss);
 // Static files and directories
 app.use('/video', express.static(__dirname));
 app.use('/database', express.static(path.join(__dirname, 'database')));
+app.use('/temp', express.static(path.join(__dirname, 'temp')));
 
 /** Routes */
 app.get('/', (req, res) => {
@@ -208,9 +209,9 @@ app.post('/clearTeleprompter', (req, res) => {
 // Handle actors ready state
 app.post('/actorsReady', (req, res) => {
   actorsReady();
-  res.json({ 
-    success: true, 
-    message: 'Actors ready state received' 
+  res.json({
+    success: true,
+    message: 'Actors ready state received'
   });
 });
 
@@ -219,8 +220,8 @@ app.post('/setVoiceBypass', express.json(), (req, res) => {
   const { enabled } = req.body;
   aiVoice.setBypass(enabled);
   broadcastConsole(`Voice bypass ${enabled ? 'enabled' : 'disabled'}`);
-  res.json({ 
-    success: true, 
+  res.json({
+    success: true,
     message: `Voice bypass ${enabled ? 'enabled' : 'disabled'}`
   });
 });

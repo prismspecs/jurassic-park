@@ -37,6 +37,24 @@ module.exports = function buildTeleprompterHTML() {
       transition: opacity 0.3s ease;
       overflow-y: auto;
     }
+    #video-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      z-index: 1000;
+      display: none;
+    }
+    #video-container.active {
+      display: block;
+    }
+    #video-container video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
     #teleprompter.fade {
       opacity: 0.5;
     }
@@ -93,11 +111,16 @@ module.exports = function buildTeleprompterHTML() {
   </style>
 </head>
 <body>
+  <div id="video-container">
+    <video id="teleprompter-video" autoplay playsinline></video>
+  </div>
   <div id="teleprompter"></div>
 
   <script>
     const ws = new WebSocket('ws://' + window.location.host);
     const teleprompter = document.getElementById('teleprompter');
+    const videoContainer = document.getElementById('video-container');
+    const videoElement = document.getElementById('teleprompter-video');
     let isFaded = false;
 
     ws.onopen = function() {
@@ -112,6 +135,8 @@ module.exports = function buildTeleprompterHTML() {
         addMessage(data.text, data.style || 'normal', data.image);
       } else if (data.type === 'CLEAR_TELEPROMPTER') {
         clearText();
+      } else if (data.type === 'PLAY_VIDEO') {
+        playVideo(data.videoPath);
       }
     };
 
@@ -179,6 +204,15 @@ module.exports = function buildTeleprompterHTML() {
       setTimeout(() => {
         teleprompter.innerHTML = '';
       }, 500);
+    }
+
+    function playVideo(videoPath) {
+      videoElement.src = videoPath;
+      videoContainer.classList.add('active');
+      
+      videoElement.onended = () => {
+        videoContainer.classList.remove('active');
+      };
     }
   </script>
 </body>

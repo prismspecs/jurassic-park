@@ -224,6 +224,7 @@ module.exports = function buildHomeHTML(scenes) {
         <button id="actorsReadyBtn" onclick="actorsReady()" style="display: none;">Actors are Ready</button>
         <button onclick="openTeleprompter()">Open Teleprompter</button>
         <button onclick="testTeleprompter()">Test Teleprompter</button>
+        <button onclick="testTeleprompterVideo()">Test Teleprompter Video</button>
         <button onclick="clearTeleprompter()">Clear Teleprompter</button>
       </div>
     </div>
@@ -295,45 +296,27 @@ module.exports = function buildHomeHTML(scenes) {
     }
 
     function testTeleprompter() {
-      const messages = [
-        {
-          text: 'Test actor message ' + new Date().toLocaleTimeString(),
-          style: 'actor',
-          image: './database/scenes/001 - see dinosaurs/thumbnail.jpg'
+      fetch('/updateTeleprompter', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        {
-          text: 'Test direction message ' + new Date().toLocaleTimeString(),
-          style: 'direction'
-        },
-        {
-          text: 'Test action message ' + new Date().toLocaleTimeString(),
-          style: 'action'
-        },
-        {
-          text: 'Test normal message ' + new Date().toLocaleTimeString(),
-          style: 'normal'
-        }
-      ];
+        body: JSON.stringify({
+          text: 'This is a test message for the teleprompter.',
+          image: '/database/actors/John/headshot.jpg'
+        })
+      });
+    }
 
-      // Send each message with a slight delay
-      messages.forEach((msg, index) => {
-        setTimeout(() => {
-          fetch('/updateTeleprompter', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(msg)
-          })
-          .then(res => res.json())
-          .then(info => {
-            document.getElementById('status').innerText = info.message;
-          })
-          .catch(err => {
-            console.error(err);
-            document.getElementById('status').innerText = 'Error: ' + err;
-          });
-        }, index * 1000); // Send each message 1 second apart
+    function testTeleprompterVideo() {
+      fetch('/playTeleprompterVideo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          videoPath: '/temp/test.mp4'
+        })
       });
     }
 
