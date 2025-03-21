@@ -8,6 +8,8 @@ sudo apt install v4l-utils  # for OSBOT PITZ camera controls
 
 ## Camera stuff
 
+### Linux
+
 To identify which camera is the OSBOT
 
 ```
@@ -28,6 +30,17 @@ Test the device
 
 ```
 v4l2-ctl --device=/dev/video2 --set-ctrl=pan_absolute=0
+```
+
+### MacOS
+Install [uvc-util](https://github.com/jtfrey/uvc-util)
+
+Testing
+```
+./uvc-util --list-devices
+./uvc-util -I 0 -s pan-tilt-abs="{-3600, 36000}"
+./uvc-util -I 0 -s zoom-abs=50
+./uvc-util -I 0 -c # show controls
 ```
 
 ## Database

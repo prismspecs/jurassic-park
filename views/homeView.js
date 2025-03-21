@@ -469,30 +469,44 @@ module.exports = function buildHomeHTML(scenes) {
     }
 
     function selectCamera(camera) {
+      if (!camera) return;
+      
       fetch('/selectCamera', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ camera })
       })
       .then(res => res.json())
-      .then(response => {
-        document.getElementById('status').innerText = response.message;
-        // Enable/disable PTZ controls based on camera type
-        const ptzControls = document.querySelector('.ptz-controls');
-        ptzControls.style.opacity = camera === 'PTZ Camera' ? '1' : '0.5';
+      .then(data => {
+        if (data.success) {
+          document.getElementById('status').innerText = data.message;
+        } else {
+          document.getElementById('status').innerText = 'Error: ' + data.message;
+        }
+      })
+      .catch(err => {
+        document.getElementById('status').innerText = 'Error: ' + err;
       });
     }
 
     // Initialize camera controls when page loads
     window.addEventListener('load', () => {
+      console.log('Loading cameras...');
       fetch('/cameras')
         .then(res => res.json())
         .then(cameras => {
+          console.log('Received cameras:', cameras);
           const select = document.getElementById('cameraSelect');
           select.innerHTML = '<option value="">Select Camera</option>';
           cameras.forEach(camera => {
             select.innerHTML += '<option value="' + camera + '">' + camera + '</option>';
           });
+        })
+        .catch(err => {
+          console.error('Error loading cameras:', err);
+          document.getElementById('status').innerText = 'Error loading cameras: ' + err;
         });
     });
   </script>

@@ -13,6 +13,7 @@ dist
 # directories
 temp/*
 piper/*
+external_tools/*
 
 # original videos from movie
 movie.mp4

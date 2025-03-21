@@ -7,7 +7,8 @@
     "scenes": "./database/scenes.json",
     "callsheet": "./database/actors/callsheet.json",
     "waitTime": 1000,
-    "piperDir": "piper",
+    "piperDir": "external_tools/piper",
+    "uvcDir": "external_tools/uvc",
     "camera": {
         "resolution": "1280x720",
         "fps": 30
