@@ -12,19 +12,9 @@ class CameraControl {
         this.uvcUtilPath = path.join(__dirname, '..', config.uvcDir, 'uvc-util');
         console.log('CameraControl initialized:', {
             platform: this.platform,
-            uvcUtilPath: this.uvcUtilPath
+            ...(this.platform === 'darwin' && { uvcUtilPath: this.uvcUtilPath })
         });
 
-        // Set initial default cameras - only for Linux since macOS uses dynamic detection
-        const defaultCameras = {
-            linux: { // Linux
-                'PTZ Camera': '/dev/video2',
-                'Webcam': '/dev/video0'
-            }
-        };
-
-        // Start with default cameras for the platform
-        this.cameras = defaultCameras[this.platform] || {};
     }
 
     initCameras() {
@@ -134,13 +124,15 @@ class CameraControl {
             if (this.platform === 'linux') {
                 // Linux: use v4l2-ctl with absolute values
                 if (pan !== null) {
-                    const cmd = `v4l2-ctl --device=${device} --set-ctrl=pan_absolute=${pan}`;
+                    // there is a strange bug where pan:0 puts the camera in a weird position
+                    const cmd = `v4l2-ctl --device=${device} --set-ctrl=pan_absolute=${pan === 0 ? 3600 : pan}`;
                     console.log('Executing:', cmd);
                     exec(cmd);
                 }
                 if (tilt !== null) {
-                    const cmd = `v4l2-ctl --device=${device} --set-ctrl=tilt_absolute=${tilt}`;
-                    console.log('Executing:', cmd);
+                    // same bug as pan
+                    const cmd = `v4l2-ctl --device=${device} --set-ctrl=tilt_absolute=${tilt === 0 ? 3600 : tilt}`;
+                    //console.log('Executing:', cmd);
                     exec(cmd);
                 }
                 if (zoom !== null) {
