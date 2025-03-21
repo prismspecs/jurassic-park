@@ -188,6 +188,48 @@ module.exports = function buildHomeHTML(scenes) {
     #console-output .info {
       color: #4ecdc4;
     }
+    .camera-controls {
+      margin-bottom: 20px;
+    }
+    .ptz-controls {
+      margin-top: 10px;
+    }
+    .control-group {
+      margin: 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .control-group label {
+      min-width: 60px;
+    }
+    .control-group input[type="range"] {
+      flex: 1;
+    }
+    .control-group span {
+      display: inline-block;
+      min-width: 80px;
+    }
+    #cameraSelect {
+      width: 100%;
+      padding: 5px;
+      margin-bottom: 10px;
+    }
+    input[type="number"] {
+      width: 80px;
+    }
+    .camera-preview {
+      margin-top: 15px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #000;
+    }
+    #cameraPreview {
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #000;
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -216,6 +258,31 @@ module.exports = function buildHomeHTML(scenes) {
     </div>
   </div>
   <div class="sidebar">
+    <div class="controls-section">
+      <h2>Camera Controls</h2>
+      <div class="camera-controls">
+        <select id="cameraSelect" onchange="selectCamera(this.value)">
+          <option value="">Select Camera</option>
+        </select>
+        <div class="ptz-controls">
+          <div class="control-group">
+            <label>Pan</label>
+            <input type="range" id="panSlider" min="-468000" max="468000" step="3600" value="0" oninput="updatePTZ()">
+            <span id="panValue">0°</span>
+          </div>
+          <div class="control-group">
+            <label>Tilt</label>
+            <input type="range" id="tiltSlider" min="-324000" max="324000" step="3600" value="0" oninput="updatePTZ()">
+            <span id="tiltValue">0°</span>
+          </div>
+          <div class="control-group">
+            <label>Zoom</label>
+            <input type="range" id="zoomSlider" min="0" max="100" step="1" value="0" oninput="updatePTZ()">
+            <span id="zoomValue">0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="controls-section">
       <h2>Controls</h2>
       <div id="buttons">
@@ -380,6 +447,54 @@ module.exports = function buildHomeHTML(scenes) {
           document.getElementById('status').innerText = 'Error: ' + err;
         });
     }
+
+    function updatePTZ() {
+      const data = {
+        pan: parseInt(document.getElementById('panSlider').value),
+        tilt: parseInt(document.getElementById('tiltSlider').value),
+        zoom: parseInt(document.getElementById('zoomSlider').value)
+      };
+
+      // Update display values
+      document.getElementById('panValue').textContent = (data.pan / 3600).toFixed(1) + '°';
+      document.getElementById('tiltValue').textContent = (data.tilt / 3600).toFixed(1) + '°';
+      document.getElementById('zoomValue').textContent = data.zoom + '%';
+
+      // Send to server
+      fetch('/ptz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    }
+
+    function selectCamera(camera) {
+      fetch('/selectCamera', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ camera })
+      })
+      .then(res => res.json())
+      .then(response => {
+        document.getElementById('status').innerText = response.message;
+        // Enable/disable PTZ controls based on camera type
+        const ptzControls = document.querySelector('.ptz-controls');
+        ptzControls.style.opacity = camera === 'PTZ Camera' ? '1' : '0.5';
+      });
+    }
+
+    // Initialize camera controls when page loads
+    window.addEventListener('load', () => {
+      fetch('/cameras')
+        .then(res => res.json())
+        .then(cameras => {
+          const select = document.getElementById('cameraSelect');
+          select.innerHTML = '<option value="">Select Camera</option>';
+          cameras.forEach(camera => {
+            select.innerHTML += '<option value="' + camera + '">' + camera + '</option>';
+          });
+        });
+    });
   </script>
 </body>
 </html>

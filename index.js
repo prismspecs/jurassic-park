@@ -7,6 +7,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
 
 // import config
 const config = require('./config.json');
@@ -28,6 +29,10 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+
+// Middleware
+app.use(express.static('public'));
+app.use(express.json()); // Add JSON body parser middleware
 
 // globals
 let sceneTakeIndex = 0;
@@ -58,9 +63,11 @@ function broadcastConsole(message, level = 'info') {
 // Initialize aiVoice with broadcast function
 aiVoice.init(broadcastConsole);
 
+// Initialize the camera system
+cameraControl.setCamera('Webcam'); // Default to webcam
+
 /** System init */
 function initializeSystem() {
-  cameraControl.initCameras();
   poseTracker.loadModels();
   fileManager.prepareRecordingDirectory();
   broadcastConsole('System initialized. Ready to direct performance.');
@@ -262,6 +269,32 @@ app.get('/recordVideo', async (req, res) => {
     broadcastConsole(err.message, 'error');
     res.status(500).json({ success: false, message: err.message });
   }
+});
+
+// Camera control routes
+app.get('/cameras', (req, res) => {
+    res.json(cameraControl.getCameras());
+});
+
+app.post('/selectCamera', (req, res) => {
+    const { camera } = req.body;
+    const success = cameraControl.setCamera(camera);
+    res.json({ 
+        success, 
+        message: success ? `Selected camera: ${camera}` : 'Failed to select camera' 
+    });
+});
+
+app.post('/ptz', (req, res) => {
+    const { pan, tilt, zoom } = req.body;
+    cameraControl.setPTZ({ pan, tilt, zoom });
+    res.json({ success: true, message: 'PTZ values updated' });
+});
+
+app.post('/ptz/smooth', async (req, res) => {
+    const { pan, tilt, zoom, duration, easing } = req.body;
+    await cameraControl.movePTZ({ pan, tilt, zoom, duration, easing });
+    res.json({ success: true, message: 'Smooth PTZ movement completed' });
 });
 
 // Routes
