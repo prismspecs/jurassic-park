@@ -116,7 +116,9 @@ module.exports = function buildHomeHTML(scenes) {
       background: #000;
       border-radius: 5px;
       overflow: hidden;
-      font-size: 12px;
+    }
+    #teleprompter-frame .message-content {
+      font-size: 0.7rem;
     }
     #teleprompter-frame::-webkit-scrollbar {
       width: 8px;
@@ -213,22 +215,31 @@ module.exports = function buildHomeHTML(scenes) {
     #cameraSelect {
       width: 100%;
       padding: 5px;
-      margin-bottom: 10px;
     }
     input[type="number"] {
       width: 80px;
     }
     .camera-preview {
-      margin-top: 15px;
+      margin-bottom: 15px;
       border-radius: 8px;
       overflow: hidden;
       background: #000;
-    }
-    #cameraPreview {
-      width: 100%;
       aspect-ratio: 16/9;
-      background: #000;
+    }
+    #webcamPreview {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
       display: block;
+    }
+    .camera-select {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .camera-select select {
+      flex: 1;
+      padding: 5px;
     }
   </style>
 </head>
@@ -261,9 +272,21 @@ module.exports = function buildHomeHTML(scenes) {
     <div class="controls-section">
       <h2>Camera Controls</h2>
       <div class="camera-controls">
-        <select id="cameraSelect" onchange="selectCamera(this.value)">
-          <option value="">Select Camera</option>
-        </select>
+        <div class="camera-preview">
+          <video id="webcamPreview" autoplay playsinline></video>
+        </div>
+        <div class="camera-select">
+          <select id="cameraSelect" onchange="selectCamera(this.value)">
+            <option value="">Select Camera</option>
+          </select>
+          <select id="resolutionSelect" onchange="updateResolution()">
+            <option value="3840x2160">4K (3840x2160)</option>
+            <option value="1920x1080">1080p (1920x1080)</option>
+            <option value="1280x720" selected>720p (1280x720)</option>
+            <option value="640x480">480p (640x480)</option>
+            <option value="640x360">360p (640x360)</option>
+          </select>
+        </div>
         <div class="ptz-controls">
           <div class="control-group">
             <label>Pan</label>
@@ -363,16 +386,30 @@ module.exports = function buildHomeHTML(scenes) {
     }
 
     function testTeleprompter() {
+      // First send a message with an image
       fetch('/updateTeleprompter', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text: 'This is a test message for the teleprompter.',
-          image: '/database/actors/John/headshot.jpg'
+          text: 'This is a test message with an image for the teleprompter.',
+          image: '/database/test_content/headshot.jpg'
         })
       });
+
+      // Then send a message without an image
+      setTimeout(() => {
+        fetch('/updateTeleprompter', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: 'This is a test message without an image for the teleprompter.'
+          })
+        });
+      }, 3000); // Wait 3 seconds before sending the second message
     }
 
     function testTeleprompterVideo() {
@@ -382,7 +419,7 @@ module.exports = function buildHomeHTML(scenes) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          videoPath: '/temp/test.mp4'
+          videoPath: '/database/test_content/freefall.mp4'
         })
       });
     }
@@ -508,6 +545,43 @@ module.exports = function buildHomeHTML(scenes) {
           console.error('Error loading cameras:', err);
           document.getElementById('status').innerText = 'Error loading cameras: ' + err;
         });
+    });
+
+    // Initialize webcam preview
+    async function initWebcam() {
+      try {
+        const resolution = document.getElementById('resolutionSelect').value;
+        const [width, height] = resolution.split('x').map(Number);
+        
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            width: { ideal: width },
+            height: { ideal: height },
+            frameRate: 30
+          } 
+        });
+        const video = document.getElementById('webcamPreview');
+        video.srcObject = stream;
+      } catch (err) {
+        console.error('Error accessing webcam:', err);
+      }
+    }
+
+    function updateResolution() {
+      // Stop current stream if it exists
+      const video = document.getElementById('webcamPreview');
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+      }
+      // Initialize with new resolution
+      initWebcam();
+    }
+
+    // Initialize everything when the page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      initWebcam();
+      initCameraControls();
+      initSceneControls();
     });
   </script>
 </body>

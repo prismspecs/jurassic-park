@@ -123,6 +123,7 @@ module.exports = function buildTeleprompterHTML() {
     const videoElement = document.getElementById('teleprompter-video');
     let isFaded = false;
 
+
     ws.onopen = function() {
       console.log('Teleprompter WebSocket connected');
     };
