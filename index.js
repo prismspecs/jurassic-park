@@ -167,6 +167,28 @@ function actorsReady() {
   });
 }
 
+function action() {
+  if (!currentScene) {
+    broadcastConsole('No scene is currently active', 'error');
+    return;
+  }
+
+  const scene = scenes.find(s => s.directory === currentScene);
+  if (!scene) {
+    broadcastConsole(`Scene ${currentScene} not found`, 'error');
+    return;
+  }
+
+  // aiSpeak the action
+  aiVoice.speak("action!");
+
+  // broadcastConsole('Action started');
+  // broadcast({
+  //   type: 'ACTION_STARTED',
+  //   scene: scene
+  // });
+}
+
 // Initialize WebSocket
 initializeWebSocket(wss);
 
@@ -211,6 +233,15 @@ app.post('/actorsReady', (req, res) => {
   res.json({
     success: true,
     message: 'Actors ready state received'
+  });
+});
+
+// Handle action button press
+app.post('/action', (req, res) => {
+  action();
+  res.json({
+    success: true,
+    message: 'Action started'
   });
 });
 

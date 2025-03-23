@@ -309,6 +309,7 @@ module.exports = function buildHomeHTML(scenes) {
     <div class="controls-section">
       <h2>Controls</h2>
       <div id="buttons">
+        <button id="actionBtn" onclick="action()" style="display: none; background-color: #e8f5e9; border-color: #4CAF50; color: #2e7d32;">Action!</button>
         <button id="actorsReadyBtn" onclick="actorsReady()" style="display: none; background-color: #e8f5e9; border-color: #4CAF50; color: #2e7d32;">Actors are Ready</button>
         <button onclick="recordVideo()">Record 3s Video & Process Pose</button>
         <button id="voiceBypassBtn" onclick="toggleVoiceBypass()">Enable Voice Bypass</button>
@@ -365,6 +366,7 @@ module.exports = function buildHomeHTML(scenes) {
         document.getElementById('status').innerText = 'Waiting for actors to be ready...';
       } else if (data.type === 'ACTORS_READY') {
         document.getElementById('actorsReadyBtn').style.display = 'none';
+        document.getElementById('actionBtn').style.display = 'inline-block';
         document.getElementById('status').innerText = 'Actors are ready to perform!';
       } else if (data.type === 'CONSOLE') {
         appendToConsole(data.message, data.level);
@@ -666,6 +668,19 @@ module.exports = function buildHomeHTML(scenes) {
       initCameraControls();
       initSceneControls();
     });
+
+    function action() {
+      document.getElementById('status').innerText = 'Starting action...';
+      fetch('/action', { method: 'POST' })
+        .then(res => res.json())
+        .then(info => {
+          document.getElementById('status').innerText = info.message;
+        })
+        .catch(err => {
+          console.error(err);
+          document.getElementById('status').innerText = 'Error: ' + err;
+        });
+    }
   </script>
 </body>
 </html>
