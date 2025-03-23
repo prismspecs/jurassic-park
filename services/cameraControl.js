@@ -168,7 +168,12 @@ class CameraControl {
 
     getCameras() {
         console.log('Getting camera list:', this.cameras);
-        return Object.keys(this.cameras);
+        // Return an array of objects with name and device info
+        return Object.entries(this.cameras).map(([name, device]) => ({
+            name,
+            device,
+            isPTZ: this.isPTZSupported() // Add PTZ support info
+        }));
     }
 
     getCurrentCamera() {
