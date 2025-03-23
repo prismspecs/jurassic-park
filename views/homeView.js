@@ -117,9 +117,6 @@ module.exports = function buildHomeHTML(scenes) {
       border-radius: 5px;
       overflow: hidden;
     }
-    #teleprompter-frame .message-content {
-      font-size: 0.7rem;
-    }
     #teleprompter-frame::-webkit-scrollbar {
       width: 8px;
     }
@@ -299,7 +296,7 @@ module.exports = function buildHomeHTML(scenes) {
             <span id="tiltValue">0°</span>
           </div>
           <div class="control-group">
-            <label>Zoom</label>
+            <label>Optical Zoom</label>
             <input type="range" id="zoomSlider" min="0" max="100" step="1" value="0" oninput="updatePTZ()">
             <span id="zoomValue">0%</span>
           </div>
