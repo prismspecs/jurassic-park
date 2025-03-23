@@ -309,9 +309,9 @@ module.exports = function buildHomeHTML(scenes) {
     <div class="controls-section">
       <h2>Controls</h2>
       <div id="buttons">
+        <button id="actorsReadyBtn" onclick="actorsReady()" style="display: none; background-color: #e8f5e9; border-color: #4CAF50; color: #2e7d32;">Actors are Ready</button>
         <button onclick="recordVideo()">Record 3s Video & Process Pose</button>
         <button id="voiceBypassBtn" onclick="toggleVoiceBypass()">Enable Voice Bypass</button>
-        <button id="actorsReadyBtn" onclick="actorsReady()" style="display: none;">Actors are Ready</button>
         <button onclick="openTeleprompter()">Open Teleprompter</button>
         <button onclick="testTeleprompter()">Test Teleprompter</button>
         <button onclick="testTeleprompterVideo()">Test Teleprompter Video</button>
