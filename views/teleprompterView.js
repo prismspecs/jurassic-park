@@ -117,37 +117,47 @@ module.exports = function buildTeleprompterHTML() {
   <div id="teleprompter"></div>
 
   <script>
-    const ws = new WebSocket('ws://' + window.location.host);
+    let ws;
     const teleprompter = document.getElementById('teleprompter');
     const videoContainer = document.getElementById('video-container');
     const videoElement = document.getElementById('teleprompter-video');
     let isFaded = false;
 
+    function connectWebSocket() {
+      ws = new WebSocket('ws://' + window.location.host);
+      
+      ws.onopen = function() {
+        console.log('Teleprompter WebSocket connected');
+      };
 
-    ws.onopen = function() {
-      console.log('Teleprompter WebSocket connected');
-    };
+      ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        console.log('Teleprompter received:', data);
+        if (data.type === 'TELEPROMPTER') {
+          console.log('Adding teleprompter message:', data.text);
+          addMessage(data.text, data.style || 'normal', data.image);
+        } else if (data.type === 'CLEAR_TELEPROMPTER') {
+          clearText();
+        } else if (data.type === 'PLAY_VIDEO') {
+          playVideo(data.videoPath);
+        }
+      };
 
-    ws.onmessage = function(event) {
-      const data = JSON.parse(event.data);
-      console.log('Teleprompter received:', data);
-      if (data.type === 'TELEPROMPTER') {
-        console.log('Adding teleprompter message:', data.text);
-        addMessage(data.text, data.style || 'normal', data.image);
-      } else if (data.type === 'CLEAR_TELEPROMPTER') {
-        clearText();
-      } else if (data.type === 'PLAY_VIDEO') {
-        playVideo(data.videoPath);
-      }
-    };
+      ws.onerror = function(error) {
+        console.error('Teleprompter WebSocket error:', error);
+        // Try to reconnect after 5 seconds
+        setTimeout(connectWebSocket, 5000);
+      };
 
-    ws.onerror = function(error) {
-      console.error('Teleprompter WebSocket error:', error);
-    };
+      ws.onclose = function() {
+        console.log('Teleprompter WebSocket closed');
+        // Try to reconnect after 5 seconds
+        setTimeout(connectWebSocket, 5000);
+      };
+    }
 
-    ws.onclose = function() {
-      console.log('Teleprompter WebSocket closed');
-    };
+    // Initial connection
+    connectWebSocket();
 
     function addMessage(text, style, image) {
       const message = document.createElement('div');

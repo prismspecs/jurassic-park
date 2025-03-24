@@ -389,7 +389,7 @@ module.exports = function buildHomeHTML(scenes) {
 
     function testTeleprompter() {
       // First send a message with an image
-      fetch('/updateTeleprompter', {
+      fetch('/teleprompter/updateTeleprompter', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -402,7 +402,7 @@ module.exports = function buildHomeHTML(scenes) {
 
       // Then send a message without an image
       setTimeout(() => {
-        fetch('/updateTeleprompter', {
+        fetch('/teleprompter/updateTeleprompter', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -415,7 +415,7 @@ module.exports = function buildHomeHTML(scenes) {
     }
 
     function testTeleprompterVideo() {
-      fetch('/playTeleprompterVideo', {
+      fetch('/teleprompter/playTeleprompterVideo', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -427,7 +427,7 @@ module.exports = function buildHomeHTML(scenes) {
     }
 
     function clearTeleprompter() {
-      fetch('/clearTeleprompter', { method: 'POST' })
+      fetch('/teleprompter/clearTeleprompter', { method: 'POST' })
         .then(res => res.json())
         .then(info => {
           document.getElementById('status').innerText = info.message;
