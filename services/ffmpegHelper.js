@@ -32,8 +32,14 @@ module.exports = {
                 '-t', durationSec.toString(),
                 '-c:v', 'libx264',
                 '-pix_fmt', 'yuv420p',
-                '-c:a', 'aac',  // Use AAC codec for audio
-                '-b:a', '192k', // Set audio bitrate to 192k
+                '-c:a', 'aac',
+                '-ar', '44100',  // Standard audio sample rate
+                '-ac', '2',      // Force stereo audio
+                '-b:a', '320k',  // Maximum audio bitrate
+                '-af', 'aresample=async=1:first_pts=0',  // More aggressive audio resampling
+                '-thread_queue_size', '512',  // Increase thread queue size
+                '-max_muxing_queue_size', '2048',  // Further increase muxing queue
+                '-vsync', 'vfr',  // Variable frame rate for better sync
                 outVideoName
             ];
 

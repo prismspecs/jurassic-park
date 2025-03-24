@@ -125,7 +125,7 @@ async function action() {
 
     try {
         // Record video for the duration of the scene
-        const sceneDuration = scene.takes[sceneTakeIndex].duration || 30; // Default to 30 seconds if not specified
+        const sceneDuration = scene.takes[sceneTakeIndex].duration || 10; // Default to 10 seconds if not specified
 
         // Start FFmpeg recording and wait for it to be ready
         const recordingPromise = ffmpegHelper.captureVideo(config.videoOriginal, sceneDuration);
