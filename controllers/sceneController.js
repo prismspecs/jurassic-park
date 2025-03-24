@@ -121,6 +121,67 @@ function action() {
 
     // aiSpeak the action
     aiVoice.speak("action!");
+
+    // Get the current take's actors
+    const actors = scene.takes[sceneTakeIndex].actors;
+
+    // Create a timeline of all events (lines and directions) from all actors
+    const timeline = [];
+
+    // Process each actor's lines and directions
+    Object.entries(actors).forEach(([character, data]) => {
+        // Add lines to timeline
+        if (data.lines) {
+            data.lines.forEach(line => {
+                timeline.push({
+                    timeIn: line['time-in'],
+                    timeOut: line['time-out'],
+                    type: 'line',
+                    character: character,
+                    text: line.text,
+                    style: 'italic' // Lines are denoted with _
+                });
+            });
+        }
+
+        // Add directions to timeline
+        if (data.directions) {
+            data.directions.forEach(direction => {
+                timeline.push({
+                    timeIn: direction['time-in'],
+                    timeOut: direction['time-out'],
+                    type: 'direction',
+                    character: character,
+                    text: direction.text,
+                    style: 'bold' // Directions are denoted with *
+                });
+            });
+        }
+    });
+
+    // Sort timeline by timeIn
+    timeline.sort((a, b) => a.timeIn - b.timeIn);
+
+    // Play through the timeline
+    let currentTime = 0;
+    timeline.forEach(event => {
+        setTimeout(() => {
+            // Broadcast the event to the frontend
+            broadcast({
+                type: 'SCENE_EVENT',
+                event: {
+                    character: event.character,
+                    text: event.text,
+                    style: event.type === 'line' ? 'actor' : 'direction'
+                }
+            });
+
+            // If it's a line, use AI voice to speak it
+            if (event.type === 'line') {
+                aiVoice.speak(event.text);
+            }
+        }, event.timeIn * 1000); // Convert seconds to milliseconds
+    });
 }
 
 module.exports = {

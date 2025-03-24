@@ -334,14 +334,17 @@ module.exports = function buildHomeHTML(scenes) {
     const ws = new WebSocket('ws://' + window.location.host);
     
     ws.onopen = function() {
+        console.log('WebSocket connection established');
         appendToConsole('WebSocket connected', 'info');
     };
 
     ws.onerror = function(error) {
+        console.error('WebSocket error:', error);
         appendToConsole('WebSocket error: ' + error.message, 'error');
     };
 
     ws.onclose = function() {
+        console.log('WebSocket connection closed');
         appendToConsole('WebSocket connection closed', 'warn');
     };
     
@@ -373,17 +376,20 @@ module.exports = function buildHomeHTML(scenes) {
     }
     
     ws.onmessage = function(event) {
-      const data = JSON.parse(event.data);
-      if (data.type === 'ACTORS_CALLED') {
-        document.getElementById('actorsReadyBtn').style.display = 'inline-block';
-        document.getElementById('status').innerText = 'Waiting for actors to be ready...';
-      } else if (data.type === 'ACTORS_READY') {
-        document.getElementById('actorsReadyBtn').style.display = 'none';
-        document.getElementById('actionBtn').style.display = 'inline-block';
-        document.getElementById('status').innerText = 'Actors are ready to perform!';
-      } else if (data.type === 'CONSOLE') {
-        appendToConsole(data.message, data.level);
-      }
+        console.log('Received WebSocket message:', event.data);
+        const data = JSON.parse(event.data);
+        console.log('Parsed WebSocket data:', data);
+        if (data.type === 'CONSOLE') {
+            console.log('Handling console message:', data.message);
+            appendToConsole(data.message, data.level);
+        } else if (data.type === 'ACTORS_CALLED') {
+            document.getElementById('actorsReadyBtn').style.display = 'inline-block';
+            document.getElementById('status').innerText = 'Waiting for actors to be ready...';
+        } else if (data.type === 'ACTORS_READY') {
+            document.getElementById('actorsReadyBtn').style.display = 'none';
+            document.getElementById('actionBtn').style.display = 'inline-block';
+            document.getElementById('status').innerText = 'Actors are ready to perform!';
+        }
     };
 
     function appendToConsole(message, level = 'info') {

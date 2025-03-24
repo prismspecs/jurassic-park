@@ -26,6 +26,9 @@ const wss = new WebSocket.Server({ server });
 // Make WebSocket server globally available
 global.wss = wss;
 
+// Initialize WebSocket handler
+initializeWebSocket(wss);
+
 /** Utility: broadcast JSON to connected WS clients */
 function broadcast(data) {
   const msg = JSON.stringify(data);
@@ -55,9 +58,6 @@ function initializeSystem() {
   fileManager.prepareRecordingDirectory();
   broadcastConsole('System initialized. Ready to direct performance.');
 }
-
-// Initialize WebSocket
-initializeWebSocket(wss);
 
 // Static files and directories
 app.use('/video', express.static(__dirname));

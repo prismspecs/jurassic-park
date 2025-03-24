@@ -123,49 +123,20 @@ module.exports = function buildTeleprompterHTML() {
     const videoElement = document.getElementById('teleprompter-video');
     let isFaded = false;
 
-    function connectWebSocket() {
-      ws = new WebSocket('ws://' + window.location.host);
-      
-      ws.onopen = function() {
-        console.log('Teleprompter WebSocket connected');
-      };
-
-      ws.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-        console.log('Teleprompter received:', data);
-        if (data.type === 'TELEPROMPTER') {
-          console.log('Adding teleprompter message:', data.text);
-          addMessage(data.text, data.style || 'normal', data.image);
-        } else if (data.type === 'CLEAR_TELEPROMPTER') {
-          clearText();
-        } else if (data.type === 'PLAY_VIDEO') {
-          playVideo(data.videoPath);
-        }
-      };
-
-      ws.onerror = function(error) {
-        console.error('Teleprompter WebSocket error:', error);
-        // Try to reconnect after 5 seconds
-        setTimeout(connectWebSocket, 5000);
-      };
-
-      ws.onclose = function() {
-        console.log('Teleprompter WebSocket closed');
-        // Try to reconnect after 5 seconds
-        setTimeout(connectWebSocket, 5000);
-      };
-    }
-
-    // Initial connection
-    connectWebSocket();
-
     function addMessage(text, style, image) {
       const message = document.createElement('div');
       message.className = 'message ' + style;
       
       const content = document.createElement('div');
       content.className = 'message-content';
-      content.textContent = text;
+      
+      // If the text starts with a character name (e.g., "Dr. Alan Grant: *action*")
+      if (text.includes(':')) {
+        const [character, action] = text.split(':').map(s => s.trim());
+        content.innerHTML = "<strong>" + character + ":</strong> " + action;
+      } else {
+        content.textContent = text;
+      }
       
       message.appendChild(content);
       
@@ -202,11 +173,6 @@ module.exports = function buildTeleprompterHTML() {
       }
     }
 
-    function toggleFade() {
-      isFaded = !isFaded;
-      teleprompter.classList.toggle('fade', isFaded);
-    }
-
     function clearText() {
       const messages = teleprompter.children;
       for (let i = 0; i < messages.length; i++) {
@@ -224,6 +190,54 @@ module.exports = function buildTeleprompterHTML() {
       videoElement.onended = () => {
         videoContainer.classList.remove('active');
       };
+    }
+
+    function handleWebSocketMessage(event) {
+      const data = JSON.parse(event.data);
+      console.log('Teleprompter received:', data);
+      if (data.type === 'TELEPROMPTER') {
+        console.log('Adding teleprompter message:', data.text);
+        addMessage(data.text, data.style || 'normal', data.image);
+      } else if (data.type === 'SCENE_EVENT') {
+        console.log('Adding scene event:', data.event);
+        // Format the message with character name and style
+       const message = data.event.character + ": " + data.event.text;
+        addMessage(message, data.event.style || 'normal');
+      } else if (data.type === 'CLEAR_TELEPROMPTER') {
+        clearText();
+      } else if (data.type === 'PLAY_VIDEO') {
+        playVideo(data.videoPath);
+      }
+    }
+
+    function connectWebSocket() {
+      ws = new WebSocket('ws://' + window.location.host);
+      
+      ws.onopen = function() {
+        console.log('Teleprompter WebSocket connected');
+      };
+
+      ws.onmessage = handleWebSocketMessage;
+
+      ws.onerror = function(error) {
+        console.error('Teleprompter WebSocket error:', error);
+        // Try to reconnect after 5 seconds
+        setTimeout(connectWebSocket, 5000);
+      };
+
+      ws.onclose = function() {
+        console.log('Teleprompter WebSocket closed');
+        // Try to reconnect after 5 seconds
+        setTimeout(connectWebSocket, 5000);
+      };
+    }
+
+    // Initial connection
+    connectWebSocket();
+
+    function toggleFade() {
+      isFaded = !isFaded;
+      teleprompter.classList.toggle('fade', isFaded);
     }
   </script>
 </body>
