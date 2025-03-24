@@ -9,4 +9,12 @@ function broadcast(data) {
     });
 }
 
-module.exports = { broadcast }; 
+function broadcastConsole(message, level = 'info') {
+    broadcast({
+        type: 'CONSOLE',
+        message,
+        level
+    });
+}
+
+module.exports = { broadcast, broadcastConsole }; 
