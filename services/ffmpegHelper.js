@@ -31,15 +31,17 @@ module.exports = {
                 '-i', '0:1',  // 0 is video, 1 is audio
                 '-t', durationSec.toString(),
                 '-c:v', 'libx264',
+                '-preset', 'ultrafast',  // Fastest encoding for real-time
+                '-crf', '17',  // High quality (0-51, lower is better, 17 is visually lossless)
                 '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac',
-                '-ar', '44100',  // Standard audio sample rate
-                '-ac', '2',      // Force stereo audio
-                '-b:a', '320k',  // Maximum audio bitrate
-                '-af', 'aresample=async=1:first_pts=0',  // More aggressive audio resampling
-                '-thread_queue_size', '512',  // Increase thread queue size
-                '-max_muxing_queue_size', '2048',  // Further increase muxing queue
-                '-vsync', 'vfr',  // Variable frame rate for better sync
+                '-ar', '48000',  // Higher sample rate for better quality
+                '-ac', '2',      // Stereo audio
+                '-b:a', '320k',  // High audio bitrate
+                '-af', 'aresample=async=1:first_pts=0',  // Audio resampling
+                '-thread_queue_size', '512',  // Thread queue size
+                '-max_muxing_queue_size', '2048',  // Muxing queue size
+                '-vsync', 'vfr',  // Variable frame rate
                 outVideoName
             ];
 
