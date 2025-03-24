@@ -33,7 +33,7 @@ router.post('/ptz', express.json(), (req, res) => {
     }
 });
 
-// Record a video
+// Record a video using FFmpeg
 router.get('/recordVideo', recordVideo);
 
 module.exports = router; 
