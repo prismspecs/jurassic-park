@@ -28,11 +28,11 @@ class CameraControl {
             if (this.platform === 'darwin') {
                 console.log('Scanning cameras on macOS...');
                 // First get the UVC device list
-                return new Promise((resolve, reject) => {
+                return new Promise((resolve) => {
                     console.log('Running uvc-util --list-devices...');
                     exec(`${this.uvcUtilPath} --list-devices`, (error, stdout) => {
                         if (error) {
-                            console.error('Error running uvc-util --list-devices:', error);
+                            console.warn('No UVC-capable devices available. Camera features will be limited.');
                             resolve(this.cameras);
                             return;
                         }
@@ -68,6 +68,10 @@ class CameraControl {
                             }
                         });
 
+                        if (Object.keys(this.cameras).length === 0) {
+                            console.warn('No UVC-capable devices available. Camera features will be limited.');
+                        }
+
                         console.log('Final camera list:', this.cameras);
                         resolve(this.cameras);
                     });
@@ -76,6 +80,11 @@ class CameraControl {
                 // On Linux, check /dev/video* devices
                 const videoDevices = fs.readdirSync('/dev')
                     .filter(file => file.startsWith('video'));
+
+                if (videoDevices.length === 0) {
+                    console.warn('No video devices available. Camera features will be limited.');
+                    return this.cameras;
+                }
 
                 const promises = videoDevices.map(device => {
                     const devicePath = `/dev/${device}`;
@@ -94,10 +103,13 @@ class CameraControl {
                 });
 
                 await Promise.all(promises);
+                if (Object.keys(this.cameras).length === 0) {
+                    console.warn('No compatible video devices found. Camera features will be limited.');
+                }
                 return this.cameras;
             }
         } catch (err) {
-            console.error('Error scanning for cameras:', err);
+            console.warn('Error scanning for cameras:', err.message);
             return this.cameras;
         }
     }
