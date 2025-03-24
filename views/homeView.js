@@ -317,6 +317,7 @@ module.exports = function buildHomeHTML(scenes) {
         <button onclick="testTeleprompter()">Test Teleprompter</button>
         <button onclick="testTeleprompterVideo()">Test Teleprompter Video</button>
         <button onclick="clearTeleprompter()">Clear Teleprompter</button>
+        <button onclick="testConsole()">Test Console</button>
       </div>
     </div>
     <div id="status"></div>
@@ -331,6 +332,18 @@ module.exports = function buildHomeHTML(scenes) {
   <script>
     // WebSocket connection for real-time updates
     const ws = new WebSocket('ws://' + window.location.host);
+    
+    ws.onopen = function() {
+        appendToConsole('WebSocket connected', 'info');
+    };
+
+    ws.onerror = function(error) {
+        appendToConsole('WebSocket error: ' + error.message, 'error');
+    };
+
+    ws.onclose = function() {
+        appendToConsole('WebSocket connection closed', 'warn');
+    };
     
     // Voice bypass state
     let voiceBypassEnabled = false;
@@ -465,7 +478,7 @@ module.exports = function buildHomeHTML(scenes) {
 
     function recordVideo() {
       document.getElementById('status').innerText = 'Recording video...';
-      fetch('/recordVideo')
+      fetch('/camera/recordVideo')
         .then(res => res.json())
         .then(info => {
           if (!info.success) {
@@ -500,7 +513,7 @@ module.exports = function buildHomeHTML(scenes) {
       document.getElementById('zoomValue').textContent = data.zoom + '%';
 
       // Send to server
-      fetch('/ptz', {
+      fetch('/camera/ptz', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
@@ -510,7 +523,7 @@ module.exports = function buildHomeHTML(scenes) {
     function selectCamera(camera) {
       if (!camera) return;
       
-      fetch('/selectCamera', {
+      fetch('/camera/selectCamera', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -543,7 +556,7 @@ module.exports = function buildHomeHTML(scenes) {
         console.log('Available video devices:', videoDevices);
         
         // Get the server's camera list
-        const response = await fetch('/cameras');
+        const response = await fetch('/camera/cameras');
         const cameras = await response.json();
         console.log('Server cameras:', cameras);
         
@@ -680,6 +693,17 @@ module.exports = function buildHomeHTML(scenes) {
           console.error(err);
           document.getElementById('status').innerText = 'Error: ' + err;
         });
+    }
+
+    function testConsole() {
+        fetch('/testConsole', { method: 'POST' })
+            .then(res => res.json())
+            .then(info => {
+                appendToConsole('Test console message sent', 'info');
+            })
+            .catch(err => {
+                appendToConsole('Error testing console: ' + err, 'error');
+            });
     }
   </script>
 </body>
