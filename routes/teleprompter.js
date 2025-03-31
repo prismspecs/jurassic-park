@@ -1,12 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const buildTeleprompterHTML = require('../views/teleprompterView');
+const { buildTeleprompterHTML } = require('../views/teleprompterView');
 const { broadcast } = require('../websocket/broadcaster');
 
 // Teleprompter page
-router.get('/', (req, res) => {
-    const html = buildTeleprompterHTML();
-    res.send(html);
+router.get('/', async (req, res) => {
+    try {
+        const html = await buildTeleprompterHTML();
+        res.send(html);
+    } catch (error) {
+        console.error('Error rendering teleprompter page:', error);
+        res.status(500).send('Error rendering teleprompter page');
+    }
 });
 
 // Update teleprompter text

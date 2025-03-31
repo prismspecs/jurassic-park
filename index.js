@@ -60,8 +60,10 @@ function initializeSystem() {
 }
 
 // Static files and directories
+app.use('/views', express.static(path.join(__dirname, 'views')));
 app.use('/video', express.static(__dirname));
 app.use('/database', express.static(path.join(__dirname, 'database')));
+app.use('/favicon.ico', express.static(path.join(__dirname, 'favicon.ico')));
 
 // Routes
 app.use('/', mainRouter);

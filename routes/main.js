@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
-const buildHomeHTML = require('../views/homeView');
+const { buildHomeHTML } = require('../views/homeView');
 const { initScene, actorsReady, action } = require('../controllers/sceneController');
 const { scenes } = require('../services/sceneService');
 const aiVoice = require('../services/aiVoice');
@@ -16,9 +16,14 @@ router.post('/testConsole', (req, res) => {
 });
 
 // Home route
-router.get('/', (req, res) => {
-    const html = buildHomeHTML(scenes);
-    res.send(html);
+router.get('/', async (req, res) => {
+    try {
+        const html = await buildHomeHTML(scenes);
+        res.send(html);
+    } catch (error) {
+        console.error('Error rendering home page:', error);
+        res.status(500).send('Error rendering home page');
+    }
 });
 
 // Mount teleprompter routes

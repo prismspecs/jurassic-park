@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Teleprompter</title>
+    <link rel="stylesheet" href="/views/styles/main.css">
+</head>
+
+<body>
+    <div class="teleprompter-content">
+        <div class="text-container">
+            <div id="text"></div>
+        </div>
+        <div class="image-container" style="display: none;">
+            <img id="image" src="" alt="Scene Image" />
+        </div>
+        <div class="video-container" style="display: none;">
+            <video id="video" controls>
+                <source src="" type="video/mp4" />
+            </video>
+        </div>
+        <div class="controls">
+            <div class="control-group">
+                <label>Speed:</label>
+                <input type="range" id="speedSlider" min="0.5" max="2" step="0.1" value="1" oninput="updateSpeed()">
+                <span id="speedValue">1.0x</span>
+            </div>
+            <div class="control-group">
+                <label>Font Size:</label>
+                <input type="range" id="fontSizeSlider" min="12" max="48" step="1" value="24"
+                    oninput="updateFontSize()">
+                <span id="fontSizeValue">24px</span>
+            </div>
+            <div class="control-group">
+                <label>Line Height:</label>
+                <input type="range" id="lineHeightSlider" min="1" max="3" step="0.1" value="1.5"
+                    oninput="updateLineHeight()">
+                <span id="lineHeightValue">1.5</span>
+            </div>
+            <div class="control-group">
+                <label>Mirror:</label>
+                <input type="checkbox" id="mirrorCheckbox" onchange="toggleMirror()">
+            </div>
+            <div class="control-group">
+                <label>Invert:</label>
+                <input type="checkbox" id="invertCheckbox" onchange="toggleInvert()">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        const textElement = document.getElementById('text');
+        const imageContainer = document.querySelector('.image-container');
+        const imageElement = document.getElementById('image');
+        const videoContainer = document.querySelector('.video-container');
+        const videoElement = document.getElementById('video');
+        let isFaded = false;
+
+        function updateSpeed() {
+            const speed = document.getElementById('speedSlider').value;
+            document.getElementById('speedValue').textContent = speed + 'x';
+            // Add speed control logic here
+        }
+
+        function updateFontSize() {
+            const size = document.getElementById('fontSizeSlider').value;
+            document.getElementById('fontSizeValue').textContent = size + 'px';
+            textElement.style.fontSize = size + 'px';
+        }
+
+        function updateLineHeight() {
+            const height = document.getElementById('lineHeightSlider').value;
+            document.getElementById('lineHeightValue').textContent = height;
+            textElement.style.lineHeight = height;
+        }
+
+        function toggleMirror() {
+            const isMirrored = document.getElementById('mirrorCheckbox').checked;
+            textElement.style.transform = isMirrored ? 'scaleX(-1)' : 'none';
+        }
+
+        function toggleInvert() {
+            const isInverted = document.getElementById('invertCheckbox').checked;
+            textElement.style.filter = isInverted ? 'invert(1)' : 'none';
+        }
+
+        function handleWebSocketMessage(event) {
+            const data = JSON.parse(event.data);
+            console.log('Teleprompter received:', data);
+
+            if (data.type === 'TELEPROMPTER') {
+                textElement.textContent = data.text;
+            } else if (data.type === 'SCENE_EVENT') {
+                const message = data.event.character + ": " + data.event.text;
+                textElement.textContent = message;
+            } else if (data.type === 'CLEAR_TELEPROMPTER') {
+                textElement.textContent = '';
+            } else if (data.type === 'PLAY_VIDEO') {
+                videoElement.src = data.videoPath;
+                videoContainer.style.display = 'block';
+                imageContainer.style.display = 'none';
+            } else if (data.type === 'SHOW_IMAGE') {
+                imageElement.src = data.imagePath;
+                imageContainer.style.display = 'block';
+                videoContainer.style.display = 'none';
+            }
+        }
+
+        function connectWebSocket() {
+            ws = new WebSocket('ws://' + window.location.host);
+
+            ws.onopen = function () {
+                console.log('Teleprompter WebSocket connected');
+            };
+
+            ws.onmessage = handleWebSocketMessage;
+
+            ws.onerror = function (error) {
+                console.error('Teleprompter WebSocket error:', error);
+                setTimeout(connectWebSocket, 5000);
+            };
+
+            ws.onclose = function () {
+                console.log('Teleprompter WebSocket closed');
+                setTimeout(connectWebSocket, 5000);
+            };
+        }
+
+        // Initial connection
+        connectWebSocket();
+    </script>
+</body>
+
+</html>
