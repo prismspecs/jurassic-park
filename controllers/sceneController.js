@@ -36,11 +36,11 @@ function initScene(directory) {
 function callActors(scene) {
     broadcastConsole(`Calling actors for scene: ${scene.description}`);
 
-    // Get the actors object from the current take
-    const actors = scene.takes[sceneTakeIndex].actors;
+    // Get the characters object from the current take
+    const characters = scene.takes[sceneTakeIndex].characters;
 
-    // Get the character names from the actors object
-    const characterNames = Object.keys(actors);
+    // Get the character names from the characters object
+    const characterNames = Object.keys(characters);
 
     // find how many actors are needed for the scene
     const actorsNeeded = characterNames.length;
@@ -136,14 +136,14 @@ async function action() {
         // aiSpeak the action
         aiVoice.speak("action!");
 
-        // Get the current take's actors
-        const actors = scene.takes[sceneTakeIndex].actors;
+        // Get the current take's characters
+        const characters = scene.takes[sceneTakeIndex].characters;
 
-        // Create a timeline of all events (lines and directions) from all actors
+        // Create a timeline of all events (lines and directions) from all characters
         const timeline = [];
 
-        // Process each actor's lines and directions
-        Object.entries(actors).forEach(([character, data]) => {
+        // Process each character's lines and directions
+        Object.entries(characters).forEach(([character, data]) => {
             // Add lines to timeline
             if (data.lines) {
                 data.lines.forEach(line => {
