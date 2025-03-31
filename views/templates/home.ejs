@@ -76,6 +76,8 @@
                 <button onclick="recordVideo()">Record 3s Video & Process Pose</button>
                 <button id="voiceBypassBtn" onclick="toggleVoiceBypass()">Enable Voice Bypass</button>
                 <button onclick="openTeleprompter()">Open Teleprompter</button>
+                <button onclick="openCharacterTeleprompter('alan')">Open Alan's Teleprompter</button>
+                <button onclick="openCharacterTeleprompter('ellie')">Open Ellie's Teleprompter</button>
                 <button onclick="testTeleprompter()">Test Teleprompter</button>
                 <button onclick="testTeleprompterVideo()">Test Teleprompter Video</button>
                 <button onclick="clearTeleprompter()">Clear Teleprompter</button>
@@ -166,6 +168,11 @@
 
         function openTeleprompter() {
             window.open('/teleprompter', 'teleprompter', 'width=800,height=600');
+        }
+
+        function openCharacterTeleprompter(character) {
+            const url = `/teleprompter/${character}`;
+            window.open(url, `teleprompter-${character}`, 'width=800,height=600');
         }
 
         function testTeleprompter() {

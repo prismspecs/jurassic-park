@@ -1,7 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const { buildTeleprompterHTML } = require('../views/teleprompterView');
+const { buildTeleprompterHTML, buildCharacterTeleprompterHTML } = require('../views/teleprompterView');
 const { broadcast } = require('../websocket/broadcaster');
+const { scenes } = require('../services/sceneService');
+const { getCurrentScene } = require('../controllers/sceneController');
+
+// API endpoint to get current scene
+router.get('/api/currentScene', (req, res) => {
+    res.json({ scene: getCurrentScene() });
+});
 
 // Teleprompter page
 router.get('/', async (req, res) => {
@@ -11,6 +18,36 @@ router.get('/', async (req, res) => {
     } catch (error) {
         console.error('Error rendering teleprompter page:', error);
         res.status(500).send('Error rendering teleprompter page');
+    }
+});
+
+// Character-specific teleprompter page
+router.get('/:character', async (req, res) => {
+    try {
+        const character = req.params.character;
+
+        // Check if there's a current scene
+        const currentScene = getCurrentScene();
+        if (!currentScene) {
+            return res.status(400).send('No scene is currently active');
+        }
+
+        // Check if the character exists in the current scene
+        const scene = scenes.find(s => s.directory === currentScene);
+        if (!scene) {
+            return res.status(404).send('Scene not found');
+        }
+
+        const characterExists = Object.keys(scene.takes[0].characters).includes(character);
+        if (!characterExists) {
+            return res.status(404).send('Character not found in current scene');
+        }
+
+        const html = await buildCharacterTeleprompterHTML();
+        res.send(html);
+    } catch (error) {
+        console.error('Error rendering character teleprompter page:', error);
+        res.status(500).send('Error rendering character teleprompter page');
     }
 });
 

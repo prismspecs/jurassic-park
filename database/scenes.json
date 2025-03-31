@@ -37,7 +37,8 @@
                     ]
                 },
                 "characters": {
-                    "Dr. Alan Grant": {
+                    "alan": {
+                        "full-name": "Dr. Alan Grant",
                         "grid-position": "A2",
                         "directions": [
                             {
@@ -153,7 +154,8 @@
                         ],
                         "props": "sunglasses"
                     },
-                    "Dr. Ellie Sattler": {
+                    "ellie": {
+                        "full-name": "Dr. Ellie Sattler",
                         "grid-position": "B3",
                         "lines": [
                             {

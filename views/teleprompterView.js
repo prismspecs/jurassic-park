@@ -21,6 +21,23 @@ function buildTeleprompterHTML() {
   });
 }
 
+function buildCharacterTeleprompterHTML() {
+  return new Promise((resolve, reject) => {
+    ejs.renderFile(
+      path.join(__dirname, 'templates', 'characterTeleprompter.ejs'),
+      {},
+      (err, html) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(html);
+        }
+      }
+    );
+  });
+}
+
 module.exports = {
-  buildTeleprompterHTML
+  buildTeleprompterHTML,
+  buildCharacterTeleprompterHTML
 }; 

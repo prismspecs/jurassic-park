@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Character Teleprompter</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+        }
+
+        #video-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+
+        #video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="video-container">
+        <video id="character-video" autoplay playsinline muted loop></video>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('character-video');
+        const characterName = window.location.pathname.split('/').pop();
+
+        function updateVideo(scene) {
+            if (!scene) {
+                document.body.innerHTML = `<div style="color: white; text-align: center; padding: 20px;">No scene is currently active</div>`;
+                return;
+            }
+
+            // Set the video source based on the character name and scene
+            videoElement.src = `/database/scenes/${encodeURIComponent(scene)}/characters/${characterName}/directions.mp4`;
+
+            // Ensure video plays
+            videoElement.play().catch(err => {
+                console.error('Error playing video:', err);
+                // Try playing again after a short delay
+                setTimeout(() => {
+                    videoElement.play().catch(e => console.error('Error playing video after retry:', e));
+                }, 100);
+            });
+        }
+
+        // Get the current scene and character info from the backend
+        fetch('/teleprompter/api/currentScene')
+            .then(res => res.json())
+            .then(data => {
+                updateVideo(data.scene);
+            })
+            .catch(err => {
+                console.error('Error loading video:', err);
+                document.body.innerHTML = `<div style="color: white; text-align: center; padding: 20px;">${err.message}</div>`;
+            });
+
+        // Connect to WebSocket to get scene updates
+        const ws = new WebSocket('ws://' + window.location.host);
+
+        ws.onmessage = function (event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'SHOT_START') {
+                updateVideo(data.scene.directory);
+            }
+        };
+
+        ws.onerror = function (error) {
+            console.error('WebSocket error:', error);
+        };
+
+        ws.onclose = function () {
+            console.log('WebSocket connection closed');
+        };
+    </script>
+</body>
+
+</html>

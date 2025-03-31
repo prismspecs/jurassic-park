@@ -9,10 +9,18 @@ const ffmpegHelper = require('../services/ffmpegHelper');
 let sceneTakeIndex = 0;
 let currentScene = null;
 
+/** Get the current scene */
+function getCurrentScene() {
+    console.log('getCurrentScene called, currentScene:', currentScene);
+    return currentScene;
+}
+
 /** Scene initialization */
 function initScene(directory) {
+    console.log('initScene called with directory:', directory);
     sceneTakeIndex = 0;
     currentScene = directory;
+    console.log('currentScene set to:', currentScene);
 
     const scene = scenes.find(s => s.directory === directory);
     if (!scene) {
@@ -208,5 +216,6 @@ async function action() {
 module.exports = {
     initScene,
     actorsReady,
-    action
+    action,
+    getCurrentScene
 }; 
