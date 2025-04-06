@@ -17,6 +17,7 @@ const aiVoice = require('./services/aiVoice');
 const poseTracker = require('./services/poseTracker');
 const mainRouter = require('./routes/main');
 const { initializeWebSocket } = require('./websocket/handler');
+const callsheetService = require('./services/callsheetService');
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -56,6 +57,7 @@ function initializeSystem() {
   cameraControl.initCameras();
   poseTracker.loadModels();
   fileManager.prepareRecordingDirectory();
+  callsheetService.initCallsheet();
   broadcastConsole('System initialized. Ready to direct performance.');
 }
 

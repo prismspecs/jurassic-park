@@ -1,9 +1,10 @@
 const fs = require('fs');
 const config = require('../config.json');
-const { scenes, callsheet } = require('../services/sceneService');
+const { scenes } = require('../services/sceneService');
 const aiVoice = require('../services/aiVoice');
 const { broadcast, broadcastConsole } = require('../websocket/broadcaster');
 const ffmpegHelper = require('../services/ffmpegHelper');
+const callsheetService = require('../services/callsheetService');
 
 // globals
 let sceneTakeIndex = 0;
@@ -55,11 +56,8 @@ function callActors(scene) {
 
     broadcastConsole(`Actors needed: ${actorsNeeded} for characters: ${characterNames.join(', ')}`);
 
-    // sort the callsheet by sceneCount
-    const sortedCallsheet = callsheet.sort((a, b) => a.sceneCount - b.sceneCount);
-
-    // get the top actorsNeeded actors
-    const actorsToCall = sortedCallsheet.slice(0, actorsNeeded);
+    // Get actors from callsheet service
+    const actorsToCall = callsheetService.getActorsForScene(actorsNeeded);
 
     // Call the actors
     actorsToCall.forEach((actor, index) => {
@@ -70,14 +68,10 @@ function callActors(scene) {
             image: `/database/actors/${actor.name}/headshot.jpg`
         });
 
-        actor.sceneCount++;
+        callsheetService.updateActorSceneCount(actor.name);
         broadcastConsole(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
         aiVoice.speak(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
     });
-
-    // Save the updated callsheet back to the JSON file
-    fs.writeFileSync(config.callsheet, JSON.stringify(callsheet, null, 4));
-    broadcastConsole('Updated callsheet saved');
 
     // Broadcast that actors are being called
     broadcast({
