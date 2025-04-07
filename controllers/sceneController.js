@@ -23,6 +23,9 @@ function initScene(directory) {
     currentScene = directory;
     console.log('currentScene set to:', currentScene);
 
+    // Initialize the callsheet
+    callsheetService.initCallsheet();
+
     const scene = scenes.find(s => s.directory === directory);
     if (!scene) {
         broadcastConsole(`Scene ${directory} not found`, 'error');
