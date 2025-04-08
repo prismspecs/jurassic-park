@@ -213,3 +213,21 @@ video {
     display: block;
     border: 2px solid #ccc;
 }
+
+/* Teleprompter controls */
+.teleprompter-button-group {
+    background-color: rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+}
+
+.teleprompter-button-group .group-label {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #666;
+}
+
+.teleprompter-button-group button {
+    margin: 4px;
+}

@@ -65,6 +65,7 @@
                 </div>
             </div>
         </div>
+        <div id="status"></div>
         <div class="controls-section">
             <h2>Controls</h2>
             <div id="buttons">
@@ -75,17 +76,24 @@
                     Ready</button>
                 <button onclick="recordVideo()">Record 3s Video & Process Pose</button>
                 <button id="voiceBypassBtn" onclick="toggleVoiceBypass()">Enable Voice Bypass</button>
-                <button onclick="openTeleprompter()">Open Teleprompter</button>
-                <button onclick="openCharacterTeleprompter('alan')">Open Alan's Teleprompter</button>
-                <button onclick="openCharacterTeleprompter('ellie')">Open Ellie's Teleprompter</button>
-                <button onclick="testTeleprompter()">Test Teleprompter</button>
-                <button onclick="testTeleprompterVideo()">Test Teleprompter Video</button>
-                <button onclick="clearTeleprompter()">Clear Teleprompter</button>
+
                 <button onclick="testConsole()">Test Console</button>
                 <button onclick="loadActors()">Load New Actors</button>
+
+                <div class="teleprompter-button-group">
+                    <div class="group-label">Teleprompter Controls</div>
+                    <button onclick="openTeleprompter()">Open Teleprompter</button>
+                    <button onclick="openCharacterTeleprompter('alan')">Open Alan's Teleprompter</button>
+                    <button onclick="openCharacterTeleprompter('ellie')">Open Ellie's Teleprompter</button>
+                    <button onclick="testTeleprompter()">Test Teleprompter</button>
+                    <button onclick="testTeleprompterVideo()">Test Teleprompter Video</button>
+                    <button onclick="clearTeleprompter()">Clear Teleprompter</button>
+                    <button onclick="pauseAllTeleprompters()" class="warning-btn">⏸️ Pause All Teleprompters</button>
+                    <button onclick="playAllTeleprompters()" class="success-btn">▶️ Resume All Teleprompters</button>
+                </div>
             </div>
         </div>
-        <div id="status"></div>
+
         <div class="controls-section">
             <h2>Teleprompter Preview</h2>
             <div class="teleprompter-container">
@@ -511,45 +519,25 @@
         }
 
         function loadActors() {
-            // Create a hidden file input
             const input = document.createElement('input');
             input.type = 'file';
-            input.webkitdirectory = true;
-            input.directory = true;
-            input.multiple = true;
-
-            input.onchange = function (e) {
-                const files = Array.from(e.target.files);
-                const formData = new FormData();
-
-                // Add all files to FormData
-                files.forEach(file => {
-                    formData.append('files', file);
-                });
-
-                document.getElementById('status').innerText = 'Loading actors...';
-
-                fetch('/loadActors', {
-                    method: 'POST',
-                    body: formData
-                })
-                    .then(res => res.json())
-                    .then(info => {
-                        document.getElementById('status').innerText = info.message;
-                        if (info.success) {
-                            appendToConsole('Actors loaded successfully', 'info');
-                        } else {
-                            appendToConsole('Error loading actors: ' + info.message, 'error');
-                        }
-                    })
-                    .catch(err => {
-                        console.error(err);
-                        document.getElementById('status').innerText = 'Error: ' + err;
-                        appendToConsole('Error loading actors: ' + err, 'error');
-                    });
-            };
-
             input.click();
+        }
+
+        function pauseAllTeleprompters() {
+            ws.send(JSON.stringify({
+                type: 'TELEPROMPTER_CONTROL',
+                action: 'PAUSE'
+            }));
+            appendToConsole('Paused all teleprompters', 'info');
+        }
+
+        function playAllTeleprompters() {
+            ws.send(JSON.stringify({
+                type: 'TELEPROMPTER_CONTROL',
+                action: 'PLAY'
+            }));
+            appendToConsole('Resumed all teleprompters', 'info');
         }
     </script>
 </body>

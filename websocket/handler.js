@@ -1,3 +1,5 @@
+const WebSocket = require('ws');
+
 function initializeWebSocket(wss) {
     console.log('Initializing WebSocket server...');
 
@@ -17,7 +19,16 @@ function initializeWebSocket(wss) {
             try {
                 const data = JSON.parse(message);
                 console.log('Received WebSocket message from client:', data);
-                // Handle any client messages here if needed
+
+                // Handle teleprompter control messages
+                if (data.type === 'TELEPROMPTER_CONTROL') {
+                    // Broadcast the control message to all clients
+                    global.wss.clients.forEach((client) => {
+                        if (client.readyState === WebSocket.OPEN) {
+                            client.send(message.toString());
+                        }
+                    });
+                }
             } catch (err) {
                 console.error('Error parsing WebSocket message:', err);
             }

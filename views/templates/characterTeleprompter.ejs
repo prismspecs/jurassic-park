@@ -75,6 +75,14 @@
             const data = JSON.parse(event.data);
             if (data.type === 'SHOT_START') {
                 updateVideo(data.scene.directory);
+            } else if (data.type === 'TELEPROMPTER_CONTROL') {
+                if (data.action === 'PAUSE') {
+                    videoElement.pause();
+                } else if (data.action === 'PLAY') {
+                    videoElement.play().catch(err => {
+                        console.error('Error resuming video:', err);
+                    });
+                }
             }
         };
 
