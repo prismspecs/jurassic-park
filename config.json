@@ -15,7 +15,7 @@
         "fps": 30
     },
     "auth": {
-        "enabled": false,
+        "enabled": true,
         "username": "admin",
         "password": "changeme"
     }

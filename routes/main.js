@@ -13,9 +13,6 @@ const teleprompterRouter = require('./teleprompter');
 const cameraRouter = require('./camera');
 const authMiddleware = require('../middleware/auth');
 
-// Apply auth middleware to all routes
-router.use(authMiddleware);
-
 // Create temp_uploads directory if it doesn't exist
 const tempDir = path.join(__dirname, '..', 'temp_uploads');
 if (!fs.existsSync(tempDir)) {
@@ -40,8 +37,8 @@ router.post('/testConsole', (req, res) => {
     res.json({ success: true, message: 'Test message sent' });
 });
 
-// Home route
-router.get('/', async (req, res) => {
+// Home route - protected by authentication
+router.get('/', authMiddleware, async (req, res) => {
     try {
         const html = await buildHomeHTML(scenes);
         res.send(html);
