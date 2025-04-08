@@ -11,6 +11,10 @@ const aiVoice = require('../services/aiVoice');
 const { broadcastConsole } = require('../websocket/broadcaster');
 const teleprompterRouter = require('./teleprompter');
 const cameraRouter = require('./camera');
+const authMiddleware = require('../middleware/auth');
+
+// Apply auth middleware to all routes
+router.use(authMiddleware);
 
 // Create temp_uploads directory if it doesn't exist
 const tempDir = path.join(__dirname, '..', 'temp_uploads');

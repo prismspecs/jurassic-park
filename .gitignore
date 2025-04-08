@@ -1,3 +1,7 @@
+# JUST FOR DEVELOPMENT
+database/actors/
+
+
 # node ignores
 node_modules
 npm-debug.log
@@ -22,3 +26,4 @@ movie.mp4
 *.mp4
 
 .DS_Store
+

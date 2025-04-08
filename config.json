@@ -13,5 +13,10 @@
     "camera": {
         "resolution": "1280x720",
         "fps": 30
+    },
+    "auth": {
+        "enabled": false,
+        "username": "admin",
+        "password": "changeme"
     }
 }
