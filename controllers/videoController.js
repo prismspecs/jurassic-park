@@ -15,15 +15,23 @@ async function recordVideo(req, res) {
         const OUT_OVER = config.videoOverlay;
         const TEMP_RECORD = config.tempRecord;
 
-        // Get the current camera device path
-        const currentCamera = cameraControl.currentCamera;
-        const devicePath = currentCamera ? cameraControl.getDevicePath(currentCamera) : null;
-        
-        if (!devicePath) {
-            throw new Error('No camera selected. Please select a camera first.');
+        // Get the camera name from the request
+        const { cameraName } = req.query;
+        if (!cameraName) {
+            throw new Error('No camera specified. Please select a camera first.');
         }
 
-        broadcastConsole(`Recording from camera: ${currentCamera} (${devicePath})`);
+        const camera = cameraControl.getCamera(cameraName);
+        if (!camera) {
+            throw new Error(`Camera ${cameraName} not found.`);
+        }
+
+        const devicePath = camera.getRecordingDevice();
+        if (!devicePath) {
+            throw new Error(`No recording device configured for camera ${cameraName}.`);
+        }
+
+        broadcastConsole(`Recording from camera: ${cameraName} (${devicePath})`);
 
         await ffmpegHelper.captureVideo(TEMP_RECORD, 3, devicePath);
         await ffmpegHelper.extractFrames(TEMP_RECORD, RAW_DIR);
@@ -46,4 +54,6 @@ async function recordVideo(req, res) {
     }
 }
 
-module.exports = { recordVideo }; 
+module.exports = {
+    recordVideo
+}; 

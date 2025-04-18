@@ -24,6 +24,9 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+// Add JSON body parser middleware
+app.use(express.json());
+
 // Make WebSocket server globally available
 global.wss = wss;
 
@@ -53,14 +56,20 @@ function broadcastConsole(message, level = 'info') {
 aiVoice.init(broadcastConsole);
 
 /** System init */
-function initializeSystem() {
-  cameraControl.initCameras();
-  poseTracker.loadModels();
-  fileManager.prepareRecordingDirectory();
-  callsheetService.initCallsheet();
-  // Initialize voice bypass to enabled state
-  aiVoice.setBypass(true);
-  broadcastConsole('System initialized. Ready to direct performance.');
+async function initializeSystem() {
+  try {
+    // Add a default camera
+    await cameraControl.addCamera('Camera 1');
+    poseTracker.loadModels();
+    fileManager.prepareRecordingDirectory();
+    callsheetService.initCallsheet();
+    // Initialize voice bypass to enabled state
+    aiVoice.setBypass(true);
+    broadcastConsole('System initialized. Ready to direct performance.');
+  } catch (err) {
+    console.error('Error during system initialization:', err);
+    broadcastConsole('Error during system initialization. Check server logs.', 'error');
+  }
 }
 
 // Static files and directories

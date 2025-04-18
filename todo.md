@@ -14,12 +14,20 @@
 
 - use skeletal tracking to cut actors out
 
-## Flow
+## Action Flow
 
 play the scene
+
+some sort of 3 - 2 - 1 action moment (this should be computerized so that it is synced rather than the actor)
 
 actors get their teleprompter stuff
 
 recording begins
 
+camera uses the scene.json file to zoom, move, etc. (?)
+
 recording ends
+
+video files are sent to the editing module (to be developed)
+
+## Editor

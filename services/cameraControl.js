@@ -3,201 +3,274 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config.json');
+const Camera = require('./camera');
 
 class CameraControl {
     constructor() {
         this.platform = os.platform();
-        this.cameras = {};
-        this.currentCamera = null;
+        this.cameras = new Map(); // Map of camera name to Camera instance
         this.uvcUtilPath = path.join(__dirname, '..', config.uvcDir, 'uvc-util');
         console.log('CameraControl initialized:', {
             platform: this.platform,
             ...(this.platform === 'darwin' && { uvcUtilPath: this.uvcUtilPath })
         });
-
     }
 
-    initCameras() {
-        console.log('Initializing cameras...');
-        return this.scanForCameras();
-    }
-
-    async scanForCameras() {
-        console.log('Starting camera scan...');
-        try {
-            if (this.platform === 'darwin') {
-                console.log('Scanning cameras on macOS...');
-                // First get the UVC device list
-                return new Promise((resolve) => {
-                    console.log('Running uvc-util --list-devices...');
-                    exec(`${this.uvcUtilPath} --list-devices`, (error, stdout) => {
-                        if (error) {
-                            console.warn('No UVC-capable devices available. Camera features will be limited.');
-                            resolve(this.cameras);
-                            return;
-                        }
-
-                        console.log('uvc-util --list-devices output:', stdout);
-                        // Parse the device list to get UVC IDs and names
-                        const lines = stdout.split('\n');
-                        let foundHeader = false;
-
-                        lines.forEach(line => {
-                            // Skip empty lines and separator lines
-                            if (!line.trim() || line.startsWith('--')) {
-                                return;
-                            }
-
-                            // Skip the header line
-                            if (line.includes('Index') && line.includes('Device name')) {
-                                foundHeader = true;
-                                return;
-                            }
-
-                            // Only process lines after we've found the header
-                            if (foundHeader) {
-                                // Split the line by whitespace and get the index and name
-                                const parts = line.trim().split(/\s+/);
-                                if (parts.length >= 5) {
-                                    const deviceId = parts[0];
-                                    // Join all parts after the first 4 columns to get the full name
-                                    const cameraName = parts.slice(4).join(' ').trim();
-                                    this.cameras[cameraName] = deviceId;
-                                    console.log('Found UVC camera:', cameraName, 'with device ID:', deviceId);
-                                }
-                            }
-                        });
-
-                        if (Object.keys(this.cameras).length === 0) {
-                            console.warn('No UVC-capable devices available. Camera features will be limited.');
-                        }
-
-                        console.log('Final camera list:', this.cameras);
-                        resolve(this.cameras);
-                    });
-                });
-            } else if (this.platform === 'linux') {
-                // On Linux, check /dev/video* devices
-                const videoDevices = fs.readdirSync('/dev')
-                    .filter(file => file.startsWith('video'));
-
-                if (videoDevices.length === 0) {
-                    console.warn('No video devices available. Camera features will be limited.');
-                    return this.cameras;
-                }
-
-                const promises = videoDevices.map(device => {
-                    const devicePath = `/dev/${device}`;
-                    return new Promise((resolve) => {
-                        exec(`v4l2-ctl --device=${devicePath} --all`, (error, stdout) => {
-                            if (!error) {
-                                const nameMatch = stdout.match(/Card type\s*:\s*(.*)/);
-                                if (nameMatch) {
-                                    const cameraName = nameMatch[1].trim();
-                                    this.cameras[cameraName] = devicePath;
-                                }
-                            }
-                            resolve();
-                        });
+    async validateVideoDevice(devicePath) {
+        if (this.platform === 'linux') {
+            try {
+                // Check if device exists and is readable
+                await fs.promises.access(devicePath, fs.constants.R_OK);
+                
+                // Get device capabilities
+                const stdout = await new Promise((resolve, reject) => {
+                    exec(`v4l2-ctl --device=${devicePath} --list-formats`, (error, stdout) => {
+                        if (error) reject(error);
+                        else resolve(stdout);
                     });
                 });
 
-                await Promise.all(promises);
-                if (Object.keys(this.cameras).length === 0) {
-                    console.warn('No compatible video devices found. Camera features will be limited.');
+                if (!stdout.includes('Video Capture')) {
+                    console.log(`Device ${devicePath} does not support video capture`);
+                    return false;
                 }
-                return this.cameras;
+
+                // Check if device is already in use
+                const lsof = await new Promise((resolve) => {
+                    exec(`lsof ${devicePath}`, (error) => {
+                        resolve(!error); // If no error, device is in use
+                    });
+                });
+
+                if (lsof) {
+                    console.log(`Device ${devicePath} is already in use`);
+                    return false;
+                }
+
+                return true;
+            } catch (err) {
+                console.error(`Error validating device ${devicePath}:`, err);
+                return false;
             }
+        }
+        return true; // Skip validation for non-Linux platforms
+    }
+
+    async detectVideoDevices() {
+        if (this.platform === 'linux') {
+            try {
+                const videoDevices = fs.readdirSync('/dev')
+                    .filter(file => file.startsWith('video'))
+                    .map(device => ({
+                        path: `/dev/${device}`,
+                        name: `Camera ${device}`
+                    }));
+
+                // Validate each device
+                const validDevices = [];
+                for (const device of videoDevices) {
+                    const isValid = await this.validateVideoDevice(device.path);
+                    if (isValid) {
+                        validDevices.push(device);
+                        console.log(`Found valid video device: ${device.path}`);
+                    }
+                }
+                return validDevices;
+            } catch (err) {
+                console.error('Error detecting video devices:', err);
+                return [];
+            }
+        } else if (this.platform === 'darwin') {
+            // For macOS, we'll use the system_profiler command
+            try {
+                const stdout = await new Promise((resolve, reject) => {
+                    exec('system_profiler SPCameraDataType', (error, stdout) => {
+                        if (error) reject(error);
+                        else resolve(stdout);
+                    });
+                });
+                
+                const devices = [];
+                const lines = stdout.split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].includes('Camera:')) {
+                        const name = lines[i].split('Camera:')[1].trim();
+                        devices.push({
+                            path: `0:${devices.length}`, // macOS uses index-based device IDs
+                            name: name
+                        });
+                    }
+                }
+                return devices;
+            } catch (err) {
+                console.error('Error detecting video devices on macOS:', err);
+                return [];
+            }
+        }
+        return [];
+    }
+
+    async scanPTZDevices() {
+        if (this.platform !== 'linux') {
+            return [];
+        }
+
+        try {
+            const videoDevices = fs.readdirSync('/dev')
+                .filter(file => file.startsWith('video'));
+
+            const ptzDevices = [];
+            for (const device of videoDevices) {
+                const devicePath = `/dev/${device}`;
+                try {
+                    const stdout = await new Promise((resolve, reject) => {
+                        exec(`v4l2-ctl --device=${devicePath} --all`, (error, stdout) => {
+                            if (error) reject(error);
+                            else resolve(stdout);
+                        });
+                    });
+
+                    if (stdout.includes('pan_absolute') || 
+                        stdout.includes('tilt_absolute') || 
+                        stdout.includes('zoom_absolute')) {
+                        ptzDevices.push({
+                            path: devicePath,
+                            name: `PTZ Camera ${device}`
+                        });
+                    }
+                } catch (err) {
+                    console.log(`Device ${devicePath} is not accessible or not a camera`);
+                }
+            }
+            return ptzDevices;
         } catch (err) {
-            console.warn('Error scanning for cameras:', err.message);
-            return this.cameras;
+            console.error('Error scanning for PTZ devices:', err);
+            return [];
         }
     }
 
-    setCamera(deviceName) {
-        if (this.cameras[deviceName]) {
-            this.currentCamera = deviceName;
-            console.log(`Selected camera: ${deviceName} (${this.cameras[deviceName]})`);
+    async addCamera(name) {
+        if (!this.cameras.has(name)) {
+            const camera = new Camera(name);
+            this.cameras.set(name, camera);
+            
+            // Detect and set up available devices
+            const devices = await this.detectVideoDevices();
+            console.log('Detected video devices:', devices);
+            
+            if (devices.length > 0) {
+                // Use the first available device for both preview and recording
+                const device = devices[0];
+                const isValid = await this.validateVideoDevice(device.path);
+                
+                if (isValid) {
+                    camera.setPreviewDevice(device.path);
+                    camera.setRecordingDevice(device.path);
+                    console.log(`Set up camera ${name} with device:`, device);
+                } else {
+                    console.error(`Device ${device.path} is not valid for camera ${name}`);
+                }
+            } else {
+                console.error('No valid video devices found for camera:', name);
+            }
+            
+            console.log(`Added camera: ${name}`);
             return true;
         }
         return false;
     }
 
-    setPTZ({ pan = null, tilt = null, zoom = null }) {
-        if (!this.currentCamera || !this.cameras[this.currentCamera]) {
-            console.log('No camera selected for PTZ control');
+    removeCamera(name) {
+        const camera = this.cameras.get(name);
+        if (camera) {
+            camera.stopPreview();
+            this.cameras.delete(name);
+            console.log(`Removed camera: ${name}`);
+            return true;
+        }
+        return false;
+    }
+
+    getCamera(name) {
+        return this.cameras.get(name);
+    }
+
+    getCameras() {
+        return Array.from(this.cameras.values()).map(camera => ({
+            name: camera.name,
+            previewDevice: camera.getPreviewDevice(),
+            recordingDevice: camera.getRecordingDevice(),
+            ptzDevice: camera.getPTZDevice()
+        }));
+    }
+
+    async setPTZ(cameraName, { pan = null, tilt = null, zoom = null }) {
+        const camera = this.getCamera(cameraName);
+        if (!camera) {
+            console.log('No camera found with name:', cameraName);
             return;
         }
 
-        const device = this.cameras[this.currentCamera];
+        const device = camera.getPTZDevice();
+        if (!device) {
+            console.log('No PTZ device configured for camera:', cameraName);
+            return;
+        }
+
         console.log('Setting PTZ for device:', device);
 
         try {
             if (this.platform === 'linux') {
-                // Linux: use v4l2-ctl with absolute values
                 if (pan !== null) {
-                    // there is a strange bug where pan:0 puts the camera in a weird position
                     const cmd = `v4l2-ctl --device=${device} --set-ctrl=pan_absolute=${pan === 0 ? 3600 : pan}`;
                     console.log('Executing:', cmd);
                     exec(cmd);
                 }
                 if (tilt !== null) {
-                    // same bug as pan
                     const cmd = `v4l2-ctl --device=${device} --set-ctrl=tilt_absolute=${tilt === 0 ? 3600 : tilt}`;
-                    //console.log('Executing:', cmd);
-                    exec(cmd);
+                    console.log('Executing tilt command:', cmd);
+                    exec(cmd, (error, stdout, stderr) => {
+                        if (error) {
+                            console.error('Tilt command error:', error);
+                        }
+                        if (stderr) {
+                            console.error('Tilt command stderr:', stderr);
+                        }
+                        if (stdout) {
+                            console.log('Tilt command stdout:', stdout);
+                        }
+                    });
                 }
                 if (zoom !== null) {
                     const cmd = `v4l2-ctl --device=${device} --set-ctrl=zoom_absolute=${zoom}`;
                     console.log('Executing:', cmd);
                     exec(cmd);
                 }
-            } else if (this.platform === 'darwin') {
-                // macOS: use uvc-util with the correct command format
-                if (pan !== null || tilt !== null) {
-                    // Use exact values but ensure they're rounded to the step value of 3600
-                    const roundedPan = pan !== null ? Math.round(pan / 3600) * 3600 : 0;
-                    const roundedTilt = tilt !== null ? Math.round(tilt / 3600) * 3600 : 0;
-
-                    const cmd = `${this.uvcUtilPath} -I ${device} -s pan-tilt-abs="{${roundedPan},${roundedTilt}}"`;
-                    console.log('Executing:', cmd);
-                    exec(cmd);
-                }
-
-                if (zoom !== null) {
-                    // Round zoom to nearest integer (step = 1)
-                    const roundedZoom = Math.round(zoom);
-                    const cmd = `${this.uvcUtilPath} -I ${device} -s zoom-abs=${roundedZoom}`;
-                    console.log('Executing:', cmd);
-                    exec(cmd);
-                }
             }
         } catch (err) {
-            console.error('Camera control error:', err);
-            throw err;
+            console.error('Error setting PTZ:', err);
         }
     }
 
-    getCameras() {
-        console.log('Getting camera list:', this.cameras);
-        // Return an array of objects with name and device info
-        return Object.entries(this.cameras).map(([name, device]) => ({
-            name,
-            device,
-            isPTZ: this.isPTZSupported() // Add PTZ support info
-        }));
+    setPreviewDevice(cameraName, deviceId) {
+        const camera = this.getCamera(cameraName);
+        if (camera) {
+            camera.setPreviewDevice(deviceId);
+        }
     }
 
-    getCurrentCamera() {
-        return this.currentCamera;
+    setRecordingDevice(cameraName, deviceId) {
+        const camera = this.getCamera(cameraName);
+        if (camera) {
+            camera.setRecordingDevice(deviceId);
+        }
     }
 
-    getDevicePath(camera) {
-        return this.cameras[camera];
-    }
-
-    isPTZSupported() {
-        return this.platform === 'linux' || this.platform === 'darwin';
+    setPTZDevice(cameraName, deviceId) {
+        const camera = this.getCamera(cameraName);
+        if (camera) {
+            camera.setPTZDevice(deviceId);
+        }
     }
 }
 

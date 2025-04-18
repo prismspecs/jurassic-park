@@ -34,25 +34,18 @@
     <div class="sidebar">
       <div class="controls-section">
         <h2>Camera Controls</h2>
-        <div class="camera-controls">
-          <div class="camera-preview">
-            <video id="webcamPreview" autoplay playsinline></video>
-          </div>
-          <div class="camera-select">
+        <div id="cameraControls">
+          <div class="camera-selector">
             <select id="cameraSelect" onchange="selectCamera(this.value)">
               <option value="">Select Camera</option>
             </select>
-            <select id="resolutionSelect" onchange="updateResolution()">
-              <option value="3840x2160">4K (3840x2160)</option>
-              <option value="1920x1080">1080p (1920x1080)</option>
-              <option value="1280x720" selected>720p (1280x720)</option>
-              <option value="640x480">480p (640x480)</option>
-              <option value="640x360">360p (640x360)</option>
-            </select>
           </div>
-          <div class="ptz-controls">
-            <div class="control-group">
-              <label>Pan</label>
+          <div class="camera-preview">
+            <video id="webcamPreview" autoplay playsinline></video>
+          </div>
+          <div class="ptz-controls" style="display: none">
+            <div class="ptz-slider">
+              <label for="panSlider">Pan:</label>
               <input
                 type="range"
                 id="panSlider"
@@ -60,12 +53,12 @@
                 max="468000"
                 step="3600"
                 value="0"
-                oninput="updatePTZ()"
+                onchange="updatePTZ()"
               />
               <span id="panValue">0°</span>
             </div>
-            <div class="control-group">
-              <label>Tilt</label>
+            <div class="ptz-slider">
+              <label for="tiltSlider">Tilt:</label>
               <input
                 type="range"
                 id="tiltSlider"
@@ -73,12 +66,12 @@
                 max="324000"
                 step="3600"
                 value="0"
-                oninput="updatePTZ()"
+                onchange="updatePTZ()"
               />
               <span id="tiltValue">0°</span>
             </div>
-            <div class="control-group">
-              <label>O Zoom</label>
+            <div class="ptz-slider">
+              <label for="zoomSlider">Zoom:</label>
               <input
                 type="range"
                 id="zoomSlider"
@@ -86,12 +79,13 @@
                 max="100"
                 step="1"
                 value="0"
-                oninput="updatePTZ()"
+                onchange="updatePTZ()"
               />
               <span id="zoomValue">0%</span>
             </div>
           </div>
         </div>
+        <button onclick="cameraManager.addCamera()">Add Camera</button>
       </div>
       <div id="status"></div>
       <div class="controls-section">
@@ -387,17 +381,21 @@
       }
 
       function updatePTZ() {
+        // Get slider values directly - they are already in the correct step size
         const data = {
           pan: parseInt(document.getElementById("panSlider").value),
           tilt: parseInt(document.getElementById("tiltSlider").value),
           zoom: parseInt(document.getElementById("zoomSlider").value),
         };
 
-        // Update display values
+        // Update display values - convert hardware values to physical degrees
         document.getElementById("panValue").textContent =
-          (data.pan / 3600).toFixed(1) + "°";
+          data.pan === 0 ? "0°" : ((data.pan / 468000) * 140).toFixed(1) + "°";
         document.getElementById("tiltValue").textContent =
-          (data.tilt / 3600).toFixed(1) + "°";
+          data.tilt === 0
+            ? "0°"
+            : ((data.tilt / 324000) * (data.tilt > 0 ? 30 : -70)).toFixed(1) +
+              "°";
         document.getElementById("zoomValue").textContent = data.zoom + "%";
 
         // Send to server
@@ -438,19 +436,12 @@
       window.addEventListener("load", async () => {
         console.log("Loading cameras...");
         try {
-          // First get the list of available video devices
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const videoDevices = devices.filter(
-            (device) => device.kind === "videoinput"
-          );
-
-          console.log("Available video devices:", videoDevices);
-
           // Get the server's camera list
           const response = await fetch("/camera/cameras");
           const cameras = await response.json();
           console.log("Server cameras:", cameras);
 
+          // Update camera selection dropdown
           const select = document.getElementById("cameraSelect");
           select.innerHTML = '<option value="">Select Camera</option>';
 
@@ -459,14 +450,13 @@
             const option = document.createElement("option");
             option.value = camera.name;
             option.textContent = camera.name;
-            option.dataset.device = camera.device;
-            option.dataset.isPTZ = camera.isPTZ;
             select.appendChild(option);
           });
 
-          // If we have video devices, try to initialize the first one
-          if (videoDevices.length > 0) {
-            await initWebcam();
+          // If we have cameras, try to initialize the first one
+          if (cameras.length > 0) {
+            select.value = cameras[0].name;
+            await initWebcam(cameras[0].previewDevice);
           }
         } catch (err) {
           console.error("Error loading cameras:", err);
@@ -778,6 +768,382 @@
             appendToConsole("Error clearing audio", "error");
           });
       }
+
+      // Camera management
+      class CameraManager {
+        constructor() {
+          this.cameras = [];
+          this.cameraElements = new Map();
+          this.availableDevices = [];
+          this.ptzDevices = [];
+        }
+
+        async initialize() {
+          try {
+            // Get available devices from browser
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            this.availableDevices = devices.filter(
+              (device) => device.kind === "videoinput"
+            );
+
+            // Get PTZ devices from server
+            const ptzResponse = await fetch("/camera/ptz-devices");
+            this.ptzDevices = await ptzResponse.json();
+
+            // Get configured cameras
+            const camerasResponse = await fetch("/camera/cameras");
+            this.cameras = await camerasResponse.json();
+
+            this.renderCameraControls();
+          } catch (err) {
+            console.error("Error loading cameras:", err);
+            document.getElementById("status").innerText =
+              "Error loading cameras: " + err.message;
+          }
+        }
+
+        async addCamera() {
+          const name = `Camera ${this.cameras.length + 1}`;
+          try {
+            const response = await fetch("/camera/add", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name }),
+            });
+
+            if (response.ok) {
+              await this.initialize(); // Refresh the camera list
+            }
+          } catch (err) {
+            console.error("Error adding camera:", err);
+          }
+        }
+
+        async removeCamera(name) {
+          try {
+            const response = await fetch("/camera/remove", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name }),
+            });
+
+            if (response.ok) {
+              await this.initialize(); // Refresh the camera list
+            }
+          } catch (err) {
+            console.error("Error removing camera:", err);
+          }
+        }
+
+        renderCameraControls() {
+          const container = document.getElementById("cameraControls");
+          container.innerHTML = "";
+
+          this.cameras.forEach((camera) => {
+            const cameraElement = this.createCameraElement(camera);
+            container.appendChild(cameraElement);
+            this.cameraElements.set(camera.name, cameraElement);
+          });
+        }
+
+        createCameraElement(camera) {
+          const div = document.createElement("div");
+          div.className = "camera-control";
+          div.innerHTML = `
+            <div class="camera-header">
+              <h3>${camera.name}</h3>
+              <button onclick="cameraManager.removeCamera('${
+                camera.name
+              }')" class="remove-btn">Remove</button>
+            </div>
+            <div class="camera-preview">
+              <video id="preview-${camera.name}" autoplay playsinline></video>
+            </div>
+            <div class="camera-settings">
+              <div class="setting-group">
+                <label>Preview Device:</label>
+                <select class="preview-device" onchange="cameraManager.updatePreviewDevice('${
+                  camera.name
+                }', this.value)">
+                  <option value="">Select Preview Device</option>
+                  ${this.availableDevices
+                    .map(
+                      (device) => `
+                    <option value="${device.deviceId}" ${
+                        device.deviceId === camera.previewDevice
+                          ? "selected"
+                          : ""
+                      }>
+                      ${device.label || `Device ${device.deviceId}`}
+                    </option>
+                  `
+                    )
+                    .join("")}
+                </select>
+              </div>
+              <div class="setting-group">
+                <label>Recording Device:</label>
+                <select class="recording-device" onchange="cameraManager.updateRecordingDevice('${
+                  camera.name
+                }', this.value)">
+                  <option value="">Select Recording Device</option>
+                  ${this.availableDevices
+                    .map(
+                      (device) => `
+                    <option value="${device.deviceId}" ${
+                        device.deviceId === camera.recordingDevice
+                          ? "selected"
+                          : ""
+                      }>
+                      ${device.label || `Device ${device.deviceId}`}
+                    </option>
+                  `
+                    )
+                    .join("")}
+                </select>
+              </div>
+              <div class="setting-group">
+                <label>PTZ Device:</label>
+                <select class="ptz-device" onchange="cameraManager.updatePTZDevice('${
+                  camera.name
+                }', this.value)">
+                  <option value="">Select PTZ Device</option>
+                  ${this.ptzDevices
+                    .map(
+                      (device) => `
+                    <option value="${device.path}" ${
+                        device.path === camera.ptzDevice ? "selected" : ""
+                      }>
+                      ${device.name}
+                    </option>
+                  `
+                    )
+                    .join("")}
+                </select>
+              </div>
+              ${
+                camera.ptzDevice
+                  ? `
+                <div class="ptz-controls">
+                  <div class="ptz-slider">
+                    <label>Pan: <span id="pan-value-${camera.name}">0°</span></label>
+                    <input type="range" min="-468000" max="468000" step="3600" value="0" 
+                           onchange="cameraManager.updatePTZ('${camera.name}', 'pan', this.value)">
+                  </div>
+                  <div class="ptz-slider">
+                    <label>Tilt: <span id="tilt-value-${camera.name}">0°</span></label>
+                    <input type="range" min="-324000" max="324000" step="3600" value="0"
+                           onchange="cameraManager.updatePTZ('${camera.name}', 'tilt', this.value)">
+                  </div>
+                  <div class="ptz-slider">
+                    <label>Zoom: <span id="zoom-value-${camera.name}">0%</span></label>
+                    <input type="range" min="0" max="100" step="1" value="0"
+                           onchange="cameraManager.updatePTZ('${camera.name}', 'zoom', this.value)">
+                  </div>
+                </div>
+              `
+                  : ""
+              }
+              <button onclick="cameraManager.recordVideo('${
+                camera.name
+              }')">Record Video</button>
+            </div>
+          `;
+          return div;
+        }
+
+        async updatePreviewDevice(cameraName, deviceId) {
+          try {
+            await fetch("/camera/preview-device", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ cameraName, deviceId }),
+            });
+
+            const videoElement = document.getElementById(
+              `preview-${cameraName}`
+            );
+            if (deviceId) {
+              // Start preview
+              const constraints = {
+                video: {
+                  deviceId: { exact: deviceId },
+                  frameRate: { ideal: 30 },
+                },
+              };
+              const stream = await navigator.mediaDevices.getUserMedia(
+                constraints
+              );
+              videoElement.srcObject = stream;
+            } else {
+              // Stop preview
+              if (videoElement.srcObject) {
+                videoElement.srcObject
+                  .getTracks()
+                  .forEach((track) => track.stop());
+                videoElement.srcObject = null;
+              }
+            }
+          } catch (err) {
+            console.error("Error updating preview device:", err);
+          }
+        }
+
+        async updateRecordingDevice(cameraName, deviceId) {
+          try {
+            await fetch("/camera/recording-device", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ cameraName, deviceId }),
+            });
+          } catch (err) {
+            console.error("Error updating recording device:", err);
+          }
+        }
+
+        async updatePTZDevice(cameraName, deviceId) {
+          try {
+            await fetch("/camera/ptz-device", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ cameraName, deviceId }),
+            });
+            await this.initialize(); // Refresh to update PTZ controls
+          } catch (err) {
+            console.error("Error updating PTZ device:", err);
+          }
+        }
+
+        async updatePTZ(cameraName, control, value) {
+          const data = { cameraName };
+          data[control] = parseInt(value);
+
+          // Update display - convert hardware values to physical degrees
+          const displayValue =
+            control === "zoom"
+              ? `${value}%`
+              : control === "pan"
+              ? value === 0
+                ? "0°"
+                : ((value / 468000) * 140).toFixed(1) + "°"
+              : value === 0
+              ? "0°"
+              : ((value / 324000) * (value > 0 ? 30 : -70)).toFixed(1) + "°";
+
+          document.getElementById(
+            `${control}-value-${cameraName}`
+          ).textContent = displayValue;
+
+          try {
+            await fetch("/camera/ptz", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data),
+            });
+          } catch (err) {
+            console.error("Error updating PTZ:", err);
+          }
+        }
+
+        async recordVideo(cameraName) {
+          try {
+            const response = await fetch(
+              `/camera/recordVideo?cameraName=${encodeURIComponent(cameraName)}`
+            );
+            const info = await response.json();
+
+            if (!info.success) {
+              document.getElementById("status").innerText =
+                "Error: " + info.message;
+              return;
+            }
+
+            document.getElementById("status").innerText =
+              info.message || "Video recorded.";
+            const vidDiv = document.getElementById("videos");
+            vidDiv.innerHTML = `
+              <h3>Original Video</h3>
+              <video controls src="/video/${info.originalName}"></video>
+              <h3>Overlay Video</h3>
+              <video controls src="/video/${info.overlayName}"></video>
+            `;
+          } catch (err) {
+            console.error(err);
+            document.getElementById("status").innerText = "Error: " + err;
+          }
+        }
+      }
+
+      // Initialize camera manager
+      const cameraManager = new CameraManager();
+      window.addEventListener("load", () => cameraManager.initialize());
     </script>
+
+    <style>
+      .camera-control {
+        margin-bottom: 20px;
+        padding: 15px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+      }
+
+      .camera-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .remove-btn {
+        background-color: #ff4444;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+
+      .camera-preview video {
+        width: 100%;
+        max-height: 200px;
+        background: #000;
+      }
+
+      .camera-settings {
+        margin-top: 10px;
+      }
+
+      .setting-group {
+        margin: 10px 0;
+      }
+
+      .setting-group label {
+        display: block;
+        margin-bottom: 5px;
+      }
+
+      .setting-group select {
+        width: 100%;
+        padding: 5px;
+      }
+
+      .ptz-controls {
+        margin-top: 15px;
+      }
+
+      .ptz-slider {
+        margin: 10px 0;
+      }
+
+      .ptz-slider input {
+        width: 100%;
+      }
+
+      .ptz-slider label {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+    </style>
   </body>
 </html>
