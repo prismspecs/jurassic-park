@@ -7,6 +7,11 @@ const Camera = require('./camera');
 
 class CameraControl {
     constructor() {
+        if (CameraControl.instance) {
+            return CameraControl.instance;
+        }
+        CameraControl.instance = this;
+        
         this.platform = os.platform();
         this.cameras = new Map(); // Map of camera name to Camera instance
         this.uvcUtilPath = path.join(__dirname, '..', config.uvcDir, 'uvc-util');
@@ -14,6 +19,13 @@ class CameraControl {
             platform: this.platform,
             ...(this.platform === 'darwin' && { uvcUtilPath: this.uvcUtilPath })
         });
+    }
+
+    static getInstance() {
+        if (!CameraControl.instance) {
+            new CameraControl();
+        }
+        return CameraControl.instance;
     }
 
     async validateVideoDevice(devicePath) {

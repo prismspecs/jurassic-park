@@ -3,8 +3,7 @@ const config = require('../config.json');
 const ffmpegHelper = require('../services/ffmpegHelper');
 const poseTracker = require('../services/poseTracker');
 const { broadcastConsole } = require('../websocket/broadcaster');
-const CameraControl = require('../services/cameraControl');
-const cameraControl = new CameraControl();
+const cameraControl = require('../services/cameraControl').getInstance();
 
 async function recordVideo(req, res) {
     broadcastConsole('Video recording warming up...');

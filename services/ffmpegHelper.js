@@ -55,15 +55,15 @@ module.exports = {
                 // Linux configuration - optimized for camera capture
                 ffmpegArgs = [
                     '-f', 'v4l2',
-                    '-input_format', 'mjpeg',
-                    '-video_size', '1280x720',
+                    '-thread_queue_size', '512',
+                    '-input_format', 'yuyv422',
+                    '-video_size', '640x480',
                     '-i', devicePath || '/dev/video0',  // Use provided device path or default
                     '-t', durationSec.toString(),
                     '-c:v', 'libx264',
                     '-preset', 'ultrafast',
                     '-crf', '17',
                     '-pix_fmt', 'yuv420p',
-                    '-thread_queue_size', '512',
                     '-max_muxing_queue_size', '2048',
                     '-vsync', 'vfr',
                     '-fflags', '+nobuffer',
@@ -74,6 +74,10 @@ module.exports = {
             }
 
             console.log(`Starting FFmpeg capture for ${durationSec} sec from ${devicePath || 'default device'} => ${outVideoName}`);
+            // Log the exact command being run
+            const command = `ffmpeg ${ffmpegArgs.join(' ')}`;
+            console.log('Running FFmpeg command:', command);
+            
             const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
             let errorOutput = '';
@@ -83,22 +87,25 @@ module.exports = {
                 errorOutput += output;
                 
                 // Check for specific error conditions and try alternative configurations
-                if (output.includes('Cannot allocate memory') || output.includes('buf_len[0] = 0') || output.includes('Invalid argument')) {
+                if (output.includes('Cannot allocate memory') || 
+                    output.includes('buf_len[0] = 0') || 
+                    output.includes('Invalid argument') ||
+                    output.includes('Inappropriate ioctl')) {
                     console.log('Detected capture issue, trying alternative configuration...');
                     ffmpeg.kill();  // Kill the current process
                     
-                    // Try alternative configuration with lower resolution
+                    // Try alternative configuration with different format
                     const altFfmpegArgs = [
                         '-f', 'v4l2',
-                        '-input_format', 'yuyv422',  // Try different format
-                        '-video_size', '640x480',  // Lower resolution
+                        '-thread_queue_size', '512',
+                        '-input_format', 'yuyv422',
+                        '-video_size', '640x480',
                         '-i', devicePath || '/dev/video0',
                         '-t', durationSec.toString(),
                         '-c:v', 'libx264',
                         '-preset', 'ultrafast',
                         '-crf', '17',
                         '-pix_fmt', 'yuv420p',
-                        '-thread_queue_size', '512',
                         '-max_muxing_queue_size', '2048',
                         '-vsync', 'vfr',
                         '-fflags', '+nobuffer',
@@ -106,6 +113,10 @@ module.exports = {
                         '-strict', 'experimental',
                         outVideoName
                     ];
+                    
+                    // Log the alternative command
+                    const altCommand = `ffmpeg ${altFfmpegArgs.join(' ')}`;
+                    console.log('Running alternative FFmpeg command:', altCommand);
                     
                     const altFfmpeg = spawn('ffmpeg', altFfmpegArgs);
                     altFfmpeg.stderr.on('data', (data) => {

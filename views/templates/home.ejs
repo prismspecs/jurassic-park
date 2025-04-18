@@ -611,12 +611,34 @@
                     (serverDevice.name &&
                       browserDevice.label.includes(
                         serverDevice.name.split(" ")[0]
-                      ))) // Match by first word of device name
+                      )))
                 ) {
-                  this.deviceMap.set(browserDevice.deviceId, serverDevice.path);
-                  console.log(
-                    `Mapped browser device ${browserDevice.label} (${browserDevice.deviceId}) to ${serverDevice.path}`
-                  );
+                  // Match by first word of device name
+
+                  // For HD Pro Webcam C920, ensure we're using the main video device (even number)
+                  if (serverDevice.name.includes("HD Pro Webcam C920")) {
+                    const deviceNumber = parseInt(
+                      deviceNum.replace("video", "")
+                    );
+                    if (deviceNumber % 2 === 0) {
+                      // Only map even-numbered devices for C920
+                      this.deviceMap.set(
+                        browserDevice.deviceId,
+                        serverDevice.path
+                      );
+                      console.log(
+                        `Mapped browser device ${browserDevice.label} (${browserDevice.deviceId}) to ${serverDevice.path}`
+                      );
+                    }
+                  } else {
+                    this.deviceMap.set(
+                      browserDevice.deviceId,
+                      serverDevice.path
+                    );
+                    console.log(
+                      `Mapped browser device ${browserDevice.label} (${browserDevice.deviceId}) to ${serverDevice.path}`
+                    );
+                  }
                   break;
                 }
               }
