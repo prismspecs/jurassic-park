@@ -68,7 +68,7 @@ router.get('/ptz-devices', async (req, res) => {
         if (cameras.length === 0) {
             return res.json([]);
         }
-        
+
         const devices = await cameraControl.scanPTZDevices();
         res.json(devices);
     } catch (err) {
@@ -102,6 +102,7 @@ router.post('/recording-device', (req, res) => {
 
     try {
         cameraControl.setRecordingDevice(cameraName, deviceId);
+        console.log(`Recording device set for camera: ${cameraName}, device ID: ${deviceId}`);
         res.json({ success: true, message: 'Recording device set' });
     } catch (err) {
         console.error('Error setting recording device:', err);
@@ -144,4 +145,4 @@ router.post('/ptz', (req, res) => {
 // Record video from a specific camera
 router.get('/recordVideo', recordVideo);
 
-module.exports = router; 
+module.exports = router;
