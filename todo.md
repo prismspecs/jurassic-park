@@ -1,6 +1,12 @@
 ## to do
 
-voice bypass should be enabled by default
+- virtual camera stuff
+
+  - ability to use multiple (2) cameras
+  - create an abstraction for each camera
+  - each camera should have a preview device and a preview video on the homeView which corresponds to this preview device
+  - each camera should have a recording device dropdown so that I can use that for ffmpeg recording
+  - each camera should have a PTZ commands dropdown so that I can select which device to send PTZ commands to
 
 - actor telepromter reads no scene is loaded until the scene starts but it should refresh or whatever when it begins
 

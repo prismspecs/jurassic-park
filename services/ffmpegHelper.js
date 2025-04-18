@@ -7,11 +7,13 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 module.exports = {
     /**
      * captureVideo:
      *   -f avfoundation => Mac
+     *   -f v4l2 => Linux
      *   -framerate 30 => Force 30 fps
      *   -i "0:1" => default camera and microphone
      *   -t 3 => record 3 seconds
@@ -19,46 +21,115 @@ module.exports = {
      *   -c:a aac => audio codec
      *   -b:a 192k => audio bitrate
      */
-    captureVideo(outVideoName, durationSec) {
+    captureVideo(outVideoName, durationSec, devicePath = null) {
         return new Promise((resolve, reject) => {
             if (fs.existsSync(outVideoName)) {
                 fs.unlinkSync(outVideoName);
             }
 
-            const ffmpegArgs = [
-                '-f', 'avfoundation',
-                '-framerate', '30',
-                '-i', '0:1',  // 0 is video, 1 is audio
-                '-t', durationSec.toString(),
-                '-c:v', 'libx264',
-                '-preset', 'ultrafast',  // Fastest encoding for real-time
-                '-crf', '17',  // High quality (0-51, lower is better, 17 is visually lossless)
-                '-pix_fmt', 'yuv420p',
-                '-c:a', 'aac',
-                '-ar', '48000',  // Higher sample rate for better quality
-                '-ac', '2',      // Stereo audio
-                '-b:a', '320k',  // High audio bitrate
-                '-af', 'aresample=async=1:first_pts=0',  // Audio resampling
-                '-thread_queue_size', '512',  // Thread queue size
-                '-max_muxing_queue_size', '2048',  // Muxing queue size
-                '-vsync', 'vfr',  // Variable frame rate
-                outVideoName
-            ];
+            const platform = os.platform();
+            let ffmpegArgs;
 
-            console.log(`Starting FFmpeg capture for ${durationSec} sec => ${outVideoName}`);
+            if (platform === 'darwin') {
+                // macOS configuration
+                ffmpegArgs = [
+                    '-f', 'avfoundation',
+                    '-framerate', '30',
+                    '-i', '0:1',  // 0 is video, 1 is audio
+                    '-t', durationSec.toString(),
+                    '-c:v', 'libx264',
+                    '-preset', 'ultrafast',
+                    '-crf', '17',
+                    '-pix_fmt', 'yuv420p',
+                    '-c:a', 'aac',
+                    '-ar', '48000',
+                    '-ac', '2',
+                    '-b:a', '320k',
+                    '-af', 'aresample=async=1:first_pts=0',
+                    '-thread_queue_size', '512',
+                    '-max_muxing_queue_size', '2048',
+                    '-vsync', 'vfr',
+                    outVideoName
+                ];
+            } else {
+                // Linux configuration - optimized for camera capture
+                ffmpegArgs = [
+                    '-f', 'v4l2',
+                    '-input_format', 'mjpeg',
+                    '-video_size', '1280x720',
+                    '-i', devicePath || '/dev/video0',  // Use provided device path or default
+                    '-t', durationSec.toString(),
+                    '-c:v', 'libx264',
+                    '-preset', 'ultrafast',
+                    '-crf', '17',
+                    '-pix_fmt', 'yuv420p',
+                    '-thread_queue_size', '512',
+                    '-max_muxing_queue_size', '2048',
+                    '-vsync', 'vfr',
+                    '-fflags', '+nobuffer',
+                    '-flags', 'low_delay',
+                    '-strict', 'experimental',
+                    outVideoName
+                ];
+            }
+
+            console.log(`Starting FFmpeg capture for ${durationSec} sec from ${devicePath || 'default device'} => ${outVideoName}`);
             const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
+            let errorOutput = '';
             ffmpeg.stderr.on('data', (data) => {
-                console.log(`ffmpeg: ${data}`);
+                const output = data.toString();
+                console.log(`ffmpeg: ${output}`);
+                errorOutput += output;
+                
+                // Check for specific error conditions and try alternative configurations
+                if (output.includes('Cannot allocate memory') || output.includes('buf_len[0] = 0') || output.includes('Invalid argument')) {
+                    console.log('Detected capture issue, trying alternative configuration...');
+                    ffmpeg.kill();  // Kill the current process
+                    
+                    // Try alternative configuration with lower resolution
+                    const altFfmpegArgs = [
+                        '-f', 'v4l2',
+                        '-input_format', 'yuyv422',  // Try different format
+                        '-video_size', '640x480',  // Lower resolution
+                        '-i', devicePath || '/dev/video0',
+                        '-t', durationSec.toString(),
+                        '-c:v', 'libx264',
+                        '-preset', 'ultrafast',
+                        '-crf', '17',
+                        '-pix_fmt', 'yuv420p',
+                        '-thread_queue_size', '512',
+                        '-max_muxing_queue_size', '2048',
+                        '-vsync', 'vfr',
+                        '-fflags', '+nobuffer',
+                        '-flags', 'low_delay',
+                        '-strict', 'experimental',
+                        outVideoName
+                    ];
+                    
+                    const altFfmpeg = spawn('ffmpeg', altFfmpegArgs);
+                    altFfmpeg.stderr.on('data', (data) => {
+                        console.log(`ffmpeg (alt): ${data}`);
+                    });
+                    
+                    altFfmpeg.on('close', (code) => {
+                        if (code === 0) {
+                            console.log(`✅ Captured video with alternative configuration: ${outVideoName}`);
+                            resolve();
+                        } else {
+                            reject(new Error(`FFmpeg exited with code ${code} using alternative configuration`));
+                        }
+                    });
+                }
             });
 
             ffmpeg.on('error', (err) => reject(err));
 
             ffmpeg.on('close', (code) => {
                 if (code === 0) {
-                    console.log(`✅ Captured video with audio: ${outVideoName}`);
+                    console.log(`✅ Captured video: ${outVideoName}`);
                     resolve();
-                } else {
+                } else if (!errorOutput.includes('Cannot allocate memory') && !errorOutput.includes('Invalid argument')) {
                     reject(new Error(`FFmpeg exited with code ${code}`));
                 }
             });

@@ -4,6 +4,7 @@
         "description": "The cast sees dinosaurs for the first time",
         "takes": [
             {
+                "duration": "2:52",
                 "description": "The entire scene is done with this take",
                 "setup": "The cast is in the car, looking at the dinosaurs. Dr. Alan Grant is driving, Dr. Ellie Sattler is in the back seat, and John Hammond is in the front passenger seat.",
                 "ins-outs": [

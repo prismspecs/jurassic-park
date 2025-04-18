@@ -3,9 +3,9 @@ const config = require('../config.json');
 const ffmpegHelper = require('../services/ffmpegHelper');
 const poseTracker = require('../services/poseTracker');
 const { broadcastConsole } = require('../websocket/broadcaster');
+const cameraControl = require('../services/cameraControl');
 
 async function recordVideo(req, res) {
-
     broadcastConsole('Video recording warming up...');
 
     try {
@@ -15,7 +15,17 @@ async function recordVideo(req, res) {
         const OUT_OVER = config.videoOverlay;
         const TEMP_RECORD = config.tempRecord;
 
-        await ffmpegHelper.captureVideo(TEMP_RECORD, 3);
+        // Get the current camera device path
+        const currentCamera = cameraControl.currentCamera;
+        const devicePath = currentCamera ? cameraControl.getDevicePath(currentCamera) : null;
+        
+        if (!devicePath) {
+            throw new Error('No camera selected. Please select a camera first.');
+        }
+
+        broadcastConsole(`Recording from camera: ${currentCamera} (${devicePath})`);
+
+        await ffmpegHelper.captureVideo(TEMP_RECORD, 3, devicePath);
         await ffmpegHelper.extractFrames(TEMP_RECORD, RAW_DIR);
         await poseTracker.processFrames(RAW_DIR, OVERLAY_DIR);
         await ffmpegHelper.encodeVideo(RAW_DIR, OUT_ORIG);
