@@ -35,55 +35,7 @@
       <div class="controls-section">
         <h2>Camera Controls</h2>
         <div id="cameraControls">
-          <div class="camera-selector">
-            <select id="cameraSelect" onchange="selectCamera(this.value)">
-              <option value="">Select Camera</option>
-            </select>
-          </div>
-          <div class="camera-preview">
-            <video id="webcamPreview" autoplay playsinline></video>
-          </div>
-          <div class="ptz-controls" style="display: none">
-            <div class="ptz-slider">
-              <label for="panSlider">Pan:</label>
-              <input
-                type="range"
-                id="panSlider"
-                min="-468000"
-                max="468000"
-                step="3600"
-                value="0"
-                onchange="updatePTZ()"
-              />
-              <span id="panValue">0°</span>
-            </div>
-            <div class="ptz-slider">
-              <label for="tiltSlider">Tilt:</label>
-              <input
-                type="range"
-                id="tiltSlider"
-                min="-324000"
-                max="324000"
-                step="3600"
-                value="0"
-                onchange="updatePTZ()"
-              />
-              <span id="tiltValue">0°</span>
-            </div>
-            <div class="ptz-slider">
-              <label for="zoomSlider">Zoom:</label>
-              <input
-                type="range"
-                id="zoomSlider"
-                min="0"
-                max="100"
-                step="1"
-                value="0"
-                onchange="updatePTZ()"
-              />
-              <span id="zoomValue">0%</span>
-            </div>
-          </div>
+          <!-- Camera controls will be populated by CameraManager -->
         </div>
         <button onclick="cameraManager.addCamera()">Add Camera</button>
       </div>
@@ -434,188 +386,8 @@
 
       // Initialize camera controls when page loads
       window.addEventListener("load", async () => {
-        console.log("Loading cameras...");
-        try {
-          // Get the server's camera list
-          const response = await fetch("/camera/cameras");
-          const cameras = await response.json();
-          console.log("Server cameras:", cameras);
-
-          // Update camera selection dropdown
-          const select = document.getElementById("cameraSelect");
-          select.innerHTML = '<option value="">Select Camera</option>';
-
-          // Add each camera from the server's list
-          cameras.forEach((camera) => {
-            const option = document.createElement("option");
-            option.value = camera.name;
-            option.textContent = camera.name;
-            select.appendChild(option);
-          });
-
-          // If we have cameras, try to initialize the first one
-          if (cameras.length > 0) {
-            select.value = cameras[0].name;
-            await initWebcam(cameras[0].previewDevice);
-          }
-        } catch (err) {
-          console.error("Error loading cameras:", err);
-          document.getElementById("status").innerText =
-            "Error loading cameras: " + err.message;
-        }
-      });
-
-      // Initialize webcam preview
-      async function initWebcam(deviceId = null) {
-        try {
-          // Stop current stream if it exists
-          const video = document.getElementById("webcamPreview");
-          if (video.srcObject) {
-            video.srcObject.getTracks().forEach((track) => track.stop());
-          }
-
-          // Get the selected camera option
-          const cameraSelect = document.getElementById("cameraSelect");
-          const selectedOption =
-            cameraSelect.options[cameraSelect.selectedIndex];
-
-          // Start with basic constraints
-          const constraints = {
-            video: {
-              frameRate: { ideal: 30 },
-            },
-          };
-
-          // If we have a selected camera, try to use it
-          if (selectedOption && selectedOption.value) {
-            try {
-              // First try with the device ID from the server
-              constraints.video.deviceId = {
-                exact: selectedOption.dataset.device,
-              };
-              console.log(
-                "Trying to use device:",
-                selectedOption.dataset.device
-              );
-              const stream = await navigator.mediaDevices.getUserMedia(
-                constraints
-              );
-              video.srcObject = stream;
-
-              // Get the actual capabilities of the stream
-              const track = stream.getVideoTracks()[0];
-              const capabilities = track.getCapabilities();
-              console.log("Camera capabilities:", capabilities);
-
-              // Update status
-              document.getElementById("status").innerText =
-                "Camera initialized: " + selectedOption.textContent;
-              return;
-            } catch (err) {
-              console.log(
-                "Failed with device ID, trying alternative method...",
-                err
-              );
-
-              // Try to find the device in the enumerated devices
-              const devices = await navigator.mediaDevices.enumerateDevices();
-              const videoDevices = devices.filter(
-                (device) => device.kind === "videoinput"
-              );
-              const matchingDevice = videoDevices.find((device) =>
-                device.label
-                  .toLowerCase()
-                  .includes(selectedOption.textContent.toLowerCase())
-              );
-
-              if (matchingDevice) {
-                try {
-                  constraints.video.deviceId = {
-                    exact: matchingDevice.deviceId,
-                  };
-                  console.log(
-                    "Trying to use matching device:",
-                    matchingDevice.label
-                  );
-                  const stream = await navigator.mediaDevices.getUserMedia(
-                    constraints
-                  );
-                  video.srcObject = stream;
-                  document.getElementById("status").innerText =
-                    "Camera initialized: " + selectedOption.textContent;
-                  return;
-                } catch (err) {
-                  console.log(
-                    "Failed with matching device, trying without deviceId...",
-                    err
-                  );
-                }
-              }
-
-              // If all else fails, try without deviceId
-              delete constraints.video.deviceId;
-            }
-          }
-
-          // Try to get the stream with basic constraints
-          const stream = await navigator.mediaDevices.getUserMedia(constraints);
-          video.srcObject = stream;
-
-          // Get the actual capabilities of the stream
-          const track = stream.getVideoTracks()[0];
-          const capabilities = track.getCapabilities();
-          console.log("Camera capabilities:", capabilities);
-
-          // Update status
-          document.getElementById("status").innerText =
-            "Camera initialized successfully";
-        } catch (err) {
-          console.error("Error accessing webcam:", err);
-          document.getElementById("status").innerText =
-            "Error accessing webcam: " + err.message;
-        }
-      }
-
-      function updateResolution() {
-        // Get current camera selection
-        const cameraSelect = document.getElementById("cameraSelect");
-        const selectedCamera = cameraSelect.value;
-        // Reinitialize with current camera
-        initWebcam(selectedCamera);
-      }
-
-      function initCameraControls() {
-        // Initialize camera controls
-        const panSlider = document.getElementById("panSlider");
-        const tiltSlider = document.getElementById("tiltSlider");
-        const zoomSlider = document.getElementById("zoomSlider");
-
-        // Set initial values
-        panSlider.value = 0;
-        tiltSlider.value = 0;
-        zoomSlider.value = 0;
-
-        // Update display values
-        document.getElementById("panValue").textContent = "0°";
-        document.getElementById("tiltValue").textContent = "0°";
-        document.getElementById("zoomValue").textContent = "0%";
-      }
-
-      function initSceneControls() {
-        // Initialize scene controls
-        const actionBtn = document.getElementById("actionBtn");
-        const actorsReadyBtn = document.getElementById("actorsReadyBtn");
-
-        // Set initial states
-        actionBtn.style.display = "none";
-        actorsReadyBtn.style.display = "none";
-      }
-
-      // Initialize everything when the page loads
-      document.addEventListener("DOMContentLoaded", () => {
         // Don't automatically initialize webcam on load
         // Let the user select a camera first
-        initCameraControls();
         initSceneControls();
       });
 
@@ -780,27 +552,35 @@
 
         async initialize() {
           try {
-            // Request camera permission to see device labels
-            try {
-              // This will trigger the permission prompt
-              const stream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-              });
-              // Once we have permission, stop the stream
-              stream.getTracks().forEach((track) => track.stop());
-            } catch (err) {
-              console.log(
-                "Permission not granted or no camera available:",
-                err
-              );
-              // Continue anyway, as we might still have device IDs
-            }
-
-            // Get available devices from browser
-            const devices = await navigator.mediaDevices.enumerateDevices();
+            // First try to get devices without requesting permissions
+            let devices = await navigator.mediaDevices.enumerateDevices();
             this.availableDevices = devices.filter(
               (device) => device.kind === "videoinput"
             );
+
+            // If we don't have any device labels, request camera permission
+            if (
+              this.availableDevices.length > 0 &&
+              !this.availableDevices[0].label
+            ) {
+              try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                  video: true,
+                });
+                // Stop the stream immediately
+                stream.getTracks().forEach((track) => track.stop());
+                // Re-enumerate devices to get labels
+                devices = await navigator.mediaDevices.enumerateDevices();
+                this.availableDevices = devices.filter(
+                  (device) => device.kind === "videoinput"
+                );
+              } catch (err) {
+                console.log(
+                  "Permission not granted or no camera available:",
+                  err
+                );
+              }
+            }
 
             console.log("Browser detected devices:", this.availableDevices);
 
@@ -816,14 +596,6 @@
               this.ptzDevices = await ptzResponse.json();
             } else {
               this.ptzDevices = [];
-            }
-
-            // Start a preview for each camera that has a preview device set
-            for (const camera of this.cameras) {
-              if (camera.previewDevice) {
-                // We need to map the Linux device path to a browser deviceId
-                await this.startPreview(camera.name, camera.previewDevice);
-              }
             }
 
             this.renderCameraControls();

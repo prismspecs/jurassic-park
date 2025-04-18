@@ -1,20 +1,22 @@
 ## to do
 
-- virtual camera stuff
+- camera stuff
 
-  - ability to use multiple (2) cameras
-  - create an abstraction for each camera
-  - each camera should have a preview device and a preview video on the homeView which corresponds to this preview device
-  - each camera should have a recording device dropdown so that I can use that for ffmpeg recording
-  - each camera should have a PTZ commands dropdown so that I can select which device to send PTZ commands to
+  - fix recording (it is using the wrong sort of device ID)
 
 - actor telepromter reads no scene is loaded until the scene starts but it should refresh or whatever when it begins
 
 - capture video from actor phones
 
+- update scenes.json
+
+  - remove directions (this is now in the video files)
+  - add camera movements
+  - add ins and outs which will be used by editing module
+
 - use skeletal tracking to cut actors out
 
-## Action Flow
+## Scene Recording
 
 play the scene
 
@@ -31,3 +33,11 @@ recording ends
 video files are sent to the editing module (to be developed)
 
 ## Editor
+
+The editor should intake the video and audio from the Scene Recording. It should then use the scenes.json data ins and outs to cut the footage.
+
+## Video Player
+
+Simple video player functionality to play the intro video, etc.
+
+This should also have the ability to use a camera source with facial recognition of the audience. The faces of the audience will be randomly inserted on top of the video at selected moments.
