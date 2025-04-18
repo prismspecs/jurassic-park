@@ -31,6 +31,25 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
+// Create temp directory if it doesn't exist
+const tempDirAudio = path.join(__dirname, '..', 'temp');
+if (!fs.existsSync(tempDirAudio)) {
+    fs.mkdirSync(tempDirAudio, { recursive: true });
+}
+
+// Configure multer for audio uploads
+const audioStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, tempDirAudio);
+    },
+    filename: function (req, file, cb) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        cb(null, `audio-${timestamp}.webm`);
+    }
+});
+
+const audioUpload = multer({ storage: audioStorage });
+
 // Test console broadcasting
 router.post('/testConsole', (req, res) => {
     broadcastConsole('This is a test console message', 'info');
@@ -235,6 +254,100 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
     } catch (error) {
         console.error('Error loading actors:', error);
         res.status(500).json({ success: false, message: 'Error loading actors: ' + error.message });
+    }
+});
+
+// Handle audio recording
+router.post('/recordAudio', audioUpload.single('audio'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'No audio file received'
+            });
+        }
+
+        const inputPath = req.file.path;
+        const outputPath = inputPath.replace('.webm', '.wav');
+
+        // Use ffmpeg to convert webm to wav
+        const { spawn } = require('child_process');
+        const ffmpeg = spawn('ffmpeg', [
+            '-i', inputPath,
+            '-acodec', 'pcm_s16le',
+            '-ar', '44100',
+            '-ac', '2',
+            outputPath
+        ]);
+
+        ffmpeg.stderr.on('data', (data) => {
+            console.log(`ffmpeg: ${data}`);
+        });
+
+        ffmpeg.on('close', (code) => {
+            if (code === 0) {
+                // Delete the original webm file
+                fs.unlinkSync(inputPath);
+
+                res.json({
+                    success: true,
+                    message: 'Audio recording completed',
+                    filename: path.basename(outputPath)
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    message: `FFmpeg conversion failed with code ${code}`
+                });
+            }
+        });
+
+        ffmpeg.on('error', (err) => {
+            console.error('FFmpeg error:', err);
+            res.status(500).json({
+                success: false,
+                message: 'Error converting audio'
+            });
+        });
+    } catch (error) {
+        console.error('Error processing audio:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error processing audio'
+        });
+    }
+});
+
+// Handle clearing audio files
+router.post('/clearAudio', express.json(), (req, res) => {
+    try {
+        const { filename } = req.body;
+        if (!filename) {
+            return res.status(400).json({
+                success: false,
+                message: 'No filename provided'
+            });
+        }
+
+        const audioPath = path.join(__dirname, '..', 'temp', filename);
+        if (fs.existsSync(audioPath)) {
+            fs.unlinkSync(audioPath);
+            res.json({
+                success: true,
+                message: 'Audio file cleared successfully'
+            });
+        } else {
+            res.status(404).json({
+                success: false,
+                message: 'Audio file not found'
+            });
+        }
+    } catch (error) {
+        console.error('Error clearing audio:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error clearing audio file'
+        });
     }
 });
 

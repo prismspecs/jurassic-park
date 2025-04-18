@@ -80,6 +80,13 @@
                 <button onclick="testConsole()">Test Console</button>
                 <button onclick="loadActors()">Load New Actors</button>
 
+                <div class="audio-controls">
+                    <div class="group-label">Audio Controls</div>
+                    <button onclick="testAudioRecord()" class="success-btn">🎤 Record Audio (5s)</button>
+                    <button onclick="playLastRecording()" class="info-btn">▶️ Play Last Recording</button>
+                    <button onclick="clearAudio()" class="warning-btn">🗑️ Clear Audio</button>
+                </div>
+
                 <div class="teleprompter-button-group">
                     <div class="group-label">Teleprompter Controls</div>
                     <button onclick="openTeleprompter()">Open Teleprompter</button>
@@ -538,6 +545,103 @@
                 action: 'PLAY'
             }));
             appendToConsole('Resumed all teleprompters', 'info');
+        }
+
+        function testAudioRecord() {
+            // Request microphone access
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    const mediaRecorder = new MediaRecorder(stream, {
+                        mimeType: 'audio/webm'  // Use webm for better compatibility
+                    });
+                    const audioChunks = [];
+
+                    mediaRecorder.ondataavailable = e => {
+                        audioChunks.push(e.data);
+                    };
+
+                    mediaRecorder.onstop = async () => {
+                        // Convert to wav format
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+
+                        // Create FormData and append the blob
+                        const formData = new FormData();
+                        formData.append('audio', audioBlob, 'recording.webm');
+
+                        try {
+                            const response = await fetch('/recordAudio', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            const data = await response.json();
+                            appendToConsole(`Audio recorded: ${data.filename}`, 'info');
+                            // Store the filename for playback
+                            window.lastAudioRecording = data.filename;
+                        } catch (err) {
+                            console.error('Error recording audio:', err);
+                            appendToConsole('Error recording audio', 'error');
+                        }
+                    };
+
+                    // Start recording
+                    mediaRecorder.start(100); // Collect data every 100ms
+                    appendToConsole('Recording audio for 5 seconds...', 'info');
+
+                    // Stop after 5 seconds
+                    setTimeout(() => {
+                        mediaRecorder.stop();
+                        stream.getTracks().forEach(track => track.stop());
+                    }, 5000);
+                })
+                .catch(err => {
+                    console.error('Error accessing microphone:', err);
+                    appendToConsole('Error accessing microphone', 'error');
+                });
+        }
+
+        function playLastRecording() {
+            if (!window.lastAudioRecording) {
+                appendToConsole('No audio recording available to play', 'warn');
+                return;
+            }
+
+            const audio = new Audio(`/temp/${window.lastAudioRecording}`);
+            audio.play()
+                .then(() => {
+                    appendToConsole('Playing last recording...', 'info');
+                })
+                .catch(err => {
+                    console.error('Error playing audio:', err);
+                    appendToConsole('Error playing audio', 'error');
+                });
+        }
+
+        function clearAudio() {
+            if (!window.lastAudioRecording) {
+                appendToConsole('No audio recording to clear', 'warn');
+                return;
+            }
+
+            fetch('/clearAudio', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ filename: window.lastAudioRecording })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        window.lastAudioRecording = null;
+                        appendToConsole('Audio recording cleared', 'info');
+                    } else {
+                        appendToConsole('Error clearing audio: ' + data.message, 'error');
+                    }
+                })
+                .catch(err => {
+                    console.error('Error clearing audio:', err);
+                    appendToConsole('Error clearing audio', 'error');
+                });
         }
     </script>
 </body>
