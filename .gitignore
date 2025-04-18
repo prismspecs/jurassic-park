@@ -1,29 +1,29 @@
-# JUST FOR DEVELOPMENT
+# Development and Runtime
 database/actors/
-
-
-# node ignores
-node_modules
-npm-debug.log
-# OS ignores
-.DS_Store
-Thumbs.db
-# IDE ignores
-.idea
-.vscode
-.cursor/*
-# build ignores
-dist
-
-# directories
 temp/*
 piper/*
 external_tools/*
 
-# original videos from movie
-movie.mp4
-# all videos?
-*.mp4
+# Node.js
+node_modules/
+npm-debug.log
 
+# Build Output
+dist/
+
+# Media Files
+*.mp4
+movie.mp4
+
+# Sensitive Data
+auth.json
+
+# Operating System
 .DS_Store
+Thumbs.db
+
+# IDE and Editor
+.idea/
+.vscode/
+.cursor/*
 
