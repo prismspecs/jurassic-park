@@ -17,65 +17,53 @@ class CameraControl {
     }
 
     async validateVideoDevice(devicePath) {
-        if (this.platform === 'linux') {
-            try {
-                // Check if device exists and is readable
-                await fs.promises.access(devicePath, fs.constants.R_OK);
-                
-                // Get device capabilities
-                const stdout = await new Promise((resolve, reject) => {
-                    exec(`v4l2-ctl --device=${devicePath} --list-formats`, (error, stdout) => {
-                        if (error) reject(error);
-                        else resolve(stdout);
-                    });
-                });
-
-                if (!stdout.includes('Video Capture')) {
-                    console.log(`Device ${devicePath} does not support video capture`);
-                    return false;
-                }
-
-                // Check if device is already in use
-                const lsof = await new Promise((resolve) => {
-                    exec(`lsof ${devicePath}`, (error) => {
-                        resolve(!error); // If no error, device is in use
-                    });
-                });
-
-                if (lsof) {
-                    console.log(`Device ${devicePath} is already in use`);
-                    return false;
-                }
-
-                return true;
-            } catch (err) {
-                console.error(`Error validating device ${devicePath}:`, err);
-                return false;
-            }
-        }
-        return true; // Skip validation for non-Linux platforms
+        // Simply return true to skip validation
+        // This avoids any potential device locking issues
+        return true;
     }
 
     async detectVideoDevices() {
         if (this.platform === 'linux') {
             try {
+                // First find all potential video devices
                 const videoDevices = fs.readdirSync('/dev')
-                    .filter(file => file.startsWith('video'))
-                    .map(device => ({
-                        path: `/dev/${device}`,
-                        name: `Camera ${device}`
-                    }));
-
-                // Validate each device
-                const validDevices = [];
+                    .filter(file => file.startsWith('video'));
+                
+                const mappedDevices = [];
+                
+                // Try to get more detailed information from sysfs
                 for (const device of videoDevices) {
-                    const isValid = await this.validateVideoDevice(device.path);
-                    if (isValid) {
-                        validDevices.push(device);
-                        console.log(`Found valid video device: ${device.path}`);
+                    const devicePath = `/dev/${device}`;
+                    const deviceNum = device.replace('video', '');
+                    
+                    // Try to read device name from sysfs
+                    let cameraName = `Camera ${device}`;
+                    try {
+                        const sysfsPath = `/sys/class/video4linux/${device}/name`;
+                        if (fs.existsSync(sysfsPath)) {
+                            const nameData = fs.readFileSync(sysfsPath, 'utf8').trim();
+                            if (nameData) {
+                                cameraName = nameData;
+                            }
+                        }
+                    } catch (err) {
+                        // If we can't read the device name, stick with the default
+                        console.log(`Couldn't read name for ${devicePath}`);
                     }
+                    
+                    mappedDevices.push({
+                        path: devicePath,
+                        name: `${cameraName} (${devicePath})`,
+                        isMainDevice: parseInt(deviceNum) % 2 === 0 // Even numbered devices are typically main video
+                    });
                 }
-                return validDevices;
+                
+                // Log found devices
+                mappedDevices.forEach(device => {
+                    console.log(`Found video device: ${device.name}`);
+                });
+                
+                return mappedDevices;
             } catch (err) {
                 console.error('Error detecting video devices:', err);
                 return [];
@@ -97,7 +85,8 @@ class CameraControl {
                         const name = lines[i].split('Camera:')[1].trim();
                         devices.push({
                             path: `0:${devices.length}`, // macOS uses index-based device IDs
-                            name: name
+                            name: name,
+                            isMainDevice: true
                         });
                     }
                 }
@@ -114,34 +103,44 @@ class CameraControl {
         if (this.platform !== 'linux') {
             return [];
         }
-
+        
         try {
-            const videoDevices = fs.readdirSync('/dev')
-                .filter(file => file.startsWith('video'));
-
+            // Use the same devices we already found for cameras
+            const videoDevices = await this.detectVideoDevices();
             const ptzDevices = [];
+            
+            // For each video device, check if it's likely to be a PTZ device
+            // Use the device name as a hint (many PTZ cameras have recognizable names)
             for (const device of videoDevices) {
-                const devicePath = `/dev/${device}`;
-                try {
-                    const stdout = await new Promise((resolve, reject) => {
-                        exec(`v4l2-ctl --device=${devicePath} --all`, (error, stdout) => {
-                            if (error) reject(error);
-                            else resolve(stdout);
-                        });
+                if (
+                    // Common PTZ camera models/brands
+                    device.name.includes('OBSBOT') ||
+                    device.name.includes('PTZ') ||
+                    device.name.includes('Logitech') ||
+                    device.name.includes('Pro Webcam C920') || // Many C920s support basic panning
+                    device.name.includes('C615') ||
+                    device.name.includes('Brio') ||
+                    device.name.includes('RALLY') ||
+                    device.name.includes('ConferenceCam') ||
+                    device.name.includes('Meetup')
+                ) {
+                    ptzDevices.push({
+                        path: device.path,
+                        name: device.name
                     });
-
-                    if (stdout.includes('pan_absolute') || 
-                        stdout.includes('tilt_absolute') || 
-                        stdout.includes('zoom_absolute')) {
-                        ptzDevices.push({
-                            path: devicePath,
-                            name: `PTZ Camera ${device}`
-                        });
-                    }
-                } catch (err) {
-                    console.log(`Device ${devicePath} is not accessible or not a camera`);
                 }
             }
+            
+            // Always add at least the first video device as a potential PTZ device
+            // if we couldn't detect any explicitly
+            if (ptzDevices.length === 0 && videoDevices.length > 0) {
+                const firstDevice = videoDevices.find(d => d.isMainDevice) || videoDevices[0];
+                ptzDevices.push({
+                    path: firstDevice.path,
+                    name: `${firstDevice.name} (Potential PTZ)`
+                });
+            }
+            
             return ptzDevices;
         } catch (err) {
             console.error('Error scanning for PTZ devices:', err);
@@ -159,19 +158,41 @@ class CameraControl {
             console.log('Detected video devices:', devices);
             
             if (devices.length > 0) {
-                // Use the first available device for both preview and recording
-                const device = devices[0];
-                const isValid = await this.validateVideoDevice(device.path);
+                // Find the best device to use
                 
-                if (isValid) {
-                    camera.setPreviewDevice(device.path);
-                    camera.setRecordingDevice(device.path);
-                    console.log(`Set up camera ${name} with device:`, device);
+                // First try to find a known webcam brand - they usually give the best results
+                const knownWebcams = devices.filter(device => 
+                    device.name.includes('HD Pro Webcam C920') || 
+                    device.name.includes('Logitech') ||
+                    device.name.includes('OBSBOT') ||
+                    device.name.includes('Webcam')
+                );
+                
+                // Next, look for main video devices (as opposed to metadata devices)
+                const mainDevices = devices.filter(device => device.isMainDevice);
+                
+                // Select the best device, prioritizing known webcams that are main devices
+                let selectedDevice;
+                
+                if (knownWebcams.length > 0 && knownWebcams.some(d => d.isMainDevice)) {
+                    // Known webcam that's a main device - best option
+                    selectedDevice = knownWebcams.find(d => d.isMainDevice);
+                } else if (knownWebcams.length > 0) {
+                    // Any known webcam
+                    selectedDevice = knownWebcams[0];
+                } else if (mainDevices.length > 0) {
+                    // Any main device
+                    selectedDevice = mainDevices[0];
                 } else {
-                    console.error(`Device ${device.path} is not valid for camera ${name}`);
+                    // Fall back to the first device
+                    selectedDevice = devices[0];
                 }
+                
+                camera.setPreviewDevice(selectedDevice.path);
+                camera.setRecordingDevice(selectedDevice.path);
+                console.log(`Set up camera ${name} with device:`, selectedDevice);
             } else {
-                console.error('No valid video devices found for camera:', name);
+                console.error('No video devices found for camera:', name);
             }
             
             console.log(`Added camera: ${name}`);
@@ -221,30 +242,38 @@ class CameraControl {
 
         try {
             if (this.platform === 'linux') {
+                // Use more robust error handling for v4l2-ctl commands
+                const setPTZControl = async (control, value) => {
+                    try {
+                        return new Promise((resolve) => {
+                            const cmd = `v4l2-ctl --device=${device} --set-ctrl=${control}=${value}`;
+                            console.log(`Executing: ${cmd}`);
+                            exec(cmd, (error, stdout, stderr) => {
+                                if (error) {
+                                    console.error(`Error setting ${control}:`, error.message);
+                                }
+                                resolve(true);
+                            });
+                        });
+                    } catch (err) {
+                        console.error(`Error executing PTZ command for ${control}:`, err);
+                        return false;
+                    }
+                };
+
+                // Execute each control separately with error handling
                 if (pan !== null) {
-                    const cmd = `v4l2-ctl --device=${device} --set-ctrl=pan_absolute=${pan === 0 ? 3600 : pan}`;
-                    console.log('Executing:', cmd);
-                    exec(cmd);
+                    const panValue = pan === 0 ? 3600 : pan;
+                    await setPTZControl('pan_absolute', panValue);
                 }
+                
                 if (tilt !== null) {
-                    const cmd = `v4l2-ctl --device=${device} --set-ctrl=tilt_absolute=${tilt === 0 ? 3600 : tilt}`;
-                    console.log('Executing tilt command:', cmd);
-                    exec(cmd, (error, stdout, stderr) => {
-                        if (error) {
-                            console.error('Tilt command error:', error);
-                        }
-                        if (stderr) {
-                            console.error('Tilt command stderr:', stderr);
-                        }
-                        if (stdout) {
-                            console.log('Tilt command stdout:', stdout);
-                        }
-                    });
+                    const tiltValue = tilt === 0 ? 3600 : tilt;
+                    await setPTZControl('tilt_absolute', tiltValue);
                 }
+                
                 if (zoom !== null) {
-                    const cmd = `v4l2-ctl --device=${device} --set-ctrl=zoom_absolute=${zoom}`;
-                    console.log('Executing:', cmd);
-                    exec(cmd);
+                    await setPTZControl('zoom_absolute', zoom);
                 }
             }
         } catch (err) {
@@ -269,9 +298,14 @@ class CameraControl {
     setPTZDevice(cameraName, deviceId) {
         const camera = this.getCamera(cameraName);
         if (camera) {
+            // Only set the PTZ device, don't touch the other devices
             camera.setPTZDevice(deviceId);
+            console.log(`Set PTZ device for camera ${cameraName} to:`, deviceId);
+        } else {
+            console.error(`Cannot set PTZ device: Camera ${cameraName} not found`);
         }
     }
 }
 
-module.exports = new CameraControl();
+// Export the class itself, not an instance
+module.exports = CameraControl;

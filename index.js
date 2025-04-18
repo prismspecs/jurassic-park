@@ -11,7 +11,8 @@ const path = require('path');
 const config = require('./config.json');
 
 // Our custom modules
-const cameraControl = require('./services/cameraControl');
+const CameraControl = require('./services/cameraControl');
+const cameraControl = new CameraControl();
 const fileManager = require('./services/fileManager');
 const aiVoice = require('./services/aiVoice');
 const poseTracker = require('./services/poseTracker');
@@ -58,8 +59,7 @@ aiVoice.init(broadcastConsole);
 /** System init */
 async function initializeSystem() {
   try {
-    // Add a default camera
-    await cameraControl.addCamera('Camera 1');
+    // Note: no longer adding a default camera
     poseTracker.loadModels();
     fileManager.prepareRecordingDirectory();
     callsheetService.initCallsheet();

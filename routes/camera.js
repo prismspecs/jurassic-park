@@ -1,12 +1,16 @@
 const express = require('express');
 const router = express.Router();
-const cameraControl = require('../services/cameraControl');
+const CameraControl = require('../services/cameraControl');
+const cameraControl = new CameraControl();
 const { recordVideo } = require('../controllers/videoController');
 
 // Get available cameras
 router.get('/cameras', (req, res) => {
     const cameras = cameraControl.getCameras();
-    console.log('Available cameras:', cameras);
+    // Only log if cameras are found to avoid unnecessary logging at startup
+    if (cameras.length > 0) {
+        console.log('Available cameras:', cameras);
+    }
     res.json(cameras);
 });
 
@@ -59,6 +63,12 @@ router.get('/devices', async (req, res) => {
 // Get available PTZ devices
 router.get('/ptz-devices', async (req, res) => {
     try {
+        // Only scan for PTZ devices if there are cameras configured
+        const cameras = cameraControl.getCameras();
+        if (cameras.length === 0) {
+            return res.json([]);
+        }
+        
         const devices = await cameraControl.scanPTZDevices();
         res.json(devices);
     } catch (err) {
