@@ -25,7 +25,7 @@ if (!fs.existsSync(PIPER_MODEL_DIR)) {
 }
 
 // Bypass flag - set to true to skip voice output
-let bypassEnabled = false;
+let bypassEnabled = true;
 
 // Broadcast function
 let broadcastConsole = null;
@@ -34,6 +34,11 @@ module.exports = {
     // Initialize with broadcast function
     init(broadcastFn) {
         broadcastConsole = broadcastFn;
+    },
+
+    // Get current bypass state
+    getBypassState() {
+        return bypassEnabled;
     },
 
     // Enable/disable bypass mode

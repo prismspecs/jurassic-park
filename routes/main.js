@@ -91,6 +91,11 @@ router.post('/action', (req, res) => {
     });
 });
 
+// Get current voice bypass state
+router.get('/getVoiceBypass', (req, res) => {
+    res.json({ enabled: aiVoice.getBypassState() });
+});
+
 // Handle voice bypass toggle
 router.post('/setVoiceBypass', express.json(), (req, res) => {
     const { enabled } = req.body;

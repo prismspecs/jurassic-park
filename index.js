@@ -58,6 +58,8 @@ function initializeSystem() {
   poseTracker.loadModels();
   fileManager.prepareRecordingDirectory();
   callsheetService.initCallsheet();
+  // Initialize voice bypass to enabled state
+  aiVoice.setBypass(true);
   broadcastConsole('System initialized. Ready to direct performance.');
 }
 
