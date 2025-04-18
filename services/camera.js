@@ -57,8 +57,8 @@ class Camera {
         }
     }
 
-    setRecordingDevice(deviceId) {
-        this.recordingDevice = deviceId;
+    setRecordingDevice(devicePath) {
+        this.recordingDevice = devicePath;
     }
 
     setPTZDevice(deviceId) {

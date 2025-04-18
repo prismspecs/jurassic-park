@@ -288,10 +288,13 @@ class CameraControl {
         }
     }
 
-    setRecordingDevice(cameraName, deviceId) {
+    setRecordingDevice(cameraName, devicePath) {
         const camera = this.getCamera(cameraName);
         if (camera) {
-            camera.setRecordingDevice(deviceId);
+            camera.setRecordingDevice(devicePath);
+            console.log(`Set recording device for camera ${cameraName} to:`, devicePath);
+        } else {
+            console.error(`Cannot set recording device: Camera ${cameraName} not found`);
         }
     }
 

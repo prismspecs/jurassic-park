@@ -548,6 +548,7 @@
           this.cameraElements = new Map();
           this.availableDevices = [];
           this.ptzDevices = [];
+          this.deviceMap = new Map(); // Map browser device IDs to device paths
         }
 
         async initialize() {
@@ -589,6 +590,46 @@
             this.cameras = await camerasResponse.json();
 
             console.log("Server cameras:", this.cameras);
+
+            // Get the device paths from the server
+            const devicesResponse = await fetch("/camera/devices");
+            const serverDevices = await devicesResponse.json();
+
+            // Create a mapping between browser device IDs and server device paths
+            this.deviceMap.clear();
+            for (const serverDevice of serverDevices) {
+              // Extract the device number from the path (e.g., "video2" from "/dev/video2")
+              const deviceNum = serverDevice.path.split("/").pop();
+
+              // Try to find a matching browser device
+              for (const browserDevice of this.availableDevices) {
+                // Check if the device label contains the device number
+                if (
+                  browserDevice.label &&
+                  (browserDevice.label.includes(deviceNum) || // Direct match
+                    browserDevice.label.includes(serverDevice.name) || // Match by device name
+                    (serverDevice.name &&
+                      browserDevice.label.includes(
+                        serverDevice.name.split(" ")[0]
+                      ))) // Match by first word of device name
+                ) {
+                  this.deviceMap.set(browserDevice.deviceId, serverDevice.path);
+                  console.log(
+                    `Mapped browser device ${browserDevice.label} (${browserDevice.deviceId}) to ${serverDevice.path}`
+                  );
+                  break;
+                }
+              }
+            }
+
+            // Log any unmapped devices
+            for (const device of this.availableDevices) {
+              if (!this.deviceMap.has(device.deviceId)) {
+                console.log(
+                  `Could not map browser device: ${device.label} (${device.deviceId})`
+                );
+              }
+            }
 
             // Only get PTZ devices if we have cameras
             if (this.cameras.length > 0) {
@@ -757,19 +798,18 @@
                 }', this.value)">
                   <option value="">Select Recording Device</option>
                   ${this.availableDevices
-                    .map(
-                      (device) => `
-                    <option value="${device.deviceId}" ${
-                        device.label &&
-                        camera.recordingDevice &&
-                        device.label.includes(cameraModel)
-                          ? "selected"
-                          : ""
+                    .map((device) => {
+                      const devicePath = this.deviceMap.get(device.deviceId);
+                      return `
+                    <option value="${devicePath}" ${
+                        devicePath === camera.recordingDevice ? "selected" : ""
                       }>
-                      ${device.label || `Device ${device.deviceId}`}
+                      ${device.label || `Device ${device.deviceId}`} (${
+                        devicePath || "Unknown"
+                      })
                     </option>
-                  `
-                    )
+                  `;
+                    })
                     .join("")}
                 </select>
               </div>

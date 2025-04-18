@@ -97,12 +97,12 @@ router.post('/preview-device', (req, res) => {
 router.post('/recording-device', (req, res) => {
     const { cameraName, deviceId } = req.body;
     if (!cameraName || !deviceId) {
-        return res.status(400).json({ success: false, message: 'Camera name and device ID are required' });
+        return res.status(400).json({ success: false, message: 'Camera name and device path are required' });
     }
 
     try {
         cameraControl.setRecordingDevice(cameraName, deviceId);
-        console.log(`Recording device set for camera: ${cameraName}, device ID: ${deviceId}`);
+        console.log(`Recording device set for camera: ${cameraName}, device path: ${deviceId}`);
         res.json({ success: true, message: 'Recording device set' });
     } catch (err) {
         console.error('Error setting recording device:', err);
