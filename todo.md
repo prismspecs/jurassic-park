@@ -47,3 +47,5 @@ Simple video player functionality to play the intro video, etc.
 This should also have the ability to use a camera source with facial recognition of the audience. The faces of the audience will be randomly inserted on top of the video at selected moments.
 
 ## Onboarding App
+
+Add the response stuff

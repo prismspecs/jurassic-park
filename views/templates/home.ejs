@@ -549,6 +549,7 @@
           this.availableDevices = [];
           this.ptzDevices = [];
           this.deviceMap = new Map(); // Map browser device IDs to device paths
+          this.serverDevices = []; // Store server devices
         }
 
         async initialize() {
@@ -593,17 +594,17 @@
 
             // Get the device paths from the server
             const devicesResponse = await fetch("/camera/devices");
-            const serverDevices = await devicesResponse.json();
+            this.serverDevices = await devicesResponse.json();
 
             // Create a mapping between browser device IDs and server device paths
             this.deviceMap.clear();
-            for (const serverDevice of serverDevices) {
+            for (const serverDevice of this.serverDevices) {
               // Extract the device number from the path (e.g., "video2" from "/dev/video2")
               const deviceNum = serverDevice.path.split("/").pop();
 
               // Try to find a matching browser device
               for (const browserDevice of this.availableDevices) {
-                // Check if the device label contains the device number
+                // Check if the device label contains the device number or name
                 if (
                   browserDevice.label &&
                   (browserDevice.label.includes(deviceNum) || // Direct match
@@ -613,42 +614,24 @@
                         serverDevice.name.split(" ")[0]
                       )))
                 ) {
-                  // Match by first word of device name
-
-                  // For HD Pro Webcam C920, ensure we're using the main video device (even number)
-                  if (serverDevice.name.includes("HD Pro Webcam C920")) {
-                    const deviceNumber = parseInt(
-                      deviceNum.replace("video", "")
-                    );
-                    if (deviceNumber % 2 === 0) {
-                      // Only map even-numbered devices for C920
-                      this.deviceMap.set(
-                        browserDevice.deviceId,
-                        serverDevice.path
-                      );
-                      console.log(
-                        `Mapped browser device ${browserDevice.label} (${browserDevice.deviceId}) to ${serverDevice.path}`
-                      );
-                    }
-                  } else {
-                    this.deviceMap.set(
-                      browserDevice.deviceId,
-                      serverDevice.path
-                    );
-                    console.log(
-                      `Mapped browser device ${browserDevice.label} (${browserDevice.deviceId}) to ${serverDevice.path}`
-                    );
-                  }
+                  this.deviceMap.set(browserDevice.deviceId, serverDevice.path);
+                  console.log(
+                    `Mapped browser device ${browserDevice.label} (${browserDevice.deviceId}) to ${serverDevice.path}`
+                  );
                   break;
                 }
               }
             }
 
-            // Log any unmapped devices
+            // For any unmapped devices, create a direct mapping using the device index
             for (const device of this.availableDevices) {
               if (!this.deviceMap.has(device.deviceId)) {
+                // Find the next available video device path
+                const deviceIndex = this.availableDevices.indexOf(device);
+                const devicePath = `/dev/video${deviceIndex}`;
+                this.deviceMap.set(device.deviceId, devicePath);
                 console.log(
-                  `Could not map browser device: ${device.label} (${device.deviceId})`
+                  `Created direct mapping for unmapped device: ${device.label} (${device.deviceId}) to ${devicePath}`
                 );
               }
             }
@@ -819,19 +802,16 @@
                   camera.name
                 }', this.value)">
                   <option value="">Select Recording Device</option>
-                  ${this.availableDevices
-                    .map((device) => {
-                      const devicePath = this.deviceMap.get(device.deviceId);
-                      return `
-                    <option value="${devicePath}" ${
-                        devicePath === camera.recordingDevice ? "selected" : ""
+                  ${this.serverDevices
+                    .map(
+                      (device) => `
+                    <option value="${device.path}" ${
+                        device.path === camera.recordingDevice ? "selected" : ""
                       }>
-                      ${device.label || `Device ${device.deviceId}`} (${
-                        devicePath || "Unknown"
-                      })
+                      ${device.name}
                     </option>
-                  `;
-                    })
+                  `
+                    )
                     .join("")}
                 </select>
               </div>

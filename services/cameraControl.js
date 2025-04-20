@@ -37,51 +37,38 @@ class CameraControl {
     async detectVideoDevices() {
         if (this.platform === 'linux') {
             try {
-                // First find all potential video devices
                 const videoDevices = fs.readdirSync('/dev')
-                    .filter(file => file.startsWith('video'));
-                
-                const mappedDevices = [];
-                
-                // Try to get more detailed information from sysfs
-                for (const device of videoDevices) {
-                    const devicePath = `/dev/${device}`;
-                    const deviceNum = device.replace('video', '');
-                    
-                    // Try to read device name from sysfs
-                    let cameraName = `Camera ${device}`;
-                    try {
+                    .filter(file => file.startsWith('video'))
+                    .map(device => {
+                        const devicePath = `/dev/${device}`;
+                        let cameraName = `Camera ${device}`;
+                        
+                        // Try to get device name from sysfs if available
                         const sysfsPath = `/sys/class/video4linux/${device}/name`;
                         if (fs.existsSync(sysfsPath)) {
-                            const nameData = fs.readFileSync(sysfsPath, 'utf8').trim();
-                            if (nameData) {
-                                cameraName = nameData;
+                            try {
+                                const nameData = fs.readFileSync(sysfsPath, 'utf8').trim();
+                                if (nameData) {
+                                    cameraName = nameData;
+                                }
+                            } catch (err) {
+                                console.log(`Couldn't read name for ${devicePath}`);
                             }
                         }
-                    } catch (err) {
-                        // If we can't read the device name, stick with the default
-                        console.log(`Couldn't read name for ${devicePath}`);
-                    }
-                    
-                    mappedDevices.push({
-                        path: devicePath,
-                        name: `${cameraName} (${devicePath})`,
-                        isMainDevice: parseInt(deviceNum) % 2 === 0 // Even numbered devices are typically main video
+                        
+                        return {
+                            path: devicePath,
+                            name: `${cameraName} (${devicePath})`
+                        };
                     });
-                }
                 
-                // Log found devices
-                mappedDevices.forEach(device => {
-                    console.log(`Found video device: ${device.name}`);
-                });
-                
-                return mappedDevices;
+                console.log('Found video devices:', videoDevices);
+                return videoDevices;
             } catch (err) {
                 console.error('Error detecting video devices:', err);
                 return [];
             }
         } else if (this.platform === 'darwin') {
-            // For macOS, we'll use the system_profiler command
             try {
                 const stdout = await new Promise((resolve, reject) => {
                     exec('system_profiler SPCameraDataType', (error, stdout) => {
@@ -90,19 +77,12 @@ class CameraControl {
                     });
                 });
                 
-                const devices = [];
-                const lines = stdout.split('\n');
-                for (let i = 0; i < lines.length; i++) {
-                    if (lines[i].includes('Camera:')) {
-                        const name = lines[i].split('Camera:')[1].trim();
-                        devices.push({
-                            path: `0:${devices.length}`, // macOS uses index-based device IDs
-                            name: name,
-                            isMainDevice: true
-                        });
-                    }
-                }
-                return devices;
+                return stdout.split('\n')
+                    .filter(line => line.includes('Camera:'))
+                    .map((line, index) => ({
+                        path: `0:${index}`,
+                        name: line.split('Camera:')[1].trim()
+                    }));
             } catch (err) {
                 console.error('Error detecting video devices on macOS:', err);
                 return [];
@@ -112,52 +92,8 @@ class CameraControl {
     }
 
     async scanPTZDevices() {
-        if (this.platform !== 'linux') {
-            return [];
-        }
-        
-        try {
-            // Use the same devices we already found for cameras
-            const videoDevices = await this.detectVideoDevices();
-            const ptzDevices = [];
-            
-            // For each video device, check if it's likely to be a PTZ device
-            // Use the device name as a hint (many PTZ cameras have recognizable names)
-            for (const device of videoDevices) {
-                if (
-                    // Common PTZ camera models/brands
-                    device.name.includes('OBSBOT') ||
-                    device.name.includes('PTZ') ||
-                    device.name.includes('Logitech') ||
-                    device.name.includes('Pro Webcam C920') || // Many C920s support basic panning
-                    device.name.includes('C615') ||
-                    device.name.includes('Brio') ||
-                    device.name.includes('RALLY') ||
-                    device.name.includes('ConferenceCam') ||
-                    device.name.includes('Meetup')
-                ) {
-                    ptzDevices.push({
-                        path: device.path,
-                        name: device.name
-                    });
-                }
-            }
-            
-            // Always add at least the first video device as a potential PTZ device
-            // if we couldn't detect any explicitly
-            if (ptzDevices.length === 0 && videoDevices.length > 0) {
-                const firstDevice = videoDevices.find(d => d.isMainDevice) || videoDevices[0];
-                ptzDevices.push({
-                    path: firstDevice.path,
-                    name: `${firstDevice.name} (Potential PTZ)`
-                });
-            }
-            
-            return ptzDevices;
-        } catch (err) {
-            console.error('Error scanning for PTZ devices:', err);
-            return [];
-        }
+        // Simply return all video devices as potential PTZ devices
+        return this.detectVideoDevices();
     }
 
     async addCamera(name) {
@@ -170,36 +106,8 @@ class CameraControl {
             console.log('Detected video devices:', devices);
             
             if (devices.length > 0) {
-                // Find the best device to use
-                
-                // First try to find a known webcam brand - they usually give the best results
-                const knownWebcams = devices.filter(device => 
-                    device.name.includes('HD Pro Webcam C920') || 
-                    device.name.includes('Logitech') ||
-                    device.name.includes('OBSBOT') ||
-                    device.name.includes('Webcam')
-                );
-                
-                // Next, look for main video devices (as opposed to metadata devices)
-                const mainDevices = devices.filter(device => device.isMainDevice);
-                
-                // Select the best device, prioritizing known webcams that are main devices
-                let selectedDevice;
-                
-                if (knownWebcams.length > 0 && knownWebcams.some(d => d.isMainDevice)) {
-                    // Known webcam that's a main device - best option
-                    selectedDevice = knownWebcams.find(d => d.isMainDevice);
-                } else if (knownWebcams.length > 0) {
-                    // Any known webcam
-                    selectedDevice = knownWebcams[0];
-                } else if (mainDevices.length > 0) {
-                    // Any main device
-                    selectedDevice = mainDevices[0];
-                } else {
-                    // Fall back to the first device
-                    selectedDevice = devices[0];
-                }
-                
+                // Use the first available device for both preview and recording
+                const selectedDevice = devices[0];
                 camera.setPreviewDevice(selectedDevice.path);
                 camera.setRecordingDevice(selectedDevice.path);
                 console.log(`Set up camera ${name} with device:`, selectedDevice);
