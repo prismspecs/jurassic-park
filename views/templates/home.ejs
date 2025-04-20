@@ -550,6 +550,7 @@
           this.ptzDevices = [];
           this.deviceMap = new Map(); // Map browser device IDs to device paths
           this.serverDevices = []; // Store server devices
+          this.reverseDeviceMap = new Map(); // Map server paths to browser IDs
         }
 
         async initialize() {
@@ -598,6 +599,7 @@
 
             // Create a mapping between browser device IDs and server device paths
             this.deviceMap.clear();
+            this.reverseDeviceMap = new Map(); // Map server paths to browser IDs
             for (const serverDevice of this.serverDevices) {
               // Extract the device number from the path (e.g., "video2" from "/dev/video2")
               const deviceNum = serverDevice.path.split("/").pop();
@@ -615,6 +617,10 @@
                       )))
                 ) {
                   this.deviceMap.set(browserDevice.deviceId, serverDevice.path);
+                  this.reverseDeviceMap.set(
+                    serverDevice.path,
+                    browserDevice.deviceId
+                  );
                   console.log(
                     `Mapped browser device ${browserDevice.label} (${browserDevice.deviceId}) to ${serverDevice.path}`
                   );
@@ -630,6 +636,7 @@
                 const deviceIndex = this.availableDevices.indexOf(device);
                 const devicePath = `/dev/video${deviceIndex}`;
                 this.deviceMap.set(device.deviceId, devicePath);
+                this.reverseDeviceMap.set(devicePath, device.deviceId);
                 console.log(
                   `Created direct mapping for unmapped device: ${device.label} (${device.deviceId}) to ${devicePath}`
                 );
@@ -779,17 +786,13 @@
                   camera.name
                 }', this.value)">
                   <option value="">Select Preview Device</option>
-                  ${this.availableDevices
+                  ${this.serverDevices
                     .map(
                       (device) => `
-                    <option value="${device.deviceId}" ${
-                        device.label &&
-                        camera.previewDevice &&
-                        device.label.includes(cameraModel)
-                          ? "selected"
-                          : ""
+                    <option value="${device.path}" ${
+                        device.path === camera.previewDevice ? "selected" : ""
                       }>
-                      ${device.label || `Device ${device.deviceId}`}
+                      ${device.name}
                     </option>
                   `
                     )
@@ -867,24 +870,34 @@
           return div;
         }
 
-        async updatePreviewDevice(cameraName, deviceId) {
+        async updatePreviewDevice(cameraName, devicePath) {
           try {
-            // Update on the server - note that deviceId here is the browser's deviceId
+            // Update on the server - using device path
             await fetch("/camera/preview-device", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ cameraName, deviceId }),
+              body: JSON.stringify({ cameraName, deviceId: devicePath }),
             });
 
             const videoElement = document.getElementById(
               `preview-${cameraName}`
             );
 
-            if (deviceId) {
-              // Start preview
+            if (devicePath) {
+              // Get the browser device ID from our reverse mapping
+              const browserDeviceId = this.reverseDeviceMap.get(devicePath);
+
+              if (!browserDeviceId) {
+                console.error(
+                  `No browser device found for server path: ${devicePath}`
+                );
+                return;
+              }
+
+              // Start preview with browser device ID
               const constraints = {
                 video: {
-                  deviceId: { exact: deviceId },
+                  deviceId: { exact: browserDeviceId },
                   frameRate: { ideal: 30 },
                   aspectRatio: { ideal: 1.7777777778 }, // 16:9
                   width: { ideal: 1920 },
@@ -904,12 +917,12 @@
                   deviceInfoElement &&
                   deviceInfoElement.className === "device-info"
                 ) {
-                  // Find the device label
-                  const device = this.availableDevices.find(
-                    (d) => d.deviceId === deviceId
+                  // Find the device name from server devices
+                  const device = this.serverDevices.find(
+                    (d) => d.path === devicePath
                   );
                   deviceInfoElement.textContent = `Using: ${
-                    device ? device.label : deviceId
+                    device ? device.name : devicePath
                   }`;
                 }
               } catch (err) {
