@@ -96,26 +96,27 @@ class CameraControl {
         return this.detectVideoDevices();
     }
 
-    async addCamera(name) {
+    async addCamera(name, previewDevice = "", recordingDevice = "", ptzDevice = "") {
         if (!this.cameras.has(name)) {
             const camera = new Camera(name);
             this.cameras.set(name, camera);
             
-            // Detect and set up available devices
-            const devices = await this.detectVideoDevices();
-            console.log('Detected video devices:', devices);
-            
-            if (devices.length > 0) {
-                // Use the first available device for both preview and recording
-                const selectedDevice = devices[0];
-                camera.setPreviewDevice(selectedDevice.path);
-                camera.setRecordingDevice(selectedDevice.path);
-                console.log(`Set up camera ${name} with device:`, selectedDevice);
-            } else {
-                console.error('No video devices found for camera:', name);
+            // Set up devices from defaults if provided
+            if (previewDevice) {
+                await camera.setPreviewDevice(previewDevice);
+            }
+            if (recordingDevice) {
+                camera.setRecordingDevice(recordingDevice);
+            }
+            if (ptzDevice) {
+                camera.setPTZDevice(ptzDevice);
             }
             
-            console.log(`Added camera: ${name}`);
+            console.log(`Added camera: ${name} with devices:`, {
+                preview: previewDevice,
+                recording: recordingDevice,
+                ptz: ptzDevice
+            });
             return true;
         }
         return false;

@@ -2,9 +2,9 @@
   "name": "jurassic-park",
   "version": "1.0.0",
   "description": "AI Directed Performance System (without intake procedure).",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node app.js"
   },
   "dependencies": {
     "@tensorflow-models/pose-detection": "^2.1.3",

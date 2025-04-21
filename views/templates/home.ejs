@@ -551,6 +551,7 @@
           this.deviceMap = new Map(); // Map browser device IDs to device paths
           this.serverDevices = []; // Store server devices
           this.reverseDeviceMap = new Map(); // Map server paths to browser IDs
+          this.cameraDefaults = []; // Store camera defaults from config
         }
 
         async initialize() {
@@ -591,7 +592,18 @@
             const camerasResponse = await fetch("/camera/cameras");
             this.cameras = await camerasResponse.json();
 
+            // Get camera defaults from the server
+            const configResponse = await fetch("/config");
+            if (!configResponse.ok) {
+              throw new Error(`HTTP error! status: ${configResponse.status}`);
+            }
+            const configText = await configResponse.text();
+            console.log("Raw config response:", configText);
+            const config = JSON.parse(configText);
+            this.cameraDefaults = config.cameraDefaults || [];
+
             console.log("Server cameras:", this.cameras);
+            console.log("Camera defaults:", this.cameraDefaults);
 
             // Get the device paths from the server
             const devicesResponse = await fetch("/camera/devices");
@@ -600,31 +612,37 @@
             // Create a mapping between browser device IDs and server device paths
             this.deviceMap.clear();
             this.reverseDeviceMap = new Map(); // Map server paths to browser IDs
+
+            // First, try to match devices by their labels
             for (const serverDevice of this.serverDevices) {
               // Extract the device number from the path (e.g., "video2" from "/dev/video2")
               const deviceNum = serverDevice.path.split("/").pop();
 
               // Try to find a matching browser device
               for (const browserDevice of this.availableDevices) {
-                // Check if the device label contains the device number or name
-                if (
-                  browserDevice.label &&
-                  (browserDevice.label.includes(deviceNum) || // Direct match
-                    browserDevice.label.includes(serverDevice.name) || // Match by device name
+                if (browserDevice.label) {
+                  // Check if the label contains the device number or name
+                  if (
+                    browserDevice.label.includes(deviceNum) ||
+                    browserDevice.label.includes(serverDevice.name) ||
                     (serverDevice.name &&
                       browserDevice.label.includes(
                         serverDevice.name.split(" ")[0]
-                      )))
-                ) {
-                  this.deviceMap.set(browserDevice.deviceId, serverDevice.path);
-                  this.reverseDeviceMap.set(
-                    serverDevice.path,
-                    browserDevice.deviceId
-                  );
-                  console.log(
-                    `Mapped browser device ${browserDevice.label} (${browserDevice.deviceId}) to ${serverDevice.path}`
-                  );
-                  break;
+                      ))
+                  ) {
+                    this.deviceMap.set(
+                      browserDevice.deviceId,
+                      serverDevice.path
+                    );
+                    this.reverseDeviceMap.set(
+                      serverDevice.path,
+                      browserDevice.deviceId
+                    );
+                    console.log(
+                      `Mapped browser device ${browserDevice.label} (${browserDevice.deviceId}) to ${serverDevice.path}`
+                    );
+                    break;
+                  }
                 }
               }
             }
@@ -638,8 +656,42 @@
                 this.deviceMap.set(device.deviceId, devicePath);
                 this.reverseDeviceMap.set(devicePath, device.deviceId);
                 console.log(
-                  `Created direct mapping for unmapped device: ${device.label} (${device.deviceId}) to ${devicePath}`
+                  `Created direct mapping for unmapped device: ${
+                    device.label || "Unknown"
+                  } (${device.deviceId}) to ${devicePath}`
                 );
+              }
+            }
+
+            // For any server devices that weren't mapped, try to find a matching browser device by index
+            for (const serverDevice of this.serverDevices) {
+              if (!this.reverseDeviceMap.has(serverDevice.path)) {
+                const deviceNum = parseInt(
+                  serverDevice.path.split("/").pop().replace("video", "")
+                );
+                if (
+                  !isNaN(deviceNum) &&
+                  deviceNum < this.availableDevices.length
+                ) {
+                  const browserDevice = this.availableDevices[deviceNum];
+                  if (browserDevice) {
+                    this.deviceMap.set(
+                      browserDevice.deviceId,
+                      serverDevice.path
+                    );
+                    this.reverseDeviceMap.set(
+                      serverDevice.path,
+                      browserDevice.deviceId
+                    );
+                    console.log(
+                      `Mapped server device ${
+                        serverDevice.path
+                      } to browser device ${
+                        browserDevice.label || "Unknown"
+                      } (${browserDevice.deviceId}) by index`
+                    );
+                  }
+                }
               }
             }
 
@@ -713,12 +765,26 @@
         }
 
         async addCamera() {
-          const name = `Camera ${this.cameras.length + 1}`;
+          const cameraIndex = this.cameras.length;
+          const name = `Camera ${cameraIndex + 1}`;
+
+          // Get the defaults for this camera index, or use empty defaults if none exist
+          const defaults = this.cameraDefaults[cameraIndex] || {
+            previewDevice: "",
+            recordingDevice: "",
+            ptzDevice: "",
+          };
+
           try {
             const response = await fetch("/camera/add", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name }),
+              body: JSON.stringify({
+                name,
+                previewDevice: defaults.previewDevice,
+                recordingDevice: defaults.recordingDevice,
+                ptzDevice: defaults.ptzDevice,
+              }),
             });
 
             if (response.ok) {
@@ -867,6 +933,21 @@
               }')">Record Video</button>
             </div>
           `;
+
+          // After creating the element, if there's a preview device selected,
+          // trigger the preview device update to initialize the camera
+          if (camera.previewDevice) {
+            setTimeout(() => {
+              const select = div.querySelector(".preview-device");
+              if (select) {
+                cameraManager.updatePreviewDevice(
+                  camera.name,
+                  camera.previewDevice
+                );
+              }
+            }, 100);
+          }
+
           return div;
         }
 

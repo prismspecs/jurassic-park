@@ -16,13 +16,13 @@ router.get('/cameras', (req, res) => {
 
 // Add a new camera
 router.post('/add', async (req, res) => {
-    const { name } = req.body;
+    const { name, previewDevice, recordingDevice, ptzDevice } = req.body;
     if (!name) {
         return res.status(400).json({ success: false, message: 'Camera name is required' });
     }
 
     try {
-        const success = await cameraControl.addCamera(name);
+        const success = await cameraControl.addCamera(name, previewDevice, recordingDevice, ptzDevice);
         if (success) {
             res.json({ success: true, message: `Camera ${name} added` });
         } else {

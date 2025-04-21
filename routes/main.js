@@ -356,4 +356,9 @@ router.post('/clearAudio', express.json(), (req, res) => {
     }
 });
 
+// Expose config to frontend
+router.get('/config', (req, res) => {
+    res.json(config);
+});
+
 module.exports = router; 

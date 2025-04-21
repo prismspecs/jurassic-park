@@ -1,12 +1,38 @@
-# dependencies
+## Dependencies
+
+Linux
 
 ```
 sudo apt install espeak     # probably not necessary if using piper
 pip install piper-tts       # linux only
 sudo apt install v4l-utils  # for OSBOT PITZ camera controls
+sudo apt install v4l2loopback-dkms v4l2loopback-utils   # for virtual cameras
 ```
 
-## Camera stuff
+Mac
+Install [uvc-util](https://github.com/jtfrey/uvc-util)
+
+## Camera Setup
+
+All cameras are virtual by default on MacOS. On Linux we have to set this up manually or use something like OBS Studio.
+
+In order to set up virtual cameras run v4l2loopback being sure to use IDs (video_nr) which are not already in use (or simply omit them).
+
+```
+sudo modprobe v4l2loopback devices=2 video_nr=10,11 card_label="VirtualCam10","VirtualCam11" exclusive_caps=1
+
+```
+
+Then to stream /dev/video2 into virtual cam 10,
+
+```
+gst-launch-1.0 v4l2src device=/dev/video2 ! videoconvert ! videoscale ! \
+video/x-raw,width=1920,height=1080 ! v4l2sink device=/dev/video10
+```
+
+```
+v4l2-ctl --list-devices
+```
 
 ### Linux
 
@@ -33,9 +59,11 @@ v4l2-ctl --device=/dev/video2 --set-ctrl=pan_absolute=0
 ```
 
 ### MacOS
+
 Install [uvc-util](https://github.com/jtfrey/uvc-util)
 
 Testing
+
 ```
 ./uvc-util --list-devices
 ./uvc-util -I 0 -s pan-tilt-abs="{-3600, 36000}"

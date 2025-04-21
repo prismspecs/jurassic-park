@@ -10,13 +10,22 @@
     "waitTime": 1000,
     "piperDir": "external_tools/piper",
     "uvcDir": "external_tools/uvc",
-    "cameraDefaults": {
-        "resolution": "1280x720",
-        "fps": 30,
-        "previewDevice": "/dev/video2",
-        "recordingDevice": "/dev/video2",
-        "ptzDevice": "/dev/video4"
-    },
+    "cameraDefaults": [
+        {
+            "resolution": "1920x1080",
+            "fps": 30,
+            "previewDevice": "/dev/video2",
+            "recordingDevice": "/dev/video2",
+            "ptzDevice": "/dev/video5"
+        },
+        {
+            "resolution": "1280x720",
+            "fps": 30,
+            "previewDevice": "/dev/video3",
+            "recordingDevice": "/dev/video3",
+            "ptzDevice": "/dev/video5"
+        }
+    ],
     "auth": {
         "enabled": true,
         "username": "admin",
