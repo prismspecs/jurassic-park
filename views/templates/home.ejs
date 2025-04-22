@@ -44,10 +44,15 @@
         <h2>Controls</h2>
         <div id="buttons">
           <div class="recording-options">
-            <label>
-              <input type="checkbox" id="use-ffmpeg" />
-              Use ffmpeg instead of GStreamer
-            </label>
+            <label for="recording-pipeline">Recording Pipeline:</label>
+            <select
+              id="recording-pipeline"
+              class="form-control"
+              onchange="handlePipelineChange(this.value)"
+            >
+              <option value="gstreamer" selected>GStreamer (Default)</option>
+              <option value="ffmpeg">FFmpeg</option>
+            </select>
           </div>
           <button
             id="actionBtn"
@@ -312,30 +317,62 @@
           });
       }
 
-      function recordVideo() {
+      function handlePipelineChange(pipeline) {
+        console.log(`Switched recording pipeline to: ${pipeline}`);
+        appendToConsole(`Recording pipeline set to: ${pipeline}`, "info");
+      }
+
+      async function recordVideo() {
         document.getElementById("status").innerText = "Recording video...";
-        fetch("/camera/recordVideo")
-          .then((res) => res.json())
-          .then((info) => {
-            if (!info.success) {
-              document.getElementById("status").innerText =
-                "Error: " + info.message;
-              return;
-            }
+        const pipeline = document.getElementById("recording-pipeline").value;
+        const useFfmpeg = pipeline === "ffmpeg";
+
+        console.log(`Starting recording with ${pipeline} pipeline`);
+        appendToConsole(`Starting recording with ${pipeline} pipeline`, "info");
+
+        try {
+          const response = await fetch(
+            "/camera/recordVideo?useFfmpeg=" + useFfmpeg
+          );
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const text = await response.text();
+          let info;
+          try {
+            info = JSON.parse(text);
+          } catch (e) {
+            console.error("Failed to parse response:", text);
+            throw new Error("Invalid response from server");
+          }
+
+          if (info.success) {
             document.getElementById("status").innerText =
               info.message || "Video recorded.";
             const vidDiv = document.getElementById("videos");
             vidDiv.innerHTML = `
-            <h3>Original Video</h3>
-            <video controls src="/video/${info.originalName}"></video>
-            <h3>Overlay Video</h3>
-            <video controls src="/video/${info.overlayName}"></video>
-          `;
-          })
-          .catch((err) => {
-            console.error(err);
-            document.getElementById("status").innerText = "Error: " + err;
-          });
+              <h3>Original Video</h3>
+              <video controls src="/video/${info.originalName}"></video>
+              <h3>Overlay Video</h3>
+              <video controls src="/video/${info.overlayName}"></video>
+            `;
+            console.log(`Recording completed successfully with ${pipeline}`);
+            appendToConsole(
+              `Recording completed with ${pipeline} pipeline`,
+              "success"
+            );
+          } else {
+            document.getElementById("status").innerText =
+              "Error: " + info.message;
+            console.error("Recording failed:", info.message);
+            appendToConsole(`Recording failed: ${info.message}`, "error");
+          }
+        } catch (error) {
+          console.error("Error starting recording:", error);
+          document.getElementById("status").innerText =
+            "Error: " + error.message;
+          appendToConsole(`Recording error: ${error.message}`, "error");
+        }
       }
 
       function updatePTZ() {
@@ -1163,34 +1200,72 @@
         }
 
         async recordVideo(cameraName) {
-          try {
-            // Add a checkbox for ffmpeg option
-            const useFfmpeg = document.getElementById(`use-ffmpeg`).checked;
-            const response = await fetch(
-              `/camera/recordVideo?cameraName=${encodeURIComponent(
-                cameraName
-              )}&useFfmpeg=${useFfmpeg}`
-            );
-            const info = await response.json();
+          const pipeline = document.getElementById("recording-pipeline").value;
+          const useFfmpeg = pipeline === "ffmpeg";
 
-            if (!info.success) {
-              document.getElementById("status").innerText =
-                "Error: " + info.message;
-              return;
+          console.log(
+            `Starting recording for ${cameraName} with ${pipeline} pipeline`
+          );
+          appendToConsole(
+            `Starting recording for ${cameraName} with ${pipeline} pipeline`,
+            "info"
+          );
+
+          try {
+            const response = await fetch(
+              `/camera/${cameraName}/record?useFfmpeg=${useFfmpeg}`,
+              {
+                method: "POST",
+              }
+            );
+
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
             }
 
+            const text = await response.text();
+            let data;
+            try {
+              data = JSON.parse(text);
+            } catch (e) {
+              console.error("Failed to parse response:", text);
+              throw new Error("Invalid response from server");
+            }
+
+            if (data.success) {
+              console.log(
+                `Recording completed successfully for ${cameraName} with ${pipeline}`
+              );
+              appendToConsole(
+                `Recording completed for ${cameraName} with ${pipeline} pipeline`,
+                "success"
+              );
+              document.getElementById("status").innerText =
+                data.message || "Video recorded.";
+              const vidDiv = document.getElementById("videos");
+              vidDiv.innerHTML = `
+                <h3>Original Video</h3>
+                <video controls src="/video/${data.originalName}"></video>
+                <h3>Overlay Video</h3>
+                <video controls src="/video/${data.overlayName}"></video>
+              `;
+            } else {
+              console.error("Failed to start recording:", data.error);
+              document.getElementById("status").innerText =
+                "Error: " + data.error;
+              appendToConsole(
+                `Recording failed for ${cameraName}: ${data.error}`,
+                "error"
+              );
+            }
+          } catch (error) {
+            console.error("Error starting recording:", error);
             document.getElementById("status").innerText =
-              info.message || "Video recorded.";
-            const vidDiv = document.getElementById("videos");
-            vidDiv.innerHTML = `
-              <h3>Original Video</h3>
-              <video controls src="/video/${info.originalName}"></video>
-              <h3>Overlay Video</h3>
-              <video controls src="/video/${info.overlayName}"></video>
-            `;
-          } catch (err) {
-            console.error(err);
-            document.getElementById("status").innerText = "Error: " + err;
+              "Error: " + error.message;
+            appendToConsole(
+              `Recording error for ${cameraName}: ${error.message}`,
+              "error"
+            );
           }
         }
       }

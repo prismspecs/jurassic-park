@@ -3,6 +3,10 @@ const router = express.Router();
 const CameraControl = require('../services/cameraControl');
 const cameraControl = new CameraControl();
 const { recordVideo } = require('../controllers/videoController');
+const ffmpegHelper = require('../services/ffmpegHelper');
+const gstreamerHelper = require('../services/gstreamerHelper');
+const poseTracker = require('../services/poseTracker');
+const config = require('../config');
 
 // Get available cameras
 router.get('/cameras', (req, res) => {
@@ -143,6 +147,42 @@ router.post('/ptz', (req, res) => {
 });
 
 // Record video from a specific camera
-router.get('/recordVideo', recordVideo);
+router.post('/:cameraName/record', async (req, res) => {
+    const { cameraName } = req.params;
+    const { useFfmpeg } = req.query;
+    
+    try {
+        const camera = cameraControl.getCamera(cameraName);
+        if (!camera) {
+            return res.status(404).json({ success: false, message: `Camera ${cameraName} not found` });
+        }
+
+        const devicePath = camera.getRecordingDevice();
+        if (!devicePath) {
+            return res.status(400).json({ success: false, message: `No recording device configured for camera ${cameraName}` });
+        }
+
+        const recordingMethod = useFfmpeg === 'true' ? 'ffmpeg' : 'gstreamer';
+        console.log(`Recording from camera: ${cameraName} (${devicePath}) using ${recordingMethod}`);
+
+        // Use GStreamer by default, ffmpeg if explicitly requested
+        const recordingHelper = useFfmpeg === 'true' ? ffmpegHelper : gstreamerHelper;
+        await recordingHelper.captureVideo(config.tempRecord, 3, devicePath);
+        await ffmpegHelper.extractFrames(config.tempRecord, config.framesRawDir);
+        await poseTracker.processFrames(config.framesRawDir, config.framesOverlayDir);
+        await ffmpegHelper.encodeVideo(config.framesRawDir, config.videoOriginal);
+        await ffmpegHelper.encodeVideo(config.framesOverlayDir, config.videoOverlay);
+
+        res.json({
+            success: true,
+            message: 'Video recorded and pose processed!',
+            originalName: config.videoOriginal,
+            overlayName: config.videoOverlay
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
 
 module.exports = router;
