@@ -167,7 +167,7 @@ router.post('/:cameraName/record', async (req, res) => {
 
         // Use GStreamer by default, ffmpeg if explicitly requested
         const recordingHelper = useFfmpeg === 'true' ? ffmpegHelper : gstreamerHelper;
-        await recordingHelper.captureVideo(config.tempRecord, 3, devicePath);
+        await recordingHelper.captureVideo(config.tempRecord, 10, devicePath);
         await ffmpegHelper.extractFrames(config.tempRecord, config.framesRawDir);
         await poseTracker.processFrames(config.framesRawDir, config.framesOverlayDir);
         await ffmpegHelper.encodeVideo(config.framesRawDir, config.videoOriginal);

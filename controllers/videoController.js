@@ -37,7 +37,7 @@ async function recordVideo(req, res) {
 
         // Use GStreamer by default, ffmpeg if explicitly requested
         const recordingHelper = useFfmpeg === 'true' ? ffmpegHelper : gstreamerHelper;
-        await recordingHelper.captureVideo(TEMP_RECORD, 3, devicePath);
+        await recordingHelper.captureVideo(TEMP_RECORD, 10, devicePath);
         await ffmpegHelper.extractFrames(TEMP_RECORD, RAW_DIR);
         await poseTracker.processFrames(RAW_DIR, OVERLAY_DIR);
         await ffmpegHelper.encodeVideo(RAW_DIR, OUT_ORIG);

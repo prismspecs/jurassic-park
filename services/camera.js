@@ -9,6 +9,7 @@ class Camera {
     }
 
     async startPreview(videoElement) {
+        console.log('Starting preview for camera:', this.name);
         try {
             // Stop any existing preview
             if (this.previewStream) {

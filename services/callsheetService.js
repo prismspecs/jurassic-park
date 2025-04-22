@@ -85,9 +85,6 @@ function getCallsheet() {
     return callsheet;
 }
 
-// Initialize the callsheet when the module is loaded
-initCallsheet();
-
 module.exports = {
     initCallsheet,
     getActorsForScene,

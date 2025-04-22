@@ -33,9 +33,12 @@ gst-launch-1.0 -v \
   tee name=t \
     t. ! queue max-size-buffers=1 leaky=downstream ! videoconvert ! videoscale ! video/x-raw,width=3840,height=2160 ! v4l2sink device=/dev/video10 sync=false \
     t. ! queue max-size-buffers=1 leaky=downstream ! videoconvert ! videoscale ! video/x-raw,width=3840,height=2160 ! v4l2sink device=/dev/video11 sync=false
+```
 
+### Testing cameras
+
+```
 # record from 1 output
-
 gst-launch-1.0 -e \
   v4l2src device=/dev/video11 ! \
     video/x-raw,framerate=30/1 ! \
@@ -57,63 +60,27 @@ gst-launch-1.0 videotestsrc ! tee name=t ! queue ! v4l2sink device=/dev/video10 
 
 ```
 
-```
-sudo modprobe v4l2loopback devices=2 video_nr=10,11 card_label="Logitech Preview","Logitech Record" exclusive_caps=0
-sudo modprobe v4l2loopback devices=1 video_nr=10 card_label="VirtualCam10" exclusive_caps=0
-```
+## Camera specs
 
-Then to stream /dev/video2 into virtual cam 10,
+### OBSBOT Tiny2 Lite
 
-```
-gst-launch-1.0 v4l2src device=/dev/video2 ! videoconvert ! videoscale ! \
-video/x-raw,width=1920,height=1080 ! v4l2sink device=/dev/video10
-```
+Pan
+Control: pan_absolute
+Min: -468000
+Max: 468000
+Step: 3600
 
-```
-v4l2-ctl --list-devices
-```
+Tilt
+Control: tilt_absolute
+Min: -324000
+Max: 324000
+Step: 3600
 
-Some AI advice I just got...
-
-1. Modify v4l2loopback Parameters
-
-Load the module with these specific options:
-bash
-
-sudo modprobe -r v4l2loopback # First remove existing module
-sudo modprobe v4l2loopback \
- devices=2 \
- video_nr=10,11 \
- card_label="VirtualCam10","VirtualCam11" \
- exclusive_caps=0 \ # Crucial for multiple clients
-max_buffers=8 \ # Increased buffer pool
-max_openers=3 # Allow multiple simultaneous clients
-
-2. Pipeline Modification for Multi-Output
-
-Use tee to split the stream to both virtual devices:
-bash
-
-gst-launch-1.0 \
-v4l2src device=/dev/video2 ! \
-video/x-raw,format=YUY2,width=1280,height=720 ! \
-tee name=streamsplit \
- ! queue ! v4l2sink device=/dev/video10 \
-streamsplit. \
- ! queue ! v4l2sink device=/dev/video11
-
-3. Workaround for Single Device Access
-
-If you want to use one virtual device with multiple clients:
-bash
-
-gst-launch-1.0 \
-v4l2src device=/dev/video2 ! \
-videoconvert ! \
-video/x-raw,format=YUY2 ! \
-v4l2sink device=/dev/video10 \
-sync=false async=false \
-max-lateness=-1 qos=true
+Zoom
+Control: zoom_absolute
+Min: 0
+Max: 100
+Step: 1
 
 ### Linux
 

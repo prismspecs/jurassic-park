@@ -1,5 +1,7 @@
 ## to do
 
+- remove unncessary things
+
 - camera stuff
 
   - fix recording (it is using the wrong sort of device ID)
