@@ -13,7 +13,6 @@ const config = require('./config.json');
 // Our custom modules
 const CameraControl = require('./services/cameraControl');
 const cameraControl = new CameraControl();
-const fileManager = require('./services/fileManager');
 const aiVoice = require('./services/aiVoice');
 const poseTracker = require('./services/poseTracker');
 const mainRouter = require('./routes/main');
@@ -61,7 +60,6 @@ async function initializeSystem() {
   try {
     // Note: no longer adding a default camera
     poseTracker.loadModels();
-    fileManager.prepareRecordingDirectory();
     callsheetService.initCallsheet();
     // Initialize voice bypass to enabled state
     aiVoice.setBypass(true);
