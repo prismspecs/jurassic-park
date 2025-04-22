@@ -1,6 +1,7 @@
 const path = require('path');
 const config = require('../config.json');
 const ffmpegHelper = require('../services/ffmpegHelper');
+const gstreamerHelper = require('../services/gstreamerHelper');
 const poseTracker = require('../services/poseTracker');
 const { broadcastConsole } = require('../websocket/broadcaster');
 const cameraControl = require('../services/cameraControl').getInstance();
@@ -15,8 +16,8 @@ async function recordVideo(req, res) {
         const OUT_OVER = config.videoOverlay;
         const TEMP_RECORD = config.tempRecord;
 
-        // Get the camera name from the request
-        const { cameraName } = req.query;
+        // Get the camera name and recording method from the request
+        const { cameraName, useFfmpeg } = req.query;
         if (!cameraName) {
             throw new Error('No camera specified. Please select a camera first.');
         }
@@ -31,9 +32,12 @@ async function recordVideo(req, res) {
             throw new Error(`No recording device configured for camera ${cameraName}.`);
         }
 
-        broadcastConsole(`Recording from camera: ${cameraName} (${devicePath})`);
+        const recordingMethod = useFfmpeg === 'true' ? 'ffmpeg' : 'gstreamer';
+        broadcastConsole(`Recording from camera: ${cameraName} (${devicePath}) using ${recordingMethod}`);
 
-        await ffmpegHelper.captureVideo(TEMP_RECORD, 3, devicePath);
+        // Use GStreamer by default, ffmpeg if explicitly requested
+        const recordingHelper = useFfmpeg === 'true' ? ffmpegHelper : gstreamerHelper;
+        await recordingHelper.captureVideo(TEMP_RECORD, 3, devicePath);
         await ffmpegHelper.extractFrames(TEMP_RECORD, RAW_DIR);
         await poseTracker.processFrames(RAW_DIR, OVERLAY_DIR);
         await ffmpegHelper.encodeVideo(RAW_DIR, OUT_ORIG);

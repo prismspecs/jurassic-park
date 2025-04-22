@@ -43,6 +43,12 @@
       <div class="controls-section">
         <h2>Controls</h2>
         <div id="buttons">
+          <div class="recording-options">
+            <label>
+              <input type="checkbox" id="use-ffmpeg" />
+              Use ffmpeg instead of GStreamer
+            </label>
+          </div>
           <button
             id="actionBtn"
             onclick="action()"
@@ -388,7 +394,7 @@
       window.addEventListener("load", async () => {
         // Don't automatically initialize webcam on load
         // Let the user select a camera first
-        initSceneControls();
+        await cameraManager.initialize();
       });
 
       function action() {
@@ -617,8 +623,10 @@
             for (const serverDevice of this.serverDevices) {
               // Extract the device number from the path (e.g., "video2" from "/dev/video2")
               const deviceNum = serverDevice.path.split("/").pop();
+              const deviceIndex = parseInt(deviceNum.replace("video", ""));
 
               // Try to find a matching browser device
+              let foundMatch = false;
               for (const browserDevice of this.availableDevices) {
                 if (browserDevice.label) {
                   // Check if the label contains the device number or name
@@ -641,55 +649,71 @@
                     console.log(
                       `Mapped browser device ${browserDevice.label} (${browserDevice.deviceId}) to ${serverDevice.path}`
                     );
+                    foundMatch = true;
                     break;
                   }
                 }
               }
+
+              // If no match found by label, try to match by index
+              if (
+                !foundMatch &&
+                !isNaN(deviceIndex) &&
+                deviceIndex < this.availableDevices.length
+              ) {
+                const browserDevice = this.availableDevices[deviceIndex];
+                if (browserDevice) {
+                  this.deviceMap.set(browserDevice.deviceId, serverDevice.path);
+                  this.reverseDeviceMap.set(
+                    serverDevice.path,
+                    browserDevice.deviceId
+                  );
+                  console.log(
+                    `Mapped by index: ${serverDevice.path} to browser device ${browserDevice.deviceId}`
+                  );
+                  foundMatch = true;
+                }
+              }
             }
 
-            // For any unmapped devices, create a direct mapping using the device index
-            for (const device of this.availableDevices) {
-              if (!this.deviceMap.has(device.deviceId)) {
-                // Find the next available video device path
-                const deviceIndex = this.availableDevices.indexOf(device);
-                const devicePath = `/dev/video${deviceIndex}`;
-                this.deviceMap.set(device.deviceId, devicePath);
-                this.reverseDeviceMap.set(devicePath, device.deviceId);
+            // For any unmapped browser devices, create a direct mapping
+            for (let i = 0; i < this.availableDevices.length; i++) {
+              const browserDevice = this.availableDevices[i];
+              if (!this.deviceMap.has(browserDevice.deviceId)) {
+                const devicePath = `/dev/video${i}`;
+                this.deviceMap.set(browserDevice.deviceId, devicePath);
+                this.reverseDeviceMap.set(devicePath, browserDevice.deviceId);
                 console.log(
                   `Created direct mapping for unmapped device: ${
-                    device.label || "Unknown"
-                  } (${device.deviceId}) to ${devicePath}`
+                    browserDevice.label || "Unknown"
+                  } (${browserDevice.deviceId}) to ${devicePath}`
                 );
               }
             }
 
-            // For any server devices that weren't mapped, try to find a matching browser device by index
+            // For any remaining server devices, try to find a matching browser device
             for (const serverDevice of this.serverDevices) {
               if (!this.reverseDeviceMap.has(serverDevice.path)) {
                 const deviceNum = parseInt(
                   serverDevice.path.split("/").pop().replace("video", "")
                 );
-                if (
-                  !isNaN(deviceNum) &&
-                  deviceNum < this.availableDevices.length
-                ) {
-                  const browserDevice = this.availableDevices[deviceNum];
-                  if (browserDevice) {
-                    this.deviceMap.set(
-                      browserDevice.deviceId,
-                      serverDevice.path
-                    );
-                    this.reverseDeviceMap.set(
-                      serverDevice.path,
-                      browserDevice.deviceId
-                    );
-                    console.log(
-                      `Mapped server device ${
+                if (!isNaN(deviceNum)) {
+                  // Try to find a browser device that isn't mapped yet
+                  for (const browserDevice of this.availableDevices) {
+                    if (!this.deviceMap.has(browserDevice.deviceId)) {
+                      this.deviceMap.set(
+                        browserDevice.deviceId,
                         serverDevice.path
-                      } to browser device ${
-                        browserDevice.label || "Unknown"
-                      } (${browserDevice.deviceId}) by index`
-                    );
+                      );
+                      this.reverseDeviceMap.set(
+                        serverDevice.path,
+                        browserDevice.deviceId
+                      );
+                      console.log(
+                        `Mapped remaining server device ${serverDevice.path} to browser device ${browserDevice.deviceId}`
+                      );
+                      break;
+                    }
                   }
                 }
               }
@@ -928,9 +952,11 @@
                     : ""
                 }
               </div>
-              <button onclick="cameraManager.recordVideo('${
-                camera.name
-              }')">Record Video</button>
+              <div class="camera-controls">
+                <button onclick="cameraManager.recordVideo('${
+                  camera.name
+                }')">Record Video</button>
+              </div>
             </div>
           `;
 
@@ -1138,8 +1164,12 @@
 
         async recordVideo(cameraName) {
           try {
+            // Add a checkbox for ffmpeg option
+            const useFfmpeg = document.getElementById(`use-ffmpeg`).checked;
             const response = await fetch(
-              `/camera/recordVideo?cameraName=${encodeURIComponent(cameraName)}`
+              `/camera/recordVideo?cameraName=${encodeURIComponent(
+                cameraName
+              )}&useFfmpeg=${useFfmpeg}`
             );
             const info = await response.json();
 
@@ -1167,7 +1197,6 @@
 
       // Initialize camera manager
       const cameraManager = new CameraManager();
-      window.addEventListener("load", () => cameraManager.initialize());
     </script>
 
     <style>
