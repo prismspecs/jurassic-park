@@ -6,7 +6,38 @@ const { recordVideo } = require('../controllers/videoController');
 const ffmpegHelper = require('../services/ffmpegHelper');
 const gstreamerHelper = require('../services/gstreamerHelper');
 const poseTracker = require('../services/poseTracker');
-const config = require('../config');
+const config = require('../config.json'); // Read the full config
+
+// --- Auto-add default camera on startup ---
+async function initializeDefaultCamera() {
+    try {
+        const defaultCameraConfig = config.cameraDefaults && config.cameraDefaults[0];
+        if (defaultCameraConfig) {
+            const defaultCameraName = 'Camera 1';
+            // Check if camera already exists (e.g., due to persistence or prior init)
+            if (!cameraControl.getCamera(defaultCameraName)) {
+                console.log(`Attempting to add default camera '${defaultCameraName}' on startup...`);
+                await cameraControl.addCamera(
+                    defaultCameraName,
+                    defaultCameraConfig.previewDevice,
+                    defaultCameraConfig.recordingDevice,
+                    defaultCameraConfig.ptzDevice
+                );
+                console.log(`Default camera '${defaultCameraName}' added with config:`, defaultCameraConfig);
+            } else {
+                console.log(`Default camera '${defaultCameraName}' already exists.`);
+            }
+        } else {
+            console.warn('No default camera configuration found in config.json (cameraDefaults[0]).');
+        }
+    } catch (err) {
+        console.error('Error initializing default camera:', err);
+    }
+}
+
+// Call the initialization function
+initializeDefaultCamera();
+// ------------------------------------------
 
 // Get available cameras
 router.get('/cameras', (req, res) => {

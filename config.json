@@ -14,9 +14,9 @@
         {
             "resolution": "1920x1080",
             "fps": 30,
-            "previewDevice": "/dev/video10",
-            "recordingDevice": "/dev/video11",
-            "ptzDevice": "/dev/video5"
+            "previewDevice": "/dev/video2",
+            "recordingDevice": "/dev/video4",
+            "ptzDevice": "/dev/video4"
         },
         {
             "resolution": "1280x720",

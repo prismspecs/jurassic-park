@@ -1033,30 +1033,53 @@
         }
 
         async updatePreviewDevice(cameraName, devicePath) {
+          console.log(
+            `[updatePreviewDevice] Called for ${cameraName} with server path: ${devicePath}`
+          );
           try {
             // Update on the server - using device path
             await fetch("/camera/preview-device", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ cameraName, deviceId: devicePath }),
+              body: JSON.stringify({ cameraName, deviceId: devicePath }), // Send server path
             });
 
             const videoElement = document.getElementById(
               `preview-${cameraName}`
             );
+            if (!videoElement) {
+              console.error(
+                `[updatePreviewDevice] Video element not found for ${cameraName}`
+              );
+              return;
+            }
 
             if (devicePath) {
               // Get the browser device ID from our reverse mapping
+              console.log(
+                "[updatePreviewDevice] Current reverseDeviceMap:",
+                this.reverseDeviceMap
+              );
               const browserDeviceId = this.reverseDeviceMap.get(devicePath);
+              console.log(
+                `[updatePreviewDevice] Mapped server path ${devicePath} to browser device ID: ${browserDeviceId}`
+              );
 
               if (!browserDeviceId) {
                 console.error(
-                  `No browser device found for server path: ${devicePath}`
+                  `[updatePreviewDevice] No browser device found for server path: ${devicePath}`
+                );
+                appendToConsole(
+                  `Error: Could not find matching browser camera for ${devicePath}. Preview failed.`,
+                  "error"
                 );
                 return;
               }
 
               // Start preview with browser device ID
+              console.log(
+                `[updatePreviewDevice] Attempting getUserMedia with browser device ID: ${browserDeviceId}`
+              );
               const constraints = {
                 video: {
                   deviceId: { exact: browserDeviceId },

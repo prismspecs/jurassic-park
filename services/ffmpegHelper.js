@@ -88,16 +88,26 @@ module.exports = {
             const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
             let errorOutput = '';
+            let deviceNotFoundError = false; // Flag for specific error
+
             ffmpeg.stderr.on('data', (data) => {
                 const output = data.toString();
                 console.log(`ffmpeg: ${output}`);
                 errorOutput += output;
+
+                // Check for device not found error specifically
+                if (output.includes(devicePath) && (output.includes('No such file or directory') || output.includes('Cannot open video device'))) {
+                    console.error(`Error: FFmpeg cannot access device: ${devicePath}`);
+                    deviceNotFoundError = true;
+                    // We don't reject here immediately, let ffmpeg finish exiting
+                }
                 
-                // Check for specific error conditions and try alternative configurations
-                if (output.includes('Cannot allocate memory') || 
-                    output.includes('buf_len[0] = 0') || 
-                    output.includes('Invalid argument') ||
-                    output.includes('Inappropriate ioctl')) {
+                // Keep existing logic for trying alternative config for other errors
+                if (!deviceNotFoundError && 
+                    (output.includes('Cannot allocate memory') || 
+                     output.includes('buf_len[0] = 0') || 
+                     output.includes('Invalid argument') ||
+                     output.includes('Inappropriate ioctl'))) {
                     console.log('Detected capture issue, trying alternative configuration...');
                     ffmpeg.kill();  // Kill the current process
                     
@@ -142,14 +152,31 @@ module.exports = {
                 }
             });
 
-            ffmpeg.on('error', (err) => reject(err));
+            ffmpeg.on('error', (err) => {
+                // Handle spawn errors (e.g., ffmpeg command not found)
+                 console.error('FFmpeg spawn error:', err);
+                 reject(new Error(`FFmpeg failed to start: ${err.message}`));
+             });
 
             ffmpeg.on('close', (code) => {
                 if (code === 0) {
                     console.log(`✅ Captured video: ${outVideoName}`);
                     resolve();
-                } else if (!errorOutput.includes('Cannot allocate memory') && !errorOutput.includes('Invalid argument')) {
+                } else if (deviceNotFoundError) {
+                    // Reject with the specific device error
+                    reject(new Error(`Recording device '${devicePath}' not found or could not be opened.`));
+                } else if (!errorOutput.includes('Cannot allocate memory') && 
+                           !errorOutput.includes('Invalid argument') && 
+                           !errorOutput.includes('buf_len[0] = 0') && 
+                           !errorOutput.includes('Inappropriate ioctl')) {
+                     // Reject with generic error if it wasn't handled by the alternative config logic
+                     // or wasn't the specific device error
                     reject(new Error(`FFmpeg exited with code ${code}`));
+                } else {
+                    // If we are here, it means an error occurred that *should* have triggered 
+                    // the alternative config logic, but that logic might have failed or not rejected.
+                    // Avoid rejecting here to prevent duplicate unhandled rejections if alt config rejects later.
+                    console.warn(`FFmpeg exited with code ${code}, but error was potentially handled by alternative config logic.`);
                 }
             });
         });
