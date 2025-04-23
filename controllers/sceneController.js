@@ -5,6 +5,8 @@ const aiVoice = require('../services/aiVoice');
 const { broadcast, broadcastConsole } = require('../websocket/broadcaster');
 const ffmpegHelper = require('../services/ffmpegHelper');
 const callsheetService = require('../services/callsheetService');
+const CameraControl = require('../services/cameraControl');
+const cameraControl = CameraControl.getInstance();
 
 // globals
 let sceneTakeIndex = 0;
@@ -114,29 +116,75 @@ function actorsReady() {
 }
 
 async function action() {
+    broadcastConsole('Action function started.');
     if (!currentScene) {
-        broadcastConsole('No scene is currently active', 'error');
+        broadcastConsole('Action aborted: No scene active.', 'error');
         return;
     }
 
     const scene = scenes.find(s => s.directory === currentScene);
     if (!scene) {
-        broadcastConsole(`Scene ${currentScene} not found`, 'error');
+        broadcastConsole(`Action aborted: Scene ${currentScene} not found.`, 'error');
         return;
     }
 
     // start recording video
-    broadcastConsole('Starting video recording');
+    broadcastConsole('Initiating video recording sequence...');
 
+    let recordingPromise;
     try {
+        // Determine which camera to use for recording
+        // FIXME: This currently hardcodes 'Camera 1'. Need a better way to select the active camera.
+        const recordingCameraName = 'Camera 1'; 
+        broadcastConsole(`Attempting to get camera: ${recordingCameraName}`);
+        const camera = cameraControl.getCamera(recordingCameraName);
+        
+        if (!camera) {
+            // Log the error before throwing
+            const errorMsg = `Recording camera '${recordingCameraName}' not found.`;
+            broadcastConsole(errorMsg, 'error');
+            throw new Error(errorMsg);
+        }
+        broadcastConsole(`Found camera: ${camera.name}`);
+
+        const recordingDevicePath = camera.getRecordingDevice();
+         broadcastConsole(`Retrieved recording device path for ${camera.name}: ${recordingDevicePath}`); // Log retrieved path
+
+        if (!recordingDevicePath) {
+            const errorMsg = `No recording device configured for camera '${recordingCameraName}'. Please configure it in the UI.`;
+            broadcastConsole(errorMsg, 'error');
+            throw new Error(errorMsg);
+        }
+
+        broadcastConsole(`Attempting to record from: ${recordingCameraName} (${recordingDevicePath})`);
+
         // Record video for the duration of the scene
         const sceneDuration = scene.takes[sceneTakeIndex].duration || 10; // Default to 10 seconds if not specified
+        broadcastConsole(`Scene duration: ${sceneDuration} seconds`);
 
-        // Start FFmpeg recording and wait for it to be ready
-        const recordingPromise = ffmpegHelper.captureVideo(config.videoOriginal, sceneDuration);
+        // Get selected pipeline and resolution (assuming these are set globally or passed differently)
+        // For now, let's assume FFmpeg and default resolution for this specific call
+        // FIXME: How should the pipeline/resolution be determined for the main scene recording?
+        // Defaulting to FFmpeg and 1920x1080 for now.
+        const useFfmpeg = true; // Or get from global state/config
+        const resolution = { width: 1920, height: 1080 }; // Or get from global state/config
+        const recordingHelper = useFfmpeg ? ffmpegHelper : gstreamerHelper;
+        const pipelineName = useFfmpeg ? 'FFmpeg' : 'GStreamer';
 
-        // Wait a short moment to ensure FFmpeg has started recording
+        broadcastConsole(`Using pipeline: ${pipelineName}`);
+
+        // Start FFmpeg recording using the selected device path and wait for it to be ready
+        recordingPromise = recordingHelper.captureVideo(
+            config.videoOriginal, 
+            sceneDuration, 
+            recordingDevicePath, // Pass the selected device path
+            resolution
+        );
+
+        // Wait a short moment to ensure FFmpeg/GStreamer has started recording
+        broadcastConsole('Waiting briefly for recording process to initialize...');
         await new Promise(resolve => setTimeout(resolve, 500));
+        broadcastConsole('Proceeding with scene...');
 
         // aiSpeak the action
         aiVoice.speak("action!");
@@ -182,6 +230,7 @@ async function action() {
         timeline.sort((a, b) => a.timeIn - b.timeIn);
 
         // Play through the timeline
+        broadcastConsole('Starting scene timeline playback...');
         let currentTime = 0;
         timeline.forEach(event => {
             setTimeout(() => {
@@ -203,11 +252,17 @@ async function action() {
         });
 
         // Wait for the recording to complete
-        await recordingPromise;
-        broadcastConsole('Video recording completed');
+        broadcastConsole('Waiting for video recording process to finish...');
+        await recordingPromise; // Now we await the promise
+        broadcastConsole('Video recording process finished successfully.');
+
     } catch (err) {
-        broadcastConsole(`Error during scene recording: ${err.message}`, 'error');
+        // Catch errors from camera setup or the recordingPromise itself
+        broadcastConsole(`Error during scene recording sequence: ${err.message}`, 'error');
+        console.error("Scene Recording Error:", err); // Log full error to server console
+        // Optionally, try to clean up if needed
     }
+    broadcastConsole('Action function finished.');
 }
 
 module.exports = {

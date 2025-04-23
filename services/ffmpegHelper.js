@@ -20,8 +20,14 @@ module.exports = {
      *   -c:v libx264, -pix_fmt yuv420p => standard h264
      *   -c:a aac => audio codec
      *   -b:a 192k => audio bitrate
+     * @param {string} devicePath - Camera device path (Linux/macOS specific)
+     * @param {object} [resolution] - Optional resolution object (unused by ffmpegHelper currently)
+     * @returns {Promise} - Resolves when recording is complete
      */
-    captureVideo(outVideoName, durationSec, devicePath = null) {
+    captureVideo(outVideoName, durationSec, devicePath = null, resolution = null) {
+        // Note: The resolution parameter is accepted for consistency with gstreamerHelper 
+        // but is not currently used in the ffmpeg commands below.
+        // The video_size is hardcoded for Linux.
         return new Promise((resolve, reject) => {
             if (fs.existsSync(outVideoName)) {
                 fs.unlinkSync(outVideoName);
@@ -53,10 +59,11 @@ module.exports = {
                 ];
             } else {
                 // Linux configuration - optimized for camera capture
+                // Try MJPEG first as it's often less memory intensive
                 ffmpegArgs = [
                     '-f', 'v4l2',
                     '-thread_queue_size', '512',
-                    '-input_format', 'yuyv422',
+                    '-input_format', 'mjpeg', // Use MJPEG instead of yuyv422
                     '-video_size', '640x480',
                     '-i', devicePath || '/dev/video0',  // Use provided device path or default
                     '-t', durationSec.toString(),
@@ -94,11 +101,12 @@ module.exports = {
                     console.log('Detected capture issue, trying alternative configuration...');
                     ffmpeg.kill();  // Kill the current process
                     
-                    // Try alternative configuration with different format
+                    // Try alternative configuration - maybe default format detection works better
+                    // Let's try removing explicit input_format to let ffmpeg autodetect
                     const altFfmpegArgs = [
                         '-f', 'v4l2',
                         '-thread_queue_size', '512',
-                        '-input_format', 'yuyv422',
+                       // '-input_format', 'yuyv422', // REMOVED - Let FFmpeg autodetect
                         '-video_size', '640x480',
                         '-i', devicePath || '/dev/video0',
                         '-t', durationSec.toString(),

@@ -149,7 +149,8 @@ router.post('/ptz', (req, res) => {
 // Record video from a specific camera
 router.post('/:cameraName/record', async (req, res) => {
     const { cameraName } = req.params;
-    const { useFfmpeg } = req.query;
+    // Get resolution from query parameters
+    const { useFfmpeg, resolution } = req.query; 
     
     try {
         const camera = cameraControl.getCamera(cameraName);
@@ -162,12 +163,27 @@ router.post('/:cameraName/record', async (req, res) => {
             return res.status(400).json({ success: false, message: `No recording device configured for camera ${cameraName}` });
         }
 
-        const recordingMethod = useFfmpeg === 'true' ? 'ffmpeg' : 'gstreamer';
-        console.log(`Recording from camera: ${cameraName} (${devicePath}) using ${recordingMethod}`);
+        // Parse the resolution string (e.g., "1920x1080")
+        let width = 1920; // Default width
+        let height = 1080; // Default height
+        if (resolution && resolution.includes('x')) {
+            [width, height] = resolution.split('x').map(Number);
+        } else {
+            console.warn(`Invalid or missing resolution: ${resolution}. Defaulting to ${width}x${height}`);
+            // Optionally broadcast a console warning
+            // broadcastConsole(`Warning: Invalid resolution for ${cameraName}, defaulting to ${width}x${height}`, 'warn');
+        }
 
-        // Use GStreamer by default, ffmpeg if explicitly requested
+        const recordingMethod = useFfmpeg === 'true' ? 'ffmpeg' : 'gstreamer';
+        console.log(`Recording from camera: ${cameraName} (${devicePath}) using ${recordingMethod} at ${width}x${height}`);
+
+        // Choose the appropriate helper based on the method
         const recordingHelper = useFfmpeg === 'true' ? ffmpegHelper : gstreamerHelper;
-        await recordingHelper.captureVideo(config.tempRecord, 10, devicePath);
+
+        // Pass the parsed width and height to the captureVideo function
+        await recordingHelper.captureVideo(config.tempRecord, 10, devicePath, { width, height });
+        
+        // The rest of the processing remains the same
         await ffmpegHelper.extractFrames(config.tempRecord, config.framesRawDir);
         await poseTracker.processFrames(config.framesRawDir, config.framesOverlayDir);
         await ffmpegHelper.encodeVideo(config.framesRawDir, config.videoOriginal);

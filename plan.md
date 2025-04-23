@@ -6,7 +6,7 @@ The AI-Directed Performance System is an interactive, real-time performance tool
 
 ### **Core Functionalities**
 
-#### **1. Intake App**
+#### **1. Intake App** (this is in a separate repository)
 
 - Upon entering the space, participants scan a **QR code** that takes them to a **web-based Intake App**.
 - The app collects basic information: **photo, name, and a short acting exercise** (e.g., "act sad and say this line").

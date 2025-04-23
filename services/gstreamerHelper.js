@@ -8,20 +8,28 @@ module.exports = {
      * @param {string} outVideoName - Output video file path
      * @param {number} durationSec - Duration in seconds
      * @param {string} devicePath - Camera device path
+     * @param {object} [resolution={width: 1920, height: 1080}] - Optional resolution object
      * @returns {Promise} - Resolves when recording is complete
      */
-    captureVideo(outVideoName, durationSec, devicePath) {
+    captureVideo(outVideoName, durationSec, devicePath, resolution = { width: 1920, height: 1080 }) {
         return new Promise((resolve, reject) => {
             if (fs.existsSync(outVideoName)) {
                 fs.unlinkSync(outVideoName);
             }
 
-            // Build the GStreamer pipeline with improved settings
+            // Ensure resolution has valid defaults if partially provided or invalid
+            const resWidth = (resolution && resolution.width) ? resolution.width : 1920;
+            const resHeight = (resolution && resolution.height) ? resolution.height : 1080;
+
+            // Build the GStreamer pipeline using the provided resolution
             const pipeline = [
                 'v4l2src',
                 `device=${devicePath}`,
                 '!',
-                'video/x-raw,format=I420,width=3840,height=2160,framerate=30/1',
+                // Request MJPEG at the specified resolution
+                `image/jpeg,width=${resWidth},height=${resHeight},framerate=30/1`,
+                '!',
+                'jpegdec', // Decode the JPEG stream
                 '!',
                 'videoconvert',
                 '!',

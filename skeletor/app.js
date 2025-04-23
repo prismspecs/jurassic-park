@@ -1,20 +1,3 @@
-// Conditionally import TensorFlow.js backend
-let tf;
-try {
-  tf = await import('@tensorflow/tfjs-node-gpu');
-  console.log('Using @tensorflow/tfjs-node-gpu backend.');
-  // Optional: Verify GPU availability after import
-  await tf.ready();
-  if (tf.getBackend() !== 'tensorflow' || !tf.env().features['IS_GPU_AVAILABLE']) {
-    console.warn('GPU backend loaded, but GPU acceleration might not be available. Check CUDA/cuDNN setup.');
-  }
-} catch (error) {
-  console.warn('Could not load @tensorflow/tfjs-node-gpu, falling back to @tensorflow/tfjs-node (CPU/Metal).');
-  tf = await import('@tensorflow/tfjs-node');
-  console.log('Using @tensorflow/tfjs-node backend.');
-  await tf.ready(); // Ensure CPU backend is ready
-}
-
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import fs from 'fs';
 import { createCanvas, loadImage } from 'canvas';
@@ -25,12 +8,47 @@ import os from 'os';
 import { promisify } from 'util';
 const ffprobe = promisify(ffmpeg.ffprobe);
 
+let tf; // Declare tf here to be accessible within the function scope
+
 export async function extractPeopleFromVideo(
     inputPath,
     outputPath,
     thickness = 20,
     threadUsagePercentage = 90
 ) {
+    // Conditionally load TensorFlow backend inside the async function
+    if (!tf) { // Load only once
+        try {
+            tf = await import('@tensorflow/tfjs-node-gpu');
+            console.log('Attempting to use @tensorflow/tfjs-node-gpu backend.');
+            try {
+                // Try to initialize the GPU backend
+                await tf.ready();
+                if (tf.getBackend() === 'tensorflow' && tf.env().features['IS_GPU_AVAILABLE']) {
+                    console.log('Successfully initialized GPU backend.');
+                } else {
+                     // GPU package loaded but acceleration isn't available/verified
+                    console.warn('GPU backend loaded, but GPU acceleration could not be verified. Falling back to CPU.');
+                    throw new Error('GPU acceleration verification failed'); // Force fallback
+                }
+            } catch (initError) {
+                 // Catch errors during tf.ready() or the check
+                console.error('Error initializing GPU backend:', initError.message);
+                console.warn('Falling back to @tensorflow/tfjs-node (CPU/Metal).');
+                // Force loading the CPU backend
+                tf = await import('@tensorflow/tfjs-node');
+                console.log('Using @tensorflow/tfjs-node backend after GPU init failure.');
+                await tf.ready(); // Ensure CPU backend is ready
+            }
+        } catch (importError) {
+             // Catch errors during the initial import() call
+            console.warn('Could not load @tensorflow/tfjs-node-gpu, falling back to @tensorflow/tfjs-node (CPU/Metal).');
+            tf = await import('@tensorflow/tfjs-node');
+            console.log('Using @tensorflow/tfjs-node backend.');
+            await tf.ready();
+        }
+    }
+
     console.log('Initializing pose detector...');
     const detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet);
 

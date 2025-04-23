@@ -24,6 +24,11 @@ router.get('/', async (req, res) => {
 // Character-specific teleprompter page
 router.get('/:character', async (req, res) => {
     try {
+        // We no longer need to check for the scene or character here.
+        // The client-side JS in characterTeleprompter.ejs will fetch the current scene
+        // and display the appropriate message ("Wait for scene..." or the video).
+
+        /* // REMOVED THIS BLOCK
         const character = req.params.character;
 
         // Check if there's a current scene
@@ -42,7 +47,9 @@ router.get('/:character', async (req, res) => {
         if (!characterExists) {
             return res.status(404).send('Character not found in current scene');
         }
+        */
 
+        // Always send the HTML. The client will handle the state.
         const html = await buildCharacterTeleprompterHTML();
         res.send(html);
     } catch (error) {

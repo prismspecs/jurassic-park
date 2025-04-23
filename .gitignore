@@ -13,7 +13,7 @@ dist/
 
 # Media Files
 *.mp4
-movie.mp4
+*.webm
 
 # Sensitive Data
 auth.json

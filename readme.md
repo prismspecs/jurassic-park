@@ -9,6 +9,9 @@ sudo apt install v4l-utils  # for OSBOT PITZ camera controls
 sudo apt install v4l2loopback-dkms v4l2loopback-utils   # for virtual cameras
 ```
 
+Install CUDA
+https://docs.nvidia.com/cuda/cuda-installation-guide-linux/#network-repo-installation-for-ubuntu
+
 Mac
 Install [uvc-util](https://github.com/jtfrey/uvc-util)
 

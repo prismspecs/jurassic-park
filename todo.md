@@ -1,12 +1,9 @@
 ## to do
 
-- remove unncessary things
+- Teleprompter
 
-- camera stuff
-
-  - fix recording (it is using the wrong sort of device ID)
-
-- actor telepromter reads no scene is loaded until the scene starts but it should refresh or whatever when it begins
+  - actor telepromter reads no scene is loaded until the scene starts but it should refresh or whatever when it begins
+  - For the main teleprompter at localhost:3000/teleprompter/: When people are called to the stage it should show their faces above the character name, and then below that a QR code underneath. The QR code leads to that character's teleprompter (ie, localhost:3000/teleprompter/alan) so that participants can easily utilize it.
 
 - capture video from actor phones
 
@@ -20,7 +17,7 @@
     - with Above and Underneath these are shot as a separate take
     - there is also a final separate take for each dinosaur
 
-- use skeletal tracking to cut actors out
+- remove unncessary things
 
 ## Scene Recording
 
