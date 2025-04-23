@@ -43,10 +43,12 @@ function initScene(directory) {
         callActors(scene);
     }, config.waitTime);
 
+    // Broadcast status update to teleprompters
     broadcast({
-        type: 'SHOT_START',
-        scene: scene,
+        type: 'TELEPROMPTER_STATUS',
+        message: 'Scene Initializing...',
     });
+    broadcastConsole(`Broadcasted TELEPROMPTER_STATUS: Scene Initializing...`);
 }
 
 function callActors(scene) {
@@ -190,6 +192,14 @@ async function action() {
         broadcastConsole('Waiting briefly for recording process to initialize...');
         await new Promise(resolve => setTimeout(resolve, 500));
         broadcastConsole('Proceeding with scene...');
+
+        // --- Broadcast SHOT_START to signal teleprompters etc. ---
+        broadcast({
+            type: 'SHOT_START',
+            scene: scene, // Send the full scene object
+        });
+        broadcastConsole(`Broadcasted SHOT_START for scene: ${scene.directory}`);
+        // ------------------------------------------------------
 
         // aiSpeak the action
         aiVoice.speak("action!");

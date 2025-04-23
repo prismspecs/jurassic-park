@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { buildTeleprompterHTML, buildCharacterTeleprompterHTML } = require('../views/teleprompterView');
-const { broadcast } = require('../websocket/broadcaster');
+const { broadcast, broadcastTeleprompterStatus } = require('../websocket/broadcaster');
 const { scenes } = require('../services/sceneService');
 const { getCurrentScene } = require('../controllers/sceneController');
 
@@ -90,6 +90,17 @@ router.post('/playTeleprompterVideo', express.json(), (req, res) => {
     });
 
     res.json({ success: true, message: 'Video playback started' });
+});
+
+// Send a status update message to all character teleprompters
+router.post('/status', express.json(), (req, res) => {
+    const { message } = req.body;
+    if (message === undefined || message === null) {
+        return res.status(400).json({ success: false, message: "Missing 'message' in request body" });
+    }
+    // Use the specific broadcast function
+    broadcastTeleprompterStatus(String(message)); 
+    res.json({ success: true, message: 'Teleprompter status updated' });
 });
 
 module.exports = router; 

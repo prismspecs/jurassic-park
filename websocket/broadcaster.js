@@ -39,4 +39,12 @@ function broadcastConsole(message, level = 'info') {
     });
 }
 
-module.exports = { broadcast, broadcastConsole }; 
+function broadcastTeleprompterStatus(message) {
+    console.log(`Broadcasting teleprompter status: ${message}`);
+    broadcast({
+        type: 'TELEPROMPTER_STATUS',
+        message: message
+    });
+}
+
+module.exports = { broadcast, broadcastConsole, broadcastTeleprompterStatus }; 

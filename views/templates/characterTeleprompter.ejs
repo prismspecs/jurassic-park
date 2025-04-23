@@ -151,6 +151,27 @@
               "Scene ended or system reset, showing waiting message."
             );
             showWaitingMessage(); // Go back to waiting state
+          } else if (data.type === "TELEPROMPTER_STATUS") {
+            // Handle status updates
+            console.log("TELEPROMPTER_STATUS received:", data.message);
+            // Use the showWaitingMessage function structure, but update the text
+            let statusDiv = document.getElementById("status-message");
+            if (!statusDiv) {
+              // If the status div doesn't exist (e.g., video was playing), create it
+              statusDiv = document.createElement("div");
+              statusDiv.id = "status-message";
+              statusDiv.style.color = "white";
+              statusDiv.style.textAlign = "center";
+              statusDiv.style.padding = "40px 20px";
+              statusDiv.style.fontSize = "24px";
+              statusDiv.style.fontFamily = "sans-serif";
+              document.body.innerHTML = ""; // Clear previous content
+              document.body.appendChild(statusDiv);
+              const videoContainer = document.getElementById("video-container");
+              if (videoContainer) videoContainer.style.display = "none"; // Hide video container
+            }
+            // Update the text content
+            statusDiv.textContent = data.message;
           }
         } catch (e) {
           console.error(
