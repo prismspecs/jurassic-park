@@ -1,31 +1,99 @@
-import * as tf from '@tensorflow/tfjs-node';
+// Conditionally import TensorFlow.js backend
+let tf;
+try {
+  tf = await import('@tensorflow/tfjs-node-gpu');
+  console.log('Using @tensorflow/tfjs-node-gpu backend.');
+  // Optional: Verify GPU availability after import
+  await tf.ready();
+  if (tf.getBackend() !== 'tensorflow' || !tf.env().features['IS_GPU_AVAILABLE']) {
+    console.warn('GPU backend loaded, but GPU acceleration might not be available. Check CUDA/cuDNN setup.');
+  }
+} catch (error) {
+  console.warn('Could not load @tensorflow/tfjs-node-gpu, falling back to @tensorflow/tfjs-node (CPU/Metal).');
+  tf = await import('@tensorflow/tfjs-node');
+  console.log('Using @tensorflow/tfjs-node backend.');
+  await tf.ready(); // Ensure CPU backend is ready
+}
+
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import fs from 'fs';
 import { createCanvas, loadImage } from 'canvas';
 import ffmpeg from 'fluent-ffmpeg';
-import cliProgress from 'cli-progress';
+import os from 'os';
 
-export async function extractPeopleFromVideo(inputPath, outputPath, thickness = 20) {
+// Promisify ffprobe
+import { promisify } from 'util';
+const ffprobe = promisify(ffmpeg.ffprobe);
+
+export async function extractPeopleFromVideo(
+    inputPath,
+    outputPath,
+    thickness = 20,
+    threadUsagePercentage = 90
+) {
     console.log('Initializing pose detector...');
     const detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet);
 
-    // Extract frames from the video (high-res)
+    // Calculate available threads based on percentage
+    const totalCores = os.cpus().length;
+    const safePercentage = Math.max(1, Math.min(100, threadUsagePercentage)); // Clamp between 1 and 100
+    const calculatedThreads = Math.max(1, Math.floor(totalCores * (safePercentage / 100))); // Use at least 1 thread
+    console.log(`Using ${calculatedThreads} threads (${safePercentage}% of ${totalCores} available cores) for ffmpeg.`);
+
+    // Define temporary directories
     const framesDir = './frames';
     const lowResFramesDir = './frames_lowres';
+
+    // Clean up temporary directories from previous runs using fs.promises.rmdir
+    console.log('Cleaning up any existing temporary frame directories...');
+    try {
+        await fs.promises.rmdir(framesDir, { recursive: true });
+    } catch (err) {
+        if (err.code !== 'ENOENT') throw err; // Ignore if directory doesn't exist
+    }
+    try {
+        await fs.promises.rmdir(lowResFramesDir, { recursive: true });
+    } catch (err) {
+        if (err.code !== 'ENOENT') throw err; // Ignore if directory doesn't exist
+    }
+
+    // Ensure temporary directories exist
     if (!fs.existsSync(framesDir)) fs.mkdirSync(framesDir);
     if (!fs.existsSync(lowResFramesDir)) fs.mkdirSync(lowResFramesDir);
 
+    // Get video duration to estimate total output frames at target FPS
+    let totalOutputFrames = 0;
+    const targetFps = 30;
+    try {
+        const metadata = await ffprobe(inputPath);
+        const videoStream = metadata.streams.find(s => s.codec_type === 'video');
+        if (videoStream && videoStream.duration) {
+            const duration = parseFloat(videoStream.duration);
+            totalOutputFrames = Math.ceil(duration * targetFps);
+            console.log(`Video duration: ${duration}s. Expecting ~${totalOutputFrames} frames at ${targetFps}fps.`);
+        } else {
+            console.warn('Could not determine video duration from metadata. Progress will not show total.');
+        }
+    } catch (err) {
+        console.error('Error getting video metadata:', err);
+        console.warn('Could not determine total frames. Progress will not show total.');
+    }
+
+    // Extract frames from the video (high-res)
     console.log('Extracting high-res frames from video...');
     await new Promise((resolve, reject) => {
         let lastFrame = 0;
         ffmpeg(inputPath)
             .outputOptions('-vf', 'fps=30')
-            .outputOptions('-threads', '4')
+            .outputOptions('-threads', `${calculatedThreads}`)
             .save(`${framesDir}/frame%04d.png`)
             .on('progress', progress => {
                 if (progress.frames && progress.frames !== lastFrame) {
                     lastFrame = progress.frames;
-                    process.stdout.write(`\r  High-res frames extracted: ${progress.frames}`);
+                    const progressMessage = totalOutputFrames > 0
+                        ? `\r  Extracting high-res frame: ${progress.frames} / ${totalOutputFrames}`
+                        : `\r  Extracting high-res frame: ${progress.frames}`;
+                    process.stdout.write(progressMessage);
                 }
             })
             .on('end', () => {
@@ -44,12 +112,12 @@ export async function extractPeopleFromVideo(inputPath, outputPath, thickness = 
         let lastFrame = 0;
         ffmpeg(inputPath)
             .outputOptions('-vf', 'fps=30,scale=256:-1')
-            .outputOptions('-threads', '4')
+            .outputOptions('-threads', `${calculatedThreads}`)
             .save(`${lowResFramesDir}/frame%04d.png`)
             .on('progress', progress => {
                 if (progress.frames && progress.frames !== lastFrame) {
                     lastFrame = progress.frames;
-                    process.stdout.write(`\r  Low-res frames extracted: ${progress.frames}`);
+                    process.stdout.write(`\r  Extracting low-res frame: ${progress.frames}`);
                 }
             })
             .on('end', () => {
@@ -63,25 +131,31 @@ export async function extractPeopleFromVideo(inputPath, outputPath, thickness = 
             });
     });
 
-    const frameFiles = fs.readdirSync(framesDir).filter(file => file.endsWith('.png'));
-    const lowResFrameFiles = fs.readdirSync(lowResFramesDir).filter(file => file.endsWith('.png'));
+    const frameFiles = fs.readdirSync(framesDir).filter(file => file.endsWith('.png')).sort(); // Sort files
 
     console.log('Processing frames and applying skeletal mask...');
-    // Progress bar setup
-    const bar = new cliProgress.SingleBar({
-        format: 'Processing frames [{bar}] {percentage}% | {value}/{total} frames',
-        hideCursor: true
-    }, cliProgress.Presets.shades_classic);
-    bar.start(frameFiles.length, 0);
-
-    for (let i = 0; i < frameFiles.length; i++) {
-        const frameFile = frameFiles[i];
-        const lowResFrameFile = lowResFrameFiles[i];
+    const totalFramesToProcess = frameFiles.length;
+    for (let i = 0; i < totalFramesToProcess; i++) {
+        const frameFile = frameFiles[i]; // Get high-res filename (e.g., frame0001.png)
         const framePath = `${framesDir}/${frameFile}`;
-        const lowResFramePath = `${lowResFramesDir}/${lowResFrameFile}`;
+        const lowResFramePath = `${lowResFramesDir}/${frameFile}`; // Construct corresponding low-res path
 
-        // Load low-res image for pose detection
-        const lowResImage = await loadImage(lowResFramePath);
+        // Check if the corresponding low-res frame exists
+        if (!fs.existsSync(lowResFramePath)) {
+            console.warn(`\nSkipping frame ${i + 1}: Corresponding low-res frame not found at ${lowResFramePath}`);
+            continue; // Skip this iteration if low-res frame is missing
+        }
+
+        let lowResImage, image;
+        try {
+            // Load low-res image for pose detection
+            lowResImage = await loadImage(lowResFramePath);
+        } catch (error) {
+            console.error(`\nError loading low-res image: ${lowResFramePath}`);
+            console.error(error);
+            throw error; // Re-throw to stop execution
+        }
+
         const lowResCanvas = createCanvas(lowResImage.width, lowResImage.height);
         const lowResCtx = lowResCanvas.getContext('2d');
         lowResCtx.drawImage(lowResImage, 0, 0);
@@ -89,6 +163,7 @@ export async function extractPeopleFromVideo(inputPath, outputPath, thickness = 
         // Detect poses in the low-res frame
         const inputTensor = tf.browser.fromPixels(lowResCanvas);
         const poses = await detector.estimatePoses(inputTensor);
+        inputTensor.dispose(); // Dispose tensor
 
         // Create a low-res mask for detected people
         lowResCtx.clearRect(0, 0, lowResCanvas.width, lowResCanvas.height);
@@ -123,11 +198,40 @@ export async function extractPeopleFromVideo(inputPath, outputPath, thickness = 
                     lowResCtx.fill();
                 }
             });
+
+            // Fill the torso area if all keypoints are detected
+            const leftShoulder = pose.keypoints[5];
+            const rightShoulder = pose.keypoints[6];
+            const leftHip = pose.keypoints[11];
+            const rightHip = pose.keypoints[12];
+
+            if (
+                leftShoulder && leftShoulder.score > 0.5 &&
+                rightShoulder && rightShoulder.score > 0.5 &&
+                leftHip && leftHip.score > 0.5 &&
+                rightHip && rightHip.score > 0.5
+            ) {
+                lowResCtx.beginPath();
+                lowResCtx.moveTo(leftShoulder.x, leftShoulder.y);
+                lowResCtx.lineTo(rightShoulder.x, rightShoulder.y);
+                lowResCtx.lineTo(rightHip.x, rightHip.y);
+                lowResCtx.lineTo(leftHip.x, leftHip.y);
+                lowResCtx.closePath();
+                lowResCtx.fillStyle = 'white';
+                lowResCtx.fill();
+            }
         });
         const lowResMask = lowResCtx.getImageData(0, 0, lowResCanvas.width, lowResCanvas.height);
 
-        // Load high-res frame
-        const image = await loadImage(framePath);
+        try {
+            // Load high-res frame
+            image = await loadImage(framePath);
+        } catch (error) {
+            console.error(`\nError loading high-res image: ${framePath}`);
+            console.error(error);
+            throw error; // Re-throw to stop execution
+        }
+
         const canvas = createCanvas(image.width, image.height);
         const ctx = canvas.getContext('2d');
         ctx.drawImage(image, 0, 0);
@@ -151,9 +255,9 @@ export async function extractPeopleFromVideo(inputPath, outputPath, thickness = 
         const outputFramePath = `${framesDir}/masked_${frameFile}`;
         fs.writeFileSync(outputFramePath, canvas.toBuffer('image/png'));
 
-        bar.increment();
+        process.stdout.write(`\r  Processing frame ${i + 1} / ${totalFramesToProcess}`);
     }
-    bar.stop();
+    process.stdout.write('\n');
     console.log('Finished processing frames.');
 
     // Determine output format and file extension
@@ -167,6 +271,9 @@ export async function extractPeopleFromVideo(inputPath, outputPath, thickness = 
 
     console.log('Combining processed frames into output video...');
     await new Promise((resolve, reject) => {
+        let lastFrame = 0;
+        const totalFramesToCombine = frameFiles.length;
+
         ffmpeg()
             .input(`${framesDir}/masked_frame%04d.png`)
             .inputOptions('-framerate', '30')
@@ -174,12 +281,24 @@ export async function extractPeopleFromVideo(inputPath, outputPath, thickness = 
             .outputOptions('-pix_fmt', 'yuva420p') // Ensure alpha channel is preserved
             .outputOptions('-auto-alt-ref', '0') // Required for alpha in VP9
             .save(outputPath)
-            .on('end', resolve)
-            .on('error', reject);
+            .on('progress', progress => {
+                if (progress.frames && progress.frames !== lastFrame) {
+                    lastFrame = progress.frames;
+                    process.stdout.write(`\r  Combining frame ${lastFrame} / ${totalFramesToCombine}`);
+                }
+            })
+            .on('end', () => {
+                process.stdout.write('\n');
+                resolve();
+            })
+            .on('error', err => {
+                process.stdout.write('\n');
+                reject(err);
+            });
     });
 
     console.log('Cleaning up temporary files...');
-    fs.rmSync(framesDir, { recursive: true, force: true });
-    fs.rmSync(lowResFramesDir, { recursive: true, force: true });
+    await fs.promises.rmdir(framesDir, { recursive: true });
+    await fs.promises.rmdir(lowResFramesDir, { recursive: true });
     console.log('Done! Output saved to', outputPath);
 }
