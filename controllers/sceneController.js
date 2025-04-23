@@ -7,6 +7,8 @@ const ffmpegHelper = require('../services/ffmpegHelper');
 const callsheetService = require('../services/callsheetService');
 const CameraControl = require('../services/cameraControl');
 const cameraControl = CameraControl.getInstance();
+const poseTracker = require('../services/poseTracker');
+const path = require('path');
 
 // globals
 let sceneTakeIndex = 0;
@@ -139,20 +141,23 @@ async function action() {
         broadcastConsole(`Attempting to get camera: ${recordingCameraName}`);
         const camera = cameraControl.getCamera(recordingCameraName);
         
+        // === Specific Error Handling for Missing Camera ===
         if (!camera) {
-            // Log the error before throwing
-            const errorMsg = `Recording camera '${recordingCameraName}' not found.`;
+            const errorMsg = `Error: Recording camera '${recordingCameraName}' is required but has not been added. Please add it via the Camera Controls section.`;
             broadcastConsole(errorMsg, 'error');
-            throw new Error(errorMsg);
+            return; // Stop the action function here
         }
+        // ================================================
+
         broadcastConsole(`Found camera: ${camera.name}`);
 
         const recordingDevicePath = camera.getRecordingDevice();
          broadcastConsole(`Retrieved recording device path for ${camera.name}: ${recordingDevicePath}`); // Log retrieved path
 
         if (!recordingDevicePath) {
-            const errorMsg = `No recording device configured for camera '${recordingCameraName}'. Please configure it in the UI.`;
+            const errorMsg = `Error: No recording device configured for camera '${recordingCameraName}'. Please configure it in the UI.`;
             broadcastConsole(errorMsg, 'error');
+            // Throwing error here is okay, as the camera exists but isn't configured
             throw new Error(errorMsg);
         }
 
@@ -256,8 +261,23 @@ async function action() {
         await recordingPromise; // Now we await the promise
         broadcastConsole('Video recording process finished successfully.');
 
+        // ---- Add Pose Processing Steps ----
+        broadcastConsole('Starting pose processing...');
+        const RAW_DIR = path.join(__dirname, '..', config.framesRawDir);
+        const OVERLAY_DIR = path.join(__dirname, '..', config.framesOverlayDir);
+        const OUT_ORIG = config.videoOriginal; // Already defined in config
+        const OUT_OVER = config.videoOverlay; // Already defined in config
+
+        await ffmpegHelper.extractFrames(OUT_ORIG, RAW_DIR);
+        broadcastConsole('Frames extracted.');
+        await poseTracker.processFrames(RAW_DIR, OVERLAY_DIR);
+        broadcastConsole('Pose tracking complete.');
+        await ffmpegHelper.encodeVideo(OVERLAY_DIR, OUT_OVER);
+        broadcastConsole(`Overlay video created: ${OUT_OVER}`);
+        // ---- End Pose Processing Steps ----
+
     } catch (err) {
-        // Catch errors from camera setup or the recordingPromise itself
+        // Catch errors from camera setup (like missing device path) or the recording/processing steps
         broadcastConsole(`Error during scene recording sequence: ${err.message}`, 'error');
         console.error("Scene Recording Error:", err); // Log full error to server console
         // Optionally, try to clean up if needed
