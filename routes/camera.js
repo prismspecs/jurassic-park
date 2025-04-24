@@ -180,17 +180,23 @@ router.post('/ptz', (req, res) => {
 // Record video from a specific camera
 router.post('/:cameraName/record', async (req, res) => {
     const { cameraName } = req.params;
-    // Get resolution from query parameters
-    const { useFfmpeg, resolution } = req.query; 
-    
+    const { useFfmpeg, resolution } = req.query;
+
     try {
+        console.log(`[Record Route] Handling request for: ${cameraName}`); // Log entry
         const camera = cameraControl.getCamera(cameraName);
         if (!camera) {
+            console.error(`[Record Route] Camera not found: ${cameraName}`);
             return res.status(404).json({ success: false, message: `Camera ${cameraName} not found` });
         }
+        console.log(`[Record Route] Found camera instance for ${cameraName}`); // Log instance found
 
         const devicePath = camera.getRecordingDevice();
-        if (!devicePath) {
+        // Log the device path IMMEDIATELY after getting it
+        console.log(`[Record Route] Retrieved recording device ID from instance: ${devicePath}`);
+
+        if (!devicePath && devicePath !== 0) { // Allow index 0
+            console.error(`[Record Route] No recording device configured for ${cameraName}`);
             return res.status(400).json({ success: false, message: `No recording device configured for camera ${cameraName}` });
         }
 
@@ -200,34 +206,32 @@ router.post('/:cameraName/record', async (req, res) => {
         if (resolution && resolution.includes('x')) {
             [width, height] = resolution.split('x').map(Number);
         } else {
-            console.warn(`Invalid or missing resolution: ${resolution}. Defaulting to ${width}x${height}`);
-            // Optionally broadcast a console warning
-            // broadcastConsole(`Warning: Invalid resolution for ${cameraName}, defaulting to ${width}x${height}`, 'warn');
+            console.warn(`[Record Route] Invalid resolution '${resolution}', defaulting.`);
         }
 
         const recordingMethod = useFfmpeg === 'true' ? 'ffmpeg' : 'gstreamer';
-        console.log(`Recording from camera: ${cameraName} (${devicePath}) using ${recordingMethod} at ${width}x${height}`);
+        console.log(`[Record Route] Recording from camera: ${cameraName} (ID: ${devicePath}) using ${recordingMethod} at ${width}x${height}`);
 
         // Choose the appropriate helper based on the method
         const recordingHelper = useFfmpeg === 'true' ? ffmpegHelper : gstreamerHelper;
 
         // Pass the parsed width and height to the captureVideo function
         await recordingHelper.captureVideo(config.tempRecord, 10, devicePath, { width, height });
-        
+
         // The rest of the processing remains the same
+        console.log(`[Record Route] Processing recorded video for ${cameraName}`);
         await ffmpegHelper.extractFrames(config.tempRecord, config.framesRawDir);
         await poseTracker.processFrames(config.framesRawDir, config.framesOverlayDir);
-        await ffmpegHelper.encodeVideo(config.framesRawDir, config.videoOriginal);
         await ffmpegHelper.encodeVideo(config.framesOverlayDir, config.videoOverlay);
+        console.log(`[Record Route] Processing complete for ${cameraName}`);
 
         res.json({
             success: true,
             message: 'Video recorded and pose processed!',
-            originalName: config.videoOriginal,
             overlayName: config.videoOverlay
         });
     } catch (err) {
-        console.error(err);
+        console.error(`[Record Route] Error during recording for ${cameraName}:`, err);
         res.status(500).json({ success: false, message: err.message });
     }
 });

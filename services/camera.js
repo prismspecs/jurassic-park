@@ -65,7 +65,9 @@ class Camera {
     }
 
     setRecordingDevice(devicePath) {
+        console.log(`[Camera Instance ${this.name}] setRecordingDevice called with: ${devicePath}`);
         this.recordingDevice = devicePath;
+        console.log(`[Camera Instance ${this.name}] this.recordingDevice is now: ${this.recordingDevice}`);
     }
 
     setPTZDevice(deviceId) {

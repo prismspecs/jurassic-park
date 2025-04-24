@@ -23,10 +23,10 @@ async function recordVideo(req, res) {
             // Need a concept of a default or globally selected recording camera.
             // For now, defaulting to 'Camera 1' as a placeholder.
             // throw new Error('No camera specified. Please select a camera first.');
-             const defaultCameraName = 'Camera 1';
-             console.warn(`No camera name specified in request, defaulting to ${defaultCameraName}`);
-             broadcastConsole(`Warning: No camera specified, defaulting to ${defaultCameraName}`, 'warn');
-             req.query.cameraName = defaultCameraName; // Inject for later use
+            const defaultCameraName = 'Camera 1';
+            console.warn(`No camera name specified in request, defaulting to ${defaultCameraName}`);
+            broadcastConsole(`Warning: No camera specified, defaulting to ${defaultCameraName}`, 'warn');
+            req.query.cameraName = defaultCameraName; // Inject for later use
         }
 
         const camera = cameraControl.getCamera(req.query.cameraName);
@@ -38,7 +38,7 @@ async function recordVideo(req, res) {
         if (!devicePath) {
             throw new Error(`No recording device configured for camera ${req.query.cameraName}.`);
         }
-        
+
         // Parse the resolution string (e.g., "1920x1080")
         let width = 1920; // Default width
         let height = 1080; // Default height
@@ -57,20 +57,18 @@ async function recordVideo(req, res) {
 
         // Pass the parsed width and height to the captureVideo function
         await recordingHelper.captureVideo(TEMP_RECORD, 10, devicePath, { width, height });
-        
+
         // The rest of the processing remains the same
         await ffmpegHelper.extractFrames(TEMP_RECORD, RAW_DIR);
         await poseTracker.processFrames(RAW_DIR, OVERLAY_DIR);
-        await ffmpegHelper.encodeVideo(RAW_DIR, OUT_ORIG);
         await ffmpegHelper.encodeVideo(OVERLAY_DIR, OUT_OVER);
 
         // use broadcastConsole to print the name of the video files and that it has started
-        broadcastConsole(`Video recording started: ${OUT_ORIG} and ${OUT_OVER}`);
+        broadcastConsole(`Video recording started: ${OUT_OVER}`);
 
         res.json({
             success: true,
             message: 'Video recorded and pose processed!',
-            originalName: OUT_ORIG,
             overlayName: OUT_OVER
         });
     } catch (err) {

@@ -13,12 +13,25 @@ let detector = null;
 
 /** loadModels => MoveNet */
 async function loadModels() {
-    console.log("🧠 Loading pose detection model (MoveNet)...");
-    detector = await poseDetection.createDetector(
-        poseDetection.SupportedModels.MoveNet,
-        { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
-    );
-    console.log("✅ Pose detection model loaded!");
+    if (detector) {
+        console.log("🧠 Pose detection model already loaded.");
+        return;
+    }
+    console.log("🧠 Loading pose detection model (MoveNet)... This might take a moment.");
+    try {
+        console.log("   Attempting poseDetection.createDetector...");
+        const startTime = Date.now();
+        detector = await poseDetection.createDetector(
+            poseDetection.SupportedModels.MoveNet,
+            { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+        );
+        const duration = (Date.now() - startTime) / 1000;
+        console.log(`✅ Pose detection model loaded successfully in ${duration.toFixed(2)} seconds!`);
+    } catch (error) {
+        console.error("❌ FAILED to load pose detection model:", error);
+        // Re-throw the error so the initialization process knows it failed
+        throw error;
+    }
 }
 
 /**

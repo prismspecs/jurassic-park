@@ -1,79 +1,124 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os'); // Import os module
 
 module.exports = {
     /**
      * captureVideo: Records video using GStreamer
      * @param {string} outVideoName - Output video file path
      * @param {number} durationSec - Duration in seconds
-     * @param {string} devicePath - Camera device path
+     * @param {string|number} serverDeviceId - Camera device path (Linux) or index (macOS)
      * @param {object} [resolution={width: 1920, height: 1080}] - Optional resolution object
      * @returns {Promise} - Resolves when recording is complete
      */
-    captureVideo(outVideoName, durationSec, devicePath, resolution = { width: 1920, height: 1080 }) {
+    captureVideo(outVideoName, durationSec, serverDeviceId, resolution = { width: 1920, height: 1080 }) {
         return new Promise((resolve, reject) => {
+            const platform = os.platform();
+
             if (fs.existsSync(outVideoName)) {
                 fs.unlinkSync(outVideoName);
             }
 
-            // Ensure resolution has valid defaults if partially provided or invalid
             const resWidth = (resolution && resolution.width) ? resolution.width : 1920;
             const resHeight = (resolution && resolution.height) ? resolution.height : 1080;
 
-            // Build the GStreamer pipeline using the provided resolution
-            const pipeline = [
-                'v4l2src',
-                `device=${devicePath}`,
-                '!',
-                // Request MJPEG at the specified resolution
-                `image/jpeg,width=${resWidth},height=${resHeight},framerate=30/1`,
-                '!',
-                'jpegdec', // Decode the JPEG stream
-                '!',
-                'videoconvert',
-                '!',
-                'videorate',
-                '!',
-                'x264enc',
-                'tune=zerolatency',
-                'bitrate=8000',
-                'speed-preset=ultrafast',
-                'key-int-max=30',
-                '!',
-                'mp4mux',
-                '!',
-                `filesink location=${outVideoName}`
-            ].join(' ');
+            let pipelineElements = [];
+            let sourceElementName = '';
 
-            console.log(`Starting GStreamer capture for ${durationSec} sec from ${devicePath} => ${outVideoName}`);
-            console.log(`GStreamer pipeline: ${pipeline}`);
+            // --- Platform specific pipeline construction ---
+            if (platform === 'linux') {
+                sourceElementName = 'v4l2src';
+                if (typeof serverDeviceId !== 'string' || !serverDeviceId.startsWith('/dev/video')) {
+                    return reject(new Error(`Invalid Linux device path provided to GStreamer: ${serverDeviceId}`));
+                }
+                pipelineElements = [
+                    `${sourceElementName} device=${serverDeviceId}`,
+                    '!',
+                    // Request MJPEG at the specified resolution (Common for webcams)
+                    `image/jpeg,width=${resWidth},height=${resHeight},framerate=30/1`,
+                    '!',
+                    'jpegdec',
+                    '!',
+                    'videoconvert',
+                    '!',
+                    'videorate',
+                    '!',
+                    'x264enc tune=zerolatency bitrate=8000 speed-preset=ultrafast key-int-max=30',
+                    '!',
+                    'mp4mux',
+                    '!',
+                    `filesink location=${outVideoName}`
+                ];
+            } else if (platform === 'darwin') {
+                sourceElementName = 'avfvideosrc';
+                if (typeof serverDeviceId !== 'number') {
+                    const potentialIndex = parseInt(serverDeviceId);
+                    if (isNaN(potentialIndex)) {
+                        return reject(new Error(`Invalid macOS device index provided to GStreamer: ${serverDeviceId}. Expected a number.`));
+                    }
+                    serverDeviceId = potentialIndex;
+                }
+                // Simplify pipeline for macOS: Remove strict caps after avfvideosrc
+                // Let GStreamer negotiate the format with videoconvert.
+                pipelineElements = [
+                    `${sourceElementName} device-index=${serverDeviceId}`,
+                    '!',
+                    'videoconvert', // Convert pixel format if necessary
+                    '!',
+                    'videorate', // Ensure correct frame rate
+                    '!',
+                    'x264enc tune=zerolatency bitrate=8000 speed-preset=ultrafast key-int-max=30',
+                    '!',
+                    'mp4mux',
+                    '!',
+                    `filesink location=${outVideoName}`
+                ];
+            } else {
+                return reject(new Error(`Unsupported platform for GStreamer recording: ${platform}`));
+            }
+            // --- End Platform specific pipeline construction ---
 
-            const gst = spawn('gst-launch-1.0', ['-e', ...pipeline.split(' ')]);
+            const pipelineString = pipelineElements.join(' ');
+
+            console.log(`(${platform}) Starting GStreamer capture for ${durationSec} sec from ${sourceElementName} (ID: ${serverDeviceId}) => ${outVideoName}`);
+            console.log(`(${platform}) GStreamer pipeline: ${pipelineString}`);
+
+            // Split carefully, considering potential spaces in paths/options if any were added
+            const gstArgs = pipelineString.split(/\s+/).filter(arg => arg.length > 0);
+
+            const gst = spawn('gst-launch-1.0', ['-e', ...gstArgs]);
 
             let errorOutput = '';
             gst.stderr.on('data', (data) => {
                 const output = data.toString();
-                console.log(`gstreamer: ${output}`);
+                console.log(`(${platform}) gstreamer stderr: ${output}`);
                 errorOutput += output;
             });
 
+            gst.stdout.on('data', (data) => {
+                console.log(`(${platform}) gstreamer stdout: ${data.toString()}`);
+            });
+
             gst.on('error', (err) => {
-                console.error('GStreamer error:', err);
+                console.error(`(${platform}) GStreamer spawn error:`, err);
                 reject(err);
             });
 
             gst.on('close', (code) => {
-                if (code === 0) {
-                    console.log(`✅ Captured video with GStreamer: ${outVideoName}`);
-                    resolve();
-                } else {
+                // Also check for specific error messages if code is non-zero
+                if (errorOutput.toLowerCase().includes('error') || code !== 0) {
+                    console.error(`(${platform}) GStreamer process exited with code ${code}.`);
                     reject(new Error(`GStreamer exited with code ${code}: ${errorOutput}`));
+                } else {
+                    console.log(`✅ (${platform}) Captured video with GStreamer: ${outVideoName}`);
+                    resolve();
                 }
             });
 
             // Set a timeout to stop recording after durationSec
             setTimeout(() => {
+                console.log(`(${platform}) Sending SIGINT to GStreamer process...`);
                 gst.kill('SIGINT');
             }, durationSec * 1000);
         });

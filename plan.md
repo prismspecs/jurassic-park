@@ -28,7 +28,7 @@ The **AI director** orchestrates the performance and ensures that each shot clos
 #### **Performance Recording & File Organization**
 
 - Each shot is saved in a **directory structure matching the shot database**.
-- **Video files** are recorded and stored with metadata (e.g., pose accuracy score, shot number).
+- **Video files** are recorded, processed for pose tracking, and the resulting overlay video is stored with metadata (e.g., pose accuracy score, shot number). The initial raw recording is kept temporarily during processing.
 - **Actor dialogue and audience sound effects** are stored separately for post-processing.
 - A **final scene compilation** is created based on the best takes.
 
@@ -105,8 +105,8 @@ The application is built with **Node.js**, acting as the core event controller:
 │   ├── callsheetService.js # Manages callsheet/actor assignment logic
 │   ├── camera.js         # Camera interaction service (distinct from routes/control)
 │   ├── cameraControl.js  # PTZ camera control logic
-│   ├── ffmpegHelper.js   # Helper for FFmpeg operations
-│   ├── gstreamerHelper.js # Helper for GStreamer operations
+│   ├── ffmpegHelper.js   # Helper for FFmpeg operations (frame extraction, video encoding with overlay)
+│   ├── gstreamerHelper.js # Helper for GStreamer operations (video capture)
 │   ├── poseTracker.js    # Pose tracking service
 │   └── sceneService.js   # Service for managing scene progression
 ├── /skeletor           # Purpose unclear from name (contents not listed)
