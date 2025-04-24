@@ -4,6 +4,8 @@
 
 The AI-Directed Performance System is an interactive, real-time performance tool that recreates a scene from _Jurassic Park_ using pose tracking, audience-generated sound effects, and an automated camera and editing system. The system consists of a **shot database** containing predefined camera angles and ins-and-outs points for the editor. There is an automated teleprompter system which has a **main screen** and a **character screen** which guides actors through each shot. The character teleprompter plays videos for each individual character which includes their lines and stage directions. After the scene is complete, the software compiles audiovisual assets from a structured directory that mirrors the shot database file into a single video file.
 
+This project should work on both MacOS and Linux.
+
 ### **Core Functionalities**
 
 #### **Intake App** (this web app is in a separate repository)
