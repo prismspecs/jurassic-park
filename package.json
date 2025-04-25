@@ -12,11 +12,17 @@
     "canvas": "^3.1.0",
     "ejs": "^3.1.10",
     "express": "^4.21.2",
-    "multer": "^1.4.5-lts.2",
+    "express-session": "^1.18.0",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^2.7.0",
+    "node-pty": "^1.0.0",
     "node-webcam": "^0.8.2",
-    "ws": "^8.18.1"
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.7.5",
+    "uuid": "^9.0.1",
+    "ws": "^8.16.0"
   },
   "optionalDependencies": {
-    "@tensorflow/tfjs-node-gpu": "^4.22.0" 
+    "@tensorflow/tfjs-node-gpu": "^4.22.0"
   }
 }

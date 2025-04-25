@@ -20,14 +20,13 @@
         const videoElement = document.getElementById('teleprompter-video');
         let isFaded = false;
 
-        function addMessage(text, style, image) {
+        function addMessage(text, style, headshotImage, qrCodeImage) {
             const message = document.createElement('div');
-            message.className = 'message ' + style;
+            message.className = 'message ' + (style || 'normal');
 
             const content = document.createElement('div');
             content.className = 'message-content';
 
-            // If the text starts with a character name (e.g., "Dr. Alan Grant: *action*")
             if (text.includes(':')) {
                 const [character, action] = text.split(':').map(s => s.trim());
                 content.innerHTML = "<strong>" + character + ":</strong> " + action;
@@ -37,21 +36,33 @@
 
             message.appendChild(content);
 
-            if (image) {
-                const img = document.createElement('img');
-                img.className = 'message-image';
-                img.src = image;
-                message.appendChild(img);
+            const imageContainer = document.createElement('div');
+            imageContainer.className = 'message-image-container';
+
+            if (headshotImage) {
+                const headshotImg = document.createElement('img');
+                headshotImg.className = 'message-image headshot';
+                headshotImg.src = headshotImage;
+                imageContainer.appendChild(headshotImg);
             }
 
-            // Add to the beginning of the list
+            if (qrCodeImage) {
+                const qrImg = document.createElement('img');
+                qrImg.className = 'message-image qrcode';
+                qrImg.src = qrCodeImage;
+                imageContainer.appendChild(qrImg);
+            }
+
+            if (imageContainer.hasChildNodes()) {
+                message.appendChild(imageContainer);
+            }
+
             if (teleprompter.firstChild) {
                 teleprompter.insertBefore(message, teleprompter.firstChild);
             } else {
                 teleprompter.appendChild(message);
             }
 
-            // Trigger animation
             requestAnimationFrame(() => {
                 message.classList.add('new');
                 setTimeout(() => {
@@ -59,7 +70,6 @@
                 }, 50);
             });
 
-            // Remove old messages if we have too many
             const maxMessages = 10;
             while (teleprompter.children.length > maxMessages) {
                 const lastMessage = teleprompter.lastChild;
@@ -95,10 +105,9 @@
 
             if (data.type === 'TELEPROMPTER') {
                 console.log('Adding teleprompter message:', data.text);
-                addMessage(data.text, data.style || 'normal', data.image);
+                addMessage(data.text, data.style || 'normal', data.headshotImage, data.qrCodeImage);
             } else if (data.type === 'SCENE_EVENT') {
                 console.log('Adding scene event:', data.event);
-                // Format the message with character name and style
                 const message = data.event.character + ": " + data.event.text;
                 addMessage(message, data.event.style || 'normal');
             } else if (data.type === 'CLEAR_TELEPROMPTER') {
@@ -113,24 +122,23 @@
 
             ws.onopen = function () {
                 console.log('Teleprompter WebSocket connected');
+                clearText();
+                console.log('Teleprompter cleared on new WebSocket connection.');
             };
 
             ws.onmessage = handleWebSocketMessage;
 
             ws.onerror = function (error) {
                 console.error('Teleprompter WebSocket error:', error);
-                // Try to reconnect after 5 seconds
                 setTimeout(connectWebSocket, 5000);
             };
 
             ws.onclose = function () {
                 console.log('Teleprompter WebSocket closed');
-                // Try to reconnect after 5 seconds
                 setTimeout(connectWebSocket, 5000);
             };
         }
 
-        // Initial connection
         connectWebSocket();
 
         function toggleFade() {

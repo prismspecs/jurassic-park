@@ -2,13 +2,14 @@ const fs = require('fs');
 const config = require('../config.json');
 const { scenes } = require('../services/sceneService');
 const aiVoice = require('../services/aiVoice');
-const { broadcast, broadcastConsole } = require('../websocket/broadcaster');
+const { broadcast, broadcastConsole, broadcastTeleprompterStatus } = require('../websocket/broadcaster');
 const ffmpegHelper = require('../services/ffmpegHelper');
 const callsheetService = require('../services/callsheetService');
 const CameraControl = require('../services/cameraControl');
 const cameraControl = CameraControl.getInstance();
 const poseTracker = require('../services/poseTracker');
 const path = require('path');
+const QRCode = require('qrcode');
 
 // globals
 let sceneTakeIndex = 0;
@@ -21,7 +22,7 @@ function getCurrentScene() {
 }
 
 /** Scene initialization */
-function initScene(directory) {
+async function initScene(directory) {
     console.log('initScene called with directory:', directory);
     sceneTakeIndex = 0;
     currentScene = directory;
@@ -36,22 +37,27 @@ function initScene(directory) {
         return;
     }
     broadcastConsole(`Initializing scene: ${scene.directory}. Description: ${scene.description}`);
+
+    // Broadcast "Initializing scene..." to the main teleprompter
+    broadcast({
+        type: 'TELEPROMPTER',
+        text: 'Initializing scene...'
+    });
+    broadcastConsole('Broadcasted TELEPROMPTER: Initializing scene...');
+
     aiVoice.speak(`Please prepare for scene ${scene.description}`);
 
-    // wait 5 seconds
+    // wait 5 seconds before calling actors
     setTimeout(() => {
         callActors(scene);
     }, config.waitTime);
 
-    // Broadcast status update to teleprompters
-    broadcast({
-        type: 'TELEPROMPTER_STATUS',
-        message: 'Scene Initializing...',
-    });
+    // Broadcast status update to character teleprompters (keep this for character screens)
+    broadcastTeleprompterStatus('Scene Initializing...');
     broadcastConsole(`Broadcasted TELEPROMPTER_STATUS: Scene Initializing...`);
 }
 
-function callActors(scene) {
+async function callActors(scene) {
     broadcastConsole(`Calling actors for scene: ${scene.description}`);
 
     // Get the characters object from the current take
@@ -68,19 +74,43 @@ function callActors(scene) {
     // Get actors from callsheet service
     const actorsToCall = callsheetService.getActorsForScene(actorsNeeded);
 
-    // Call the actors
-    actorsToCall.forEach((actor, index) => {
-        // Update the teleprompter text
-        broadcast({
-            type: 'TELEPROMPTER',
-            text: `Calling actor: ${actor.name} to play ${characterNames[index]}`,
-            image: `/database/actors/${actor.name}/headshot.jpg`
-        });
+    // Use appUrl from config for the base URL
+    const baseUrl = config.appUrl || `http://localhost:${config.port || 3000}`; // Fallback just in case
 
-        callsheetService.updateActorSceneCount(actor.name);
-        broadcastConsole(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
-        aiVoice.speak(`Calling actor: ${actor.name} to play ${characterNames[index]}`);
-    });
+    // Call the actors
+    for (let index = 0; index < actorsToCall.length; index++) {
+        const actor = actorsToCall[index];
+        const characterName = characterNames[index];
+        const characterUrl = `${baseUrl}/teleprompter/${encodeURIComponent(characterName)}`;
+        const headshotUrl = `/database/actors/${encodeURIComponent(actor.id)}/headshot.jpg`;
+
+        try {
+            // Generate QR code as a Data URL
+            const qrCodeDataUrl = await QRCode.toDataURL(characterUrl);
+
+            // Update the teleprompter text with headshot and QR code
+            broadcast({
+                type: 'TELEPROMPTER',
+                text: `Calling actor: ${actor.name} to play ${characterName}`,
+                headshotImage: headshotUrl,    // Send headshot URL
+                qrCodeImage: qrCodeDataUrl     // Send QR code data URL
+            });
+            broadcastConsole(`Broadcasted TELEPROMPTER: Calling ${actor.name} as ${characterName} with headshot and QR code`);
+
+            callsheetService.updateActorSceneCount(actor.name);
+            aiVoice.speak(`Calling actor: ${actor.name} to play ${characterName}`);
+
+        } catch (err) {
+            broadcastConsole(`Error generating QR code or preparing message for ${characterName}: ${err}`, 'error');
+            broadcast({
+                type: 'TELEPROMPTER',
+                text: `Error creating link for ${actor.name} playing ${characterName}`,
+                style: 'error'
+                // Optionally send headshot even if QR fails?
+                // headshotImage: headshotUrl 
+            });
+        }
+    }
 
     // Broadcast that actors are being called
     broadcast({
@@ -139,10 +169,10 @@ async function action() {
     try {
         // Determine which camera to use for recording
         // FIXME: This currently hardcodes 'Camera 1'. Need a better way to select the active camera.
-        const recordingCameraName = 'Camera 1'; 
+        const recordingCameraName = 'Camera 1';
         broadcastConsole(`Attempting to get camera: ${recordingCameraName}`);
         const camera = cameraControl.getCamera(recordingCameraName);
-        
+
         // === Specific Error Handling for Missing Camera ===
         if (!camera) {
             const errorMsg = `Error: Recording camera '${recordingCameraName}' is required but has not been added. Please add it via the Camera Controls section.`;
@@ -154,7 +184,7 @@ async function action() {
         broadcastConsole(`Found camera: ${camera.name}`);
 
         const recordingDevicePath = camera.getRecordingDevice();
-         broadcastConsole(`Retrieved recording device path for ${camera.name}: ${recordingDevicePath}`); // Log retrieved path
+        broadcastConsole(`Retrieved recording device path for ${camera.name}: ${recordingDevicePath}`); // Log retrieved path
 
         if (!recordingDevicePath) {
             const errorMsg = `Error: No recording device configured for camera '${recordingCameraName}'. Please configure it in the UI.`;
@@ -182,8 +212,8 @@ async function action() {
 
         // Start FFmpeg recording using the selected device path and wait for it to be ready
         recordingPromise = recordingHelper.captureVideo(
-            config.videoOriginal, 
-            sceneDuration, 
+            config.videoOriginal,
+            sceneDuration,
             recordingDevicePath, // Pass the selected device path
             resolution
         );

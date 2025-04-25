@@ -82,7 +82,11 @@ app.use('/', mainRouter);
 // Start server
 server.listen(PORT, () => {
   console.log(`AI Director System listening on port ${PORT}`);
-  // write a clickable link to the page
   console.log(`http://localhost:${PORT}`);
+
+  // Clear the main teleprompter on startup
+  broadcast({ type: 'CLEAR_TELEPROMPTER' });
+  console.log('Broadcasted CLEAR_TELEPROMPTER on startup.');
+
   initializeSystem();
 });

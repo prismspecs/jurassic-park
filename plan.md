@@ -19,8 +19,8 @@ This project should work on both MacOS and Linux.
 The **AI director** orchestrates the performance and ensures that each shot closely matches its reference from the film. It performs the following tasks:
 
 - Originally this was intended to have an AI generated voice, but for the first performance we will have a real human comedian speaking to the participants in real-time. There are some parts in the code which are still using the AI voice. I will leave them in but generally not use them for now.
-- Calls actors to the **stage area** by name. It lists each human participant above the name of their character, below which is a QR code which when scanned leads to the associated character teleprompter.
-- Displays dialogue and blocking cues on **mobile character teleprompters** (on the participants' phones).
+- Calls actors to the **stage area** by name via the main teleprompter. When initializing a scene, the main teleprompter first displays "Initializing scene...". Then, as actors are called, it displays the actor's name, their assigned character, their **headshot**, and a **QR code** which links directly to that character's specific teleprompter view (e.g., `http://<host>:<port>/teleprompter/<characterName>`).
+- Displays dialogue and blocking cues on **mobile character teleprompters** (accessed via the QR code on the main teleprompter or by manually navigating to the URL).
 - Directs camera movements to align with the shot.
 - Records actor **dialogue** and **audience sound effects** in separate audio files.
 - Orchestrates the recording of a **musical soundtrack** by the audience post-performance.
@@ -50,7 +50,7 @@ The application is built with **Node.js**, acting as the core event controller:
 - **Integrates pose tracking models** (e.g., TensorFlow.js, MediaPipe) for movement analysis.
 - **Manages file storage**, shot metadata, and retrieval.
 - **Plays AI audio voice cues** via text-to-speech APIs (this will not be in use for the first run of the project, which uses a human comedian).
-- **Coordinates mobile teleprompter displays** through a local web interface.
+- **Coordinates main and mobile teleprompter displays** through a local web interface and WebSocket communication. The main teleprompter shows initialization status and actor assignments with headshots and QR codes. Character teleprompters show specific lines and cues.
 
 #### **Hardware & Camera Control**
 
@@ -99,7 +99,7 @@ The application is built with **Node.js**, acting as the core event controller:
 ├── /routes             # API and web routes definition
 │   ├── camera.js         # Camera control routes
 │   ├── main.js           # Main application routes
-│   └── teleprompter.js   # Teleprompter related routes
+│   └── teleprompter.js   # Teleprompter related routes (main display and character-specific via /:character)
 ├── /services           # Business logic services
 │   ├── aiVoice.js        # Text-to-speech service
 │   ├── callsheetService.js # Manages callsheet/actor assignment logic
@@ -115,8 +115,8 @@ The application is built with **Node.js**, acting as the core event controller:
 ├── /views              # Server-side templates and view logic
 │   ├── homeView.js       # Logic for the main/home view
 │   ├── teleprompterView.js # Logic for the teleprompter view
-│   ├── /styles         # CSS Stylesheets (contents not listed)
-│   └── /templates      # HTML/EJS templates (contents not listed)
+│   ├── /styles         # CSS Stylesheets
+│   └── /templates      # HTML/EJS templates (e.g., teleprompter.ejs, characterTeleprompter.ejs)
 ├── /websocket          # WebSocket handling logic
 │   ├── broadcaster.js    # Handles broadcasting messages to clients
 │   └── handler.js        # Handles incoming WebSocket messages

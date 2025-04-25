@@ -1,4 +1,5 @@
 {
+    "appUrl": "http://localhost:3000/",
     "framesRawDir": "./temp/frames_raw",
     "framesOverlayDir": "./temp/frames_overlay",
     "videoOriginal": "./temp/video_original.mp4",

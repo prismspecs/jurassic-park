@@ -2,8 +2,8 @@
 
 - Teleprompter
 
-  - actor telepromter reads no scene is loaded until the scene starts but it should refresh or whatever when it begins
-  - For the main teleprompter at localhost:3000/teleprompter/: When people are called to the stage it should show their faces above the character name, and then below that a QR code underneath. The QR code leads to that character's teleprompter (ie, localhost:3000/teleprompter/alan) so that participants can easily utilize it.
+
+  - When a scene is clicked to initialize it, the main teleprompter should display "Initializing scene". Then the system should go through its existing process in which it assigns actors to characters. When this happens, the main teleprompter at localhost:3000/teleprompter/: already calls people to the stage, but it should also display QR code. The QR code leads to that character's teleprompter (ie, localhost:3000/teleprompter/alan) so that participants can easily utilize it.
 
 - capture video from actor phones
 

@@ -86,13 +86,25 @@ body {
 }
 
 .message-image {
-    width: 25%;
-    max-width: 12.5rem;
-    height: auto;
-    aspect-ratio: 1;
-    object-fit: cover;
-    border-radius: 0.25rem;
-    flex-shrink: 0;
+    max-width: 100px;
+    max-height: 100px;
+    margin-top: 10px;
+    border-radius: 5px;
+}
+
+.message-image-container {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.message-image.headshot {
+    border: 1px solid #ccc;
+}
+
+.message-image.qrcode {
+    border: 1px solid #eee;
 }
 
 .message.actor {
