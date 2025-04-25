@@ -12,6 +12,7 @@ npm-debug.log
 dist/
 
 # Media Files
+recordings/*
 *.mp4
 *.webm
 
