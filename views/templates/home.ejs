@@ -1,11 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+<html lang="en">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Director Control Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Director Control Panel</title>
   <link rel="stylesheet" href="/views/styles/main.css" />
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
 </head>
 
@@ -52,6 +56,9 @@
     </div>
     <!-- End Left Sidebar -->
 
+    <!-- ADD Resizer Handle -->
+    <div class="resizer-handle" id="resizer-left-main"></div>
+
     <!-- Main Content Area -->
     <div class="main-content">
       <h1>AI Director Shots</h1>
@@ -76,6 +83,9 @@
 
     </div>
     <!-- End Main Content Area -->
+
+    <!-- ADD Resizer Handle -->
+    <div class="resizer-handle" id="resizer-main-right"></div>
 
     <!-- Right Sidebar -->
     <div class="sidebar">
@@ -143,35 +153,57 @@
           </div>
         </div>
       </div>
-
+      <div class="audio-controls">
+        <div class="group-label">Audio Controls</div>
+        <button onclick="testAudioRecord()" class="success-btn">🎤 Record Audio (5s)</button>
+        <button onclick="playLastRecording()" class="info-btn">▶️ Play Last Recording</button>
+        <button onclick="clearAudio()" class="warning-btn">🗑️ Clear Audio</button>
+      </div>
+      <div class="teleprompter-button-group">
+        <div class="group-label">Teleprompter Controls</div>
+        <button onclick="openTeleprompter()">Open Teleprompter</button>
+        <button onclick="openCharacterTeleprompter('alan')">Open Alan's Teleprompter</button>
+        <button onclick="openCharacterTeleprompter('ellie')">Open Ellie's Teleprompter</button>
+        <button onclick="testTeleprompter()">Test Teleprompter</button>
+        <button onclick="testTeleprompterVideo()">Test Teleprompter Video</button>
+        <button onclick="clearTeleprompter()">Clear Teleprompter</button>
+        <button onclick="pauseAllTeleprompters()" class="warning-btn">⏸️ Pause All Teleprompters</button>
+        <button onclick="playAllTeleprompters()" class="success-btn">▶️ Resume All Teleprompters</button>
+      </div>
     </div>
-    <!-- End Right Sidebar -->
+  </div>
+
+  </div>
+  <!-- End Right Sidebar -->
 
   </div> <!-- End Page Layout -->
 
   <script>
+    // --- Global Variables ---
     const ws = new WebSocket("ws://" + window.location.host);
-    const consoleOutput = document.getElementById("console-output"); // Updated selector
-    let voiceBypassEnabled = true; // Keep state if needed
+    const consoleOutput = document.getElementById("console-output");
+    let voiceBypassEnabled = true;
+    let lastAudioRecording = null;
 
+    // --- WebSocket Handlers ---
     ws.onopen = function () {
       console.log("WebSocket connection established");
-      logToConsole("WebSocket connected", "info"); // Use new log function
-      // Fetch initial voice bypass state
+      logToConsole("WebSocket connected", "info");
       fetch("/getVoiceBypass")
         .then((res) => res.json())
         .then((data) => {
           voiceBypassEnabled = data.enabled;
-          updateVoiceBypassButton(); // Use helper function
+          updateVoiceBypassButton();
         })
         .catch((err) => {
           console.error("Error fetching voice bypass state:", err);
+          logToConsole("Error fetching voice bypass state", "error");
         });
     };
 
     ws.onerror = function (error) {
       console.error("WebSocket error:", error);
-      logToConsole("WebSocket error: " + error.message, "error");
+      logToConsole("WebSocket error: " + (error.message || "Unknown error"), "error");
     };
 
     ws.onclose = function () {
@@ -184,117 +216,57 @@
         const data = JSON.parse(event.data);
         console.log('Message from server:', data);
 
-        if (data.type === 'CONSOLE') {
-          logToConsole(data.message, data.level);
-        } else if (data.type === 'SESSION_UPDATE') {
-          // Update the display when session changes
-          const currentSessionSpan = document.getElementById('current-session-id');
-          if (currentSessionSpan) {
-            currentSessionSpan.textContent = data.sessionId;
-          }
-          // Update button active state
-          document.querySelectorAll('.session-button').forEach(button => {
-            if (button.textContent.trim() === data.sessionId) {
-              button.classList.add('active');
-            } else {
-              button.classList.remove('active');
-            }
-          });
-          logToConsole(`Session updated to: ${data.sessionId}`, 'info');
-        } else if (data.type === 'ACTORS_CALLED') {
-          document.getElementById("actorsReadyBtn").style.display = "inline-block";
-          document.getElementById("status").innerText = "Waiting for actors to be ready...";
-        } else if (data.type === 'ACTORS_READY') {
-          document.getElementById("actorsReadyBtn").style.display = "none";
-          document.getElementById("actionBtn").style.display = "inline-block";
-          document.getElementById("status").innerText = "Actors are ready to perform!";
-        } else {
-          // Handle other message types if necessary
-          console.log("Received unhandled message type:", data.type);
+        switch (data.type) {
+          case 'CONSOLE':
+            logToConsole(data.message, data.level);
+            break;
+          case 'SESSION_UPDATE':
+            updateSessionUI(data.sessionId);
+            break;
+          case 'ACTORS_CALLED':
+            document.getElementById("actorsReadyBtn").style.display = "inline-block";
+            document.getElementById("actionBtn").style.display = "none"; // Hide action btn
+            document.getElementById("status").innerText = "Waiting for actors to be ready...";
+            break;
+          case 'ACTORS_READY':
+            document.getElementById("actorsReadyBtn").style.display = "none";
+            document.getElementById("actionBtn").style.display = "inline-block";
+            document.getElementById("status").innerText = "Actors are ready to perform!";
+            break;
+          // Add other message types handled by the server if needed
+          default:
+            console.log("Received unhandled message type:", data.type);
         }
       } catch (error) {
         console.error('Error parsing message or handling update:', error);
-        logToConsole('Received non-JSON message or error handling message.', 'error');
+        logToConsole('Received non-JSON message or error handling update.', 'error');
       }
     };
 
-    // NEW Log function (replacing appendToConsole)
-    function logToConsole(message, level = 'info') {
-      const entry = document.createElement('div');
-      const timestamp = new Date().toLocaleTimeString();
-      entry.className = `log-entry log-${level}`;
-      entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
-      if (consoleOutput) {
-        consoleOutput.appendChild(entry);
-        consoleOutput.scrollTop = consoleOutput.scrollHeight; // Auto-scroll
-      } else {
-        console.error("Console output element not found!");
+    // --- UI Update Functions ---
+    function updateSessionUI(newSessionId) {
+      const currentSessionSpan = document.getElementById('current-session-id');
+      if (currentSessionSpan) {
+        currentSessionSpan.textContent = newSessionId;
       }
-    }
+      document.querySelectorAll('.session-item').forEach(item => {
+        const button = item.querySelector('.session-button');
+        const deleteButton = item.querySelector('.delete-session-button');
+        const sessionInButton = button?.getAttribute('onclick')?.match(/selectSession\('(.*?)'\)/)?.[1];
 
-    // NEW Session Selection function
-    async function selectSession(sessionId) {
-      logToConsole(`Attempting to switch to session: ${sessionId}`, 'info');
-      try {
-        const response = await fetch('/api/select-session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: `sessionId=${encodeURIComponent(sessionId)}`
-        });
-        const result = await response.json();
-        if (response.ok && result.success) {
-          logToConsole(`Successfully switched to session: ${sessionId}`, 'success');
-          // The SESSION_UPDATE WS message should handle the UI update
-        } else {
-          throw new Error(result.message || 'Failed to select session');
-        }
-      } catch (error) {
-        console.error('Error selecting session:', error);
-        logToConsole(`Error selecting session: ${error.message}`, 'error');
-      }
-    }
-
-    // NEW Delete Session function
-    async function deleteSession(sessionId) {
-      if (!confirm(`Are you sure you want to permanently delete session ${sessionId} and all its recordings?`)) {
-        return; // Abort if user cancels
-      }
-      logToConsole(`Attempting to delete session: ${sessionId}`, 'warn');
-      try {
-        const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-          method: 'DELETE'
-        });
-        const result = await response.json();
-        if (response.ok && result.success) {
-          logToConsole(`Successfully deleted session: ${sessionId}`, 'success');
-          // Remove the session item from the UI
-          const sessionList = document.getElementById('existing-sessions-list');
-          const buttons = sessionList.querySelectorAll('button');
-          buttons.forEach(button => {
-            // Find the parent .session-item of the button matching the sessionId
-            if (button.textContent.trim() === sessionId || button.title.includes(sessionId)) {
-              const itemToRemove = button.closest('.session-item');
-              if (itemToRemove) {
-                itemToRemove.remove();
-              }
-            }
-          });
-          // Check if the list is now empty
-          if (!sessionList.querySelector('.session-item')) {
-            sessionList.innerHTML = '<p>No other sessions found.</p>';
+        if (button && sessionInButton) {
+          if (sessionInButton === newSessionId) {
+            button.classList.add('active');
+            if (deleteButton) deleteButton.style.display = 'none';
+          } else {
+            button.classList.remove('active');
+            if (deleteButton) deleteButton.style.display = '';
           }
-        } else {
-          throw new Error(result.error || 'Failed to delete session');
         }
-      } catch (error) {
-        console.error('Error deleting session:', error);
-        logToConsole(`Error deleting session ${sessionId}: ${error.message}`, 'error');
-      }
+      });
+      logToConsole(`Session updated to: ${newSessionId}`, 'info');
     }
 
-    // --- Existing Functions (adapted slightly) ---
     function updateVoiceBypassButton() {
       const btn = document.getElementById("voiceBypassBtn");
       if (btn) {
@@ -303,18 +275,91 @@
       }
     }
 
+    // --- Logging Function ---
+    function logToConsole(message, level = 'info') {
+      const entry = document.createElement('div');
+      const timestamp = new Date().toLocaleTimeString();
+      entry.className = `log-entry log-${level}`;
+      entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+      if (consoleOutput) {
+        consoleOutput.appendChild(entry);
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+      } else {
+        console.error("Console output element (#console-output) not found!");
+      }
+    }
+
+    // --- Session Management Functions ---
+    async function selectSession(sessionId) {
+      logToConsole(`Attempting to switch to session: ${sessionId}`, 'info');
+      try {
+        const response = await fetch('/api/select-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `sessionId=${encodeURIComponent(sessionId)}`
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.message || result.error || `HTTP error ${response.status}`);
+        }
+        logToConsole(`Successfully requested switch to session: ${sessionId}`, 'success');
+        // UI update is handled by the SESSION_UPDATE broadcast message from the server
+      } catch (error) {
+        console.error('Error selecting session:', error);
+        logToConsole(`Error selecting session: ${error.message}`, 'error');
+      }
+    }
+
+    async function deleteSession(sessionId) {
+      if (!confirm(`Are you sure you want to permanently delete session ${sessionId} and all its recordings?`)) {
+        return;
+      }
+      logToConsole(`Attempting to delete session: ${sessionId}`, 'warn');
+      try {
+        const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+          method: 'DELETE'
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.message || result.error || `HTTP error ${response.status}`);
+        }
+        logToConsole(`Successfully deleted session: ${sessionId}`, 'success');
+        // Remove the session item from the UI
+        const sessionList = document.getElementById('existing-sessions-list');
+        const itemToRemove = sessionList.querySelector(`.session-item button[onclick*="${sessionId}"]`)?.closest('.session-item');
+        if (itemToRemove) {
+          itemToRemove.remove();
+        }
+        if (!sessionList.querySelector('.session-item')) {
+          sessionList.innerHTML = '<p>No other sessions found.</p>';
+        }
+      } catch (error) {
+        console.error('Error deleting session:', error);
+        logToConsole(`Error deleting session ${sessionId}: ${error.message}`, 'error');
+      }
+    }
+
+    // --- Control Button Functions ---
     function toggleVoiceBypass() {
-      voiceBypassEnabled = !voiceBypassEnabled;
-      updateVoiceBypassButton(); // Update UI
-      // Send the bypass state to the server
+      const newState = !voiceBypassEnabled;
       fetch("/setVoiceBypass", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: voiceBypassEnabled }),
+        body: JSON.stringify({ enabled: newState }),
       })
-        .then((res) => res.json())
-        .then((info) => { document.getElementById("status").innerText = info.message; })
-        .catch((err) => { console.error(err); document.getElementById("status").innerText = "Error: " + err; });
+        .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
+        .then(info => {
+          voiceBypassEnabled = newState; // Update state only on success
+          updateVoiceBypassButton();
+          document.getElementById("status").innerText = info.message;
+          logToConsole(`Voice Bypass ${newState ? 'enabled' : 'disabled'}.`, 'info');
+        })
+        .catch(err => {
+          console.error("Set Bypass Error:", err);
+          document.getElementById("status").innerText = "Error setting bypass: " + err;
+          logToConsole(`Error setting bypass: ${err}`, 'error');
+          // Don't change UI state if request failed
+        });
     }
 
     function openTeleprompter() {
@@ -326,78 +371,145 @@
     }
 
     function testTeleprompter() {
+      logToConsole("Testing teleprompter message...", 'info');
+      // Example actor ID - replace if needed
+      const exampleActorId = "Alan-Grant-A1B2C3";
+      const headshotPath = `/database/actors/${exampleActorId}/headshot.jpg`;
       fetch("/teleprompter/updateTeleprompter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: "Test message with image", image: "/database/test_content/headshot.jpg" }), // Check path
-      });
+        body: JSON.stringify({ text: "Test message with image", image: headshotPath }),
+      })
+        .then(res => { if (!res.ok) logToConsole(`Test Teleprompter Error (1): ${res.statusText}`, 'error'); })
+        .catch(err => logToConsole(`Test Teleprompter Error (1): ${err}`, 'error'));
       setTimeout(() => {
         fetch("/teleprompter/updateTeleprompter", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: "Test message without image" }),
-        });
+        })
+          .then(res => { if (!res.ok) logToConsole(`Test Teleprompter Error (2): ${res.statusText}`, 'error'); })
+          .catch(err => logToConsole(`Test Teleprompter Error (2): ${err}`, 'error'));
       }, 3000);
     }
 
     function testTeleprompterVideo() {
+      logToConsole("Testing teleprompter video...", 'info');
+      const exampleVideoPath = "/database/test_content/freefall.mp4"; // Check path
       fetch("/teleprompter/playTeleprompterVideo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoPath: "/database/test_content/freefall.mp4" }), // Check path
-      });
+        body: JSON.stringify({ videoPath: exampleVideoPath }),
+      })
+        .then(res => { if (!res.ok) logToConsole(`Test Teleprompter Video Error: ${res.statusText}`, 'error'); })
+        .catch(err => logToConsole(`Test Teleprompter Video Error: ${err}`, 'error'));
     }
 
     function clearTeleprompter() {
+      logToConsole("Clearing teleprompter...", 'info');
       fetch("/teleprompter/clearTeleprompter", { method: "POST" })
-        .then(res => res.json()).then(info => { document.getElementById("status").innerText = info.message; })
-        .catch(err => { console.error(err); document.getElementById("status").innerText = "Error: " + err; });
+        .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
+        .then(info => {
+          document.getElementById("status").innerText = info.message;
+          logToConsole("Teleprompter cleared.", 'info');
+        })
+        .catch(err => {
+          console.error("Clear Teleprompter Error:", err);
+          document.getElementById("status").innerText = "Error clearing teleprompter: " + err;
+          logToConsole(`Error clearing teleprompter: ${err}`, 'error');
+        });
     }
 
     function initScene(directory) {
+      logToConsole(`Requesting scene init: ${decodeURIComponent(directory)}`, 'info');
+      document.getElementById("status").innerText = `Initializing ${decodeURIComponent(directory)}...`;
       fetch("/initScene/" + encodeURIComponent(directory))
-        .then(res => res.json()).then(info => { document.getElementById("status").innerText = info.message; })
-        .catch(err => { console.error(err); document.getElementById("status").innerText = "Error: " + err; });
+        .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
+        .then(info => {
+          document.getElementById("status").innerText = info.message;
+          logToConsole(`Scene init request sent for ${info.directory}.`, 'success');
+        })
+        .catch(err => {
+          console.error("Init Scene Error:", err);
+          document.getElementById("status").innerText = "Error initializing scene: " + err;
+          logToConsole(`Error initializing scene ${decodeURIComponent(directory)}: ${err}`, 'error');
+        });
     }
 
     function actorsReady() {
+      logToConsole("Sending Actors Ready signal...", 'info');
       document.getElementById("status").innerText = "Notifying system: actors ready...";
       fetch("/actorsReady", { method: "POST" })
-        .then(res => res.json()).then(info => { document.getElementById("status").innerText = info.message; })
-        .catch(err => { console.error(err); document.getElementById("status").innerText = "Error: " + err; });
+        .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
+        .then(info => {
+          document.getElementById("status").innerText = info.message;
+          logToConsole("Actors Ready signal sent.", 'success');
+        })
+        .catch(err => {
+          console.error("Actors Ready Error:", err);
+          document.getElementById("status").innerText = "Error sending Actors Ready: " + err;
+          logToConsole(`Error sending Actors Ready: ${err}`, 'error');
+        });
     }
 
     function handlePipelineChange(pipeline) {
       logToConsole(`Recording pipeline set to: ${pipeline}`, "info");
+      // If pipeline choice needs to be sent to server, do it here.
     }
 
     async function recordVideo() {
-      document.getElementById("status").innerText = "Recording video...";
+      // This button triggers the test recording route for a specific camera
+      // Requires camera selection UI element to be implemented for proper use
+      const selectedCameraName = "Camera 1"; // Placeholder - NEEDS UI element to select camera
+      document.getElementById("status").innerText = `Recording TEST video from ${selectedCameraName}...`;
       const pipeline = document.getElementById("recording-pipeline").value;
       const useFfmpeg = pipeline === "ffmpeg";
       const resolution = document.getElementById("recording-resolution").value;
-      logToConsole(`Starting recording with ${pipeline} pipeline at ${resolution}`, "info");
+      logToConsole(`Starting TEST recording for ${selectedCameraName} with ${pipeline} pipeline at ${resolution}`, "info");
       try {
-        logToConsole("Test Record Button: Needs implementation update for camera selection.", "warn");
-        // Example call (needs camera name): 
-        // await fetch(`/camera/Camera%201/record?useFfmpeg=${useFfmpeg}&resolution=${resolution}`, { method: 'POST' });
-
+        const response = await fetch(`/camera/${encodeURIComponent(selectedCameraName)}/record?useFfmpeg=${useFfmpeg}&resolution=${resolution}`, { method: 'POST' });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.message || result.error || `HTTP error ${response.status}`);
+        }
+        logToConsole(`Test recording successful for ${selectedCameraName}. Output: ${result.overlayName}`, 'success');
+        document.getElementById("status").innerText = `Test recording finished: ${result.overlayName}`;
+        // Optionally display video in #videos div?
+        // const vidDiv = document.getElementById("videos");
+        // const session = document.getElementById('current-session-id')?.textContent;
+        // if(vidDiv && session && result.overlayName) {
+        //     vidDiv.innerHTML = `<h3>Test Overlay Video (${selectedCameraName})</h3><video controls src="/recordings/${session}/${result.overlayName}"></video>`;
+        // }
       } catch (error) {
-        logToConsole(`Recording error: ${error.message}`, "error");
+        logToConsole(`Test recording error for ${selectedCameraName}: ${error.message}`, "error");
+        document.getElementById("status").innerText = `Test recording failed: ${error.message}`;
       }
     }
 
     function action() {
+      logToConsole("Sending Action signal...", 'info');
       document.getElementById("status").innerText = "Starting action...";
       fetch("/action", { method: "POST" })
-        .then(res => res.json()).then(info => { document.getElementById("status").innerText = info.message; })
-        .catch(err => { console.error(err); document.getElementById("status").innerText = "Error: " + err; });
+        .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
+        .then(info => {
+          document.getElementById("status").innerText = info.message;
+          logToConsole("Action signal sent.", 'success');
+        })
+        .catch(err => {
+          console.error("Action Error:", err);
+          document.getElementById("status").innerText = "Error sending Action: " + err;
+          logToConsole(`Error sending Action: ${err}`, 'error');
+        });
     }
 
     function testConsole() {
       fetch("/testConsole", { method: "POST" })
-        .then(res => res.json()).then(info => { document.getElementById("status").innerText = info.message; })
-        .catch(err => { console.error(err); document.getElementById("status").innerText = "Error: " + err; });
+        .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
+        .then(info => { document.getElementById("status").innerText = info.message; })
+        .catch(err => {
+          console.error("Test Console Error:", err);
+          document.getElementById("status").innerText = "Error testing console: " + err;
+        });
     }
 
     function pauseAllTeleprompters() {
@@ -410,9 +522,7 @@
       logToConsole("Resumed all teleprompters", "info");
     }
 
-    // Audio Recording Functions (Adapted)
-    let lastAudioRecording = null; // Keep track of last recording filename
-
+    // --- Audio Functions ---
     function testAudioRecord() {
       navigator.mediaDevices.getUserMedia({ audio: true })
         .then((stream) => {
@@ -422,23 +532,31 @@
           mediaRecorder.onstop = async () => {
             const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
             const formData = new FormData();
-            formData.append("audio", audioBlob, `rec_${Date.now()}.webm`); // Unique temp name
+            // Use a timestamp in the filename for uniqueness in temp dir
+            formData.append("audio", audioBlob, `rec_${Date.now()}.webm`);
+            logToConsole("Sending audio data to server...", 'info');
             try {
               const response = await fetch("/recordAudio", { method: "POST", body: formData });
               const data = await response.json();
-              if (response.ok && data.success) {
-                logToConsole(`Audio recorded: ${data.filename}`, "info");
-                lastAudioRecording = data.filename; // Store filename (relative to session)
-              } else {
-                throw new Error(data.message || 'Failed to save audio');
+              if (!response.ok) {
+                throw new Error(data.message || `HTTP error ${response.status}`);
               }
+              logToConsole(`Audio recorded: ${data.filename}`, "info");
+              lastAudioRecording = data.filename; // Store relative filename from session dir
             } catch (err) {
               logToConsole(`Error recording audio: ${err.message}`, "error");
             }
           };
           mediaRecorder.start();
           logToConsole("Recording audio for 5 seconds...", "info");
-          setTimeout(() => { mediaRecorder.stop(); stream.getTracks().forEach((track) => track.stop()); }, 5000);
+          setTimeout(() => {
+            try {
+              if (mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+              }
+              stream.getTracks().forEach((track) => track.stop()); // Stop microphone access
+            } catch (e) { console.error("Error stopping recorder/stream:", e); }
+          }, 5000);
         })
         .catch((err) => logToConsole(`Error accessing microphone: ${err.message}`, "error"));
     }
@@ -453,13 +571,13 @@
         logToConsole("Cannot determine current session ID to play audio.", "error");
         return;
       }
-      // Assumes Express serves /recordings directory - **NEEDS SERVER SETUP**
+      // Assumes Express serves /recordings static path
       const audioUrl = `/recordings/${currentSessionId}/${lastAudioRecording}`;
-      logToConsole(`Attempting to play: ${audioUrl}`, 'info'); // Log URL
+      logToConsole(`Attempting to play: ${audioUrl}`, 'info');
       const audio = new Audio(audioUrl);
-      audio.onerror = (e) => { // Added error handler
+      audio.onerror = (e) => {
         console.error("Audio playback error:", e);
-        logToConsole(`Error playing audio from ${audioUrl}: Check server setup and file path.`, "error");
+        logToConsole(`Error playing audio from ${audioUrl}. Check server serves /recordings or if file exists.`, "error");
       };
       audio.play()
         .then(() => logToConsole(`Playing ${lastAudioRecording}...`, "info"))
@@ -468,21 +586,23 @@
 
     function clearAudio() {
       if (!lastAudioRecording) {
-        logToConsole("No audio recording to clear", "warn");
+        logToConsole("No audio recording available to clear", "warn");
         return;
       }
-      logToConsole("Clear Audio button needs server-side implementation for session files.", "warn");
-      // fetch("/clearAudio", { ... }) // Needs server endpoint
+      logToConsole("Clear Audio button needs server-side endpoint (e.g., DELETE /api/sessions/:id/audio/:filename).", "warn");
+      // Example client-side removal (doesn't delete server file):
+      // lastAudioRecording = null;
+      // logToConsole("Cleared last audio recording reference (client-side only).", "info");
     }
 
-    // Actor Loading Logic (Adapted)
+    // --- Actor Loading Logic ---
     const loadActorsBtn = document.getElementById('loadActorsBtn');
     const actorFilesInput = document.getElementById('actorFiles');
     const loadActorsStatus = document.getElementById('loadActorsStatus');
     if (loadActorsBtn && actorFilesInput && loadActorsStatus) {
       loadActorsBtn.addEventListener('click', async () => {
         const files = actorFilesInput.files;
-        if (files.length === 0) {
+        if (!files || files.length === 0) { // Check if files is null or empty
           loadActorsStatus.textContent = 'Please select files to load.';
           loadActorsStatus.className = 'status-error'; return;
         }
@@ -493,26 +613,136 @@
         try {
           const response = await fetch('/loadActors', { method: 'POST', body: formData });
           const result = await response.json();
-          if (response.ok && result.success) {
-            loadActorsStatus.textContent = result.message || 'Actors loaded!';
-            loadActorsStatus.className = 'status-success';
-            actorFilesInput.value = '';
-          } else { throw new Error(result.message || 'Failed to load actors'); }
+          if (!response.ok) {
+            throw new Error(result.message || `HTTP error ${response.status}`);
+          }
+          loadActorsStatus.textContent = result.message || 'Actors loaded!';
+          loadActorsStatus.className = 'status-success';
+          actorFilesInput.value = ''; // Clear file input
         } catch (error) {
+          console.error("Actor Load Error:", error);
           loadActorsStatus.textContent = `Error: ${error.message}`;
           loadActorsStatus.className = 'status-error';
         }
       });
     }
 
-    // Camera management class placeholder
-    class CameraManager { initialize() { console.log("CameraManager placeholder initialized"); } addCamera() { logToConsole("Add Camera clicked.", "info"); } }
+    // --- Camera Manager Placeholder ---
+    // TODO: Implement actual CameraManager logic if needed, 
+    // especially for populating #cameraControls and handling the 'Test Record Video' button.
+    class CameraManager {
+      async initialize() {
+        logToConsole("CameraManager placeholder initialized.", "info");
+        // Example: Fetch cameras from backend and populate UI
+        // try {
+        //    const res = await fetch('/camera/cameras');
+        //    const cameras = await res.json();
+        //    const controlsDiv = document.getElementById('cameraControls');
+        //    controlsDiv.innerHTML = ''; // Clear previous
+        //    cameras.forEach(cam => { /* Create UI elements */ });
+        // } catch (err) {
+        //     logToConsole(`Error initializing camera controls: ${err}`, 'error');
+        // }
+      }
+      addCamera() {
+        logToConsole("Add Camera clicked (placeholder). Needs implementation.", "warn");
+        // Example: Get camera details from user, POST to /camera/add
+      }
+    }
     const cameraManager = new CameraManager();
     window.addEventListener("load", async () => {
+      logToConsole("Window loaded. Initializing components...", "info");
       if (cameraManager.initialize) {
-        await cameraManager.initialize();
+        try {
+          await cameraManager.initialize();
+        } catch (err) {
+          logToConsole(`CameraManager initialization failed: ${err}`, 'error');
+        }
       }
     });
+
+    // --- Resizer Logic (Simplified Flexbox Approach) --- 
+    function initializeResizers() {
+      const leftSidebar = document.querySelector('.left-sidebar');
+      const rightSidebar = document.querySelector('.sidebar');
+      const resizerLeftMain = document.getElementById('resizer-left-main');
+      const resizerMainRight = document.getElementById('resizer-main-right');
+
+      let isResizing = false;
+      let currentResizer = null;
+      let startX, initialLeftBasis, initialRightBasis;
+
+      // Helper to get computed basis or width
+      const getBasis = (el) => {
+        const basis = getComputedStyle(el).flexBasis;
+        // If basis is 'auto', 'content', or not in pixels, use offsetWidth as fallback
+        if (basis === 'auto' || basis === 'content' || !basis.endsWith('px')) {
+          console.warn('getBasis falling back to offsetWidth for element:', el, 'Computed flex-basis was:', basis);
+          return el.offsetWidth;
+        }
+        return parseInt(basis, 10);
+      };
+
+      const startResize = (e, resizer) => {
+        isResizing = true;
+        currentResizer = resizer;
+        startX = e.clientX;
+
+        // Get initial basis values
+        initialLeftBasis = getBasis(leftSidebar);
+        initialRightBasis = getBasis(rightSidebar);
+
+        document.body.style.userSelect = 'none';
+        document.body.style.pointerEvents = 'none';
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', stopResize);
+      };
+
+      const handleMouseMove = (e) => {
+        if (!isResizing) return;
+
+        const currentX = e.clientX;
+        const dx = currentX - startX;
+
+        const minLeftWidth = parseInt(getComputedStyle(leftSidebar).minWidth, 10);
+        const minRightWidth = parseInt(getComputedStyle(rightSidebar).minWidth, 10);
+
+        if (currentResizer === resizerLeftMain) {
+          let newLeftBasis = initialLeftBasis + dx;
+          if (newLeftBasis < minLeftWidth) {
+            newLeftBasis = minLeftWidth;
+          }
+          leftSidebar.style.flexBasis = `${newLeftBasis}px`;
+
+        } else if (currentResizer === resizerMainRight) {
+          let newRightBasis = initialRightBasis - dx;
+          if (newRightBasis < minRightWidth) {
+            newRightBasis = minRightWidth;
+          }
+          rightSidebar.style.flexBasis = `${newRightBasis}px`;
+        }
+      };
+
+      const stopResize = () => {
+        if (isResizing) {
+          isResizing = false;
+          currentResizer = null;
+          document.removeEventListener('mousemove', handleMouseMove);
+          document.removeEventListener('mouseup', stopResize);
+
+          // Restore user interaction styles
+          document.body.style.userSelect = '';
+          document.body.style.pointerEvents = '';
+
+          // NOTE: We leave the inline flex-basis style applied
+        }
+      };
+
+      resizerLeftMain.addEventListener('mousedown', (e) => startResize(e, resizerLeftMain));
+      resizerMainRight.addEventListener('mousedown', (e) => startResize(e, resizerMainRight));
+    }
+
+    document.addEventListener('DOMContentLoaded', initializeResizers);
 
   </script>
 
@@ -547,18 +777,31 @@
       /* Prevent wrapping */
       overflow: hidden;
       text-overflow: ellipsis;
+      min-width: 0;
+      /* Prevent flex item from overflowing */
     }
 
     .delete-session-button {
-      padding: 4px 6px;
+      width: 28px;
+      /* Fixed width */
+      height: 28px;
+      /* Make it square */
+      padding: 0;
+      /* Remove padding */
+      text-align: center;
+      /* Center X */
       background-color: #fdd;
       border: 1px solid #f99;
       color: #c00;
       cursor: pointer;
-      font-size: 0.8em;
-      line-height: 1;
+      font-size: 1em;
+      /* Adjust if needed */
+      line-height: 26px;
+      /* Vertical align */
       flex-shrink: 0;
       /* Prevent shrinking */
+      border-radius: 3px;
+      /* Optional rounding */
     }
 
     .delete-session-button:hover {
@@ -635,44 +878,79 @@
       height: 100vh;
       overflow: hidden;
       /* Prevent body scroll */
+      /* Add user-select none during resize? Handled by JS */
     }
 
     .page-layout {
       display: flex;
       width: 100%;
       height: 100%;
+      flex-wrap: nowrap;
+      /* Explicitly prevent wrapping */
     }
 
     .left-sidebar {
-      width: 300px;
-      /* Increased width */
+      flex-basis: 300px;
+      /* Initial size - CHANGED from width */
+      min-width: 150px;
+      /* Minimum width - RESTORED */
       padding: 15px;
       border-right: 1px solid #ccc;
       overflow-y: auto;
       background-color: #f8f8f8;
       height: 100%;
       box-sizing: border-box;
+      flex-shrink: 0;
+      /* Prevent shrinking beyond width */
     }
 
     .main-content {
       flex-grow: 1;
       /* Takes remaining space */
+      min-width: 100px;
+      /* Minimum width - RESTORED (was 100px) */
       padding: 15px;
       overflow-y: auto;
       height: 100%;
       box-sizing: border-box;
+      /* No explicit width/flex-basis needed here */
     }
 
     .sidebar {
       /* This is the RIGHT sidebar now */
-      width: 300px;
-      /* Decreased width */
+      flex-basis: 300px;
+      /* Initial size - CHANGED from width */
+      min-width: 150px;
+      /* Minimum width - RESTORED */
       padding: 15px;
       border-left: 1px solid #ccc;
       overflow-y: auto;
       background-color: #f8f8f8;
       height: 100%;
       box-sizing: border-box;
+      flex-shrink: 0;
+      /* Prevent shrinking beyond width */
+    }
+
+    .resizer-handle {
+      width: 5px;
+      /* Width of the draggable area */
+      background-color: #ddd;
+      /* Make it visible */
+      cursor: col-resize;
+      /* Indicate it's draggable */
+      flex-shrink: 0;
+      /* Prevent shrinking */
+      height: 100%;
+      z-index: 10;
+      /* Ensure it's clickable */
+      border-left: 1px solid #ccc;
+      border-right: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+
+    .resizer-handle:hover {
+      background-color: #bbb;
     }
 
     .controls-section.card {
