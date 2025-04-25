@@ -1,15 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
-<html lang="en">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Director Control Panel</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Director Control Panel</title>
   <link rel="stylesheet" href="/views/styles/main.css" />
-  <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
 </head>
 
@@ -152,23 +148,6 @@
             <button onclick="playAllTeleprompters()" class="success-btn">▶️ Resume All Teleprompters</button>
           </div>
         </div>
-      </div>
-      <div class="audio-controls">
-        <div class="group-label">Audio Controls</div>
-        <button onclick="testAudioRecord()" class="success-btn">🎤 Record Audio (5s)</button>
-        <button onclick="playLastRecording()" class="info-btn">▶️ Play Last Recording</button>
-        <button onclick="clearAudio()" class="warning-btn">🗑️ Clear Audio</button>
-      </div>
-      <div class="teleprompter-button-group">
-        <div class="group-label">Teleprompter Controls</div>
-        <button onclick="openTeleprompter()">Open Teleprompter</button>
-        <button onclick="openCharacterTeleprompter('alan')">Open Alan's Teleprompter</button>
-        <button onclick="openCharacterTeleprompter('ellie')">Open Ellie's Teleprompter</button>
-        <button onclick="testTeleprompter()">Test Teleprompter</button>
-        <button onclick="testTeleprompterVideo()">Test Teleprompter Video</button>
-        <button onclick="clearTeleprompter()">Clear Teleprompter</button>
-        <button onclick="pauseAllTeleprompters()" class="warning-btn">⏸️ Pause All Teleprompters</button>
-        <button onclick="playAllTeleprompters()" class="success-btn">▶️ Resume All Teleprompters</button>
       </div>
     </div>
   </div>
@@ -910,8 +889,8 @@
     }
 
     .left-sidebar {
-      flex-basis: 300px;
-      /* Initial size - CHANGED from width */
+      flex-basis: 25%;
+      /* Changed from 300px to 25% */
       min-width: 150px;
       /* Minimum width - RESTORED */
       padding: 15px;
@@ -927,19 +906,20 @@
     .main-content {
       flex-grow: 1;
       /* Takes remaining space */
+      flex-basis: 50%;
+      /* Explicitly set to 50% instead of relying only on flex-grow */
       min-width: 100px;
       /* Minimum width - RESTORED (was 100px) */
       padding: 15px;
       overflow-y: auto;
       height: 100%;
       box-sizing: border-box;
-      /* No explicit width/flex-basis needed here */
     }
 
     .sidebar {
       /* This is the RIGHT sidebar now */
-      flex-basis: 300px;
-      /* Initial size - CHANGED from width */
+      flex-basis: 25%;
+      /* Changed from 300px to 25% */
       min-width: 150px;
       /* Minimum width - RESTORED */
       padding: 15px;
