@@ -2,6 +2,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os'); // Import os module
+const sessionService = require('./sessionService'); // Added
 
 module.exports = {
     /**
@@ -15,9 +16,22 @@ module.exports = {
     captureVideo(outVideoName, durationSec, serverDeviceId, resolution = { width: 1920, height: 1080 }) {
         return new Promise((resolve, reject) => {
             const platform = os.platform();
+            let fullOutVideoName;
 
-            if (fs.existsSync(outVideoName)) {
-                fs.unlinkSync(outVideoName);
+            try {
+                const sessionDir = sessionService.getSessionDirectory();
+                fullOutVideoName = path.join(sessionDir, outVideoName);
+                // Ensure session dir exists
+                if (!fs.existsSync(sessionDir)) {
+                    fs.mkdirSync(sessionDir, { recursive: true });
+                }
+            } catch (error) {
+                console.error("Error getting session directory for GStreamer capture:", error);
+                return reject(error);
+            }
+
+            if (fs.existsSync(fullOutVideoName)) {
+                fs.unlinkSync(fullOutVideoName);
             }
 
             const resWidth = (resolution && resolution.width) ? resolution.width : 1920;
@@ -48,7 +62,7 @@ module.exports = {
                     '!',
                     'mp4mux',
                     '!',
-                    `filesink location=${outVideoName}`
+                    `filesink location=${fullOutVideoName}`
                 ];
             } else if (platform === 'darwin') {
                 sourceElementName = 'avfvideosrc';
@@ -72,7 +86,7 @@ module.exports = {
                     '!',
                     'mp4mux',
                     '!',
-                    `filesink location=${outVideoName}`
+                    `filesink location=${fullOutVideoName}`
                 ];
             } else {
                 return reject(new Error(`Unsupported platform for GStreamer recording: ${platform}`));
@@ -81,7 +95,7 @@ module.exports = {
 
             const pipelineString = pipelineElements.join(' ');
 
-            console.log(`(${platform}) Starting GStreamer capture for ${durationSec} sec from ${sourceElementName} (ID: ${serverDeviceId}) => ${outVideoName}`);
+            console.log(`(${platform}) Starting GStreamer capture for ${durationSec} sec from ${sourceElementName} (ID: ${serverDeviceId}) => ${fullOutVideoName}`);
             console.log(`(${platform}) GStreamer pipeline: ${pipelineString}`);
 
             // Split carefully, considering potential spaces in paths/options if any were added
@@ -111,7 +125,7 @@ module.exports = {
                     console.error(`(${platform}) GStreamer process exited with code ${code}.`);
                     reject(new Error(`GStreamer exited with code ${code}: ${errorOutput}`));
                 } else {
-                    console.log(`✅ (${platform}) Captured video with GStreamer: ${outVideoName}`);
+                    console.log(`✅ (${platform}) Captured video with GStreamer: ${fullOutVideoName}`);
                     resolve();
                 }
             });

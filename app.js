@@ -6,11 +6,13 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const fs = require('fs');
 
 // import config
 const config = require('./config.json');
 
 // Our custom modules
+const sessionService = require('./services/sessionService');
 const CameraControl = require('./services/cameraControl');
 const cameraControl = new CameraControl();
 const aiVoice = require('./services/aiVoice');
@@ -83,6 +85,11 @@ app.use('/', mainRouter);
 server.listen(PORT, () => {
   console.log(`AI Director System listening on port ${PORT}`);
   console.log(`http://localhost:${PORT}`);
+
+  // Initialize the session FIRST
+  const initialSessionId = sessionService.generateSessionId();
+  sessionService.setCurrentSessionId(initialSessionId);
+  console.log(`Initialized with session ID: ${initialSessionId}`);
 
   // Clear the main teleprompter on startup
   broadcast({ type: 'CLEAR_TELEPROMPTER' });

@@ -4,6 +4,8 @@ const { scenes } = require('../services/sceneService');
 const aiVoice = require('../services/aiVoice');
 const { broadcast, broadcastConsole, broadcastTeleprompterStatus } = require('../websocket/broadcaster');
 const ffmpegHelper = require('../services/ffmpegHelper');
+const gstreamerHelper = require('../services/gstreamerHelper');
+const sessionService = require('../services/sessionService');
 const callsheetService = require('../services/callsheetService');
 const CameraControl = require('../services/cameraControl');
 const cameraControl = CameraControl.getInstance();
@@ -176,6 +178,12 @@ async function action() {
         return;
     }
 
+    // Define relative paths from config
+    const RAW_DIR = config.framesRawDir;
+    const OVERLAY_DIR = config.framesOverlayDir;
+    const OUT_ORIG = config.videoOriginal;
+    const OUT_OVER = config.videoOverlay;
+
     // start recording video
     broadcastConsole('Initiating video recording sequence...');
 
@@ -226,9 +234,9 @@ async function action() {
 
         // Start FFmpeg recording using the selected device path and wait for it to be ready
         recordingPromise = recordingHelper.captureVideo(
-            config.videoOriginal,
+            OUT_ORIG,
             sceneDuration,
-            recordingDevicePath, // Pass the selected device path
+            recordingDevicePath,
             resolution
         );
 
@@ -248,87 +256,43 @@ async function action() {
         // aiSpeak the action
         aiVoice.speak("action!");
 
-        // Get the current take's characters
-        const characters = scene.takes[sceneTakeIndex].characters;
+        // wait for the scene duration + a buffer
+        const waitDuration = sceneDuration * 1000 + 2000; // Add 2s buffer
+        broadcastConsole(`Waiting ${waitDuration / 1000} seconds for scene completion...`);
+        await new Promise(resolve => setTimeout(resolve, waitDuration));
+        broadcastConsole('Scene time elapsed.');
 
-        // Create a timeline of all events (lines and directions) from all characters
-        const timeline = [];
+        // Wait for the recording process to actually finish
+        broadcastConsole('Ensuring recording process is complete...');
+        await recordingPromise; // Wait here for ffmpeg/gstreamer to finish
+        broadcastConsole('Recording process finished.');
 
-        // Process each character's lines and directions
-        Object.entries(characters).forEach(([character, data]) => {
-            // Add lines to timeline
-            if (data.lines) {
-                data.lines.forEach(line => {
-                    timeline.push({
-                        timeIn: line['time-in'],
-                        timeOut: line['time-out'],
-                        type: 'line',
-                        character: character,
-                        text: line.text,
-                        style: 'italic' // Lines are denoted with _
-                    });
-                });
-            }
+        // --- Post-processing --- 
+        broadcastConsole('Starting post-processing...');
+        let sessionDir;
+        try {
+            sessionDir = sessionService.getSessionDirectory();
+        } catch (sessionError) {
+            console.error("Action failed: Could not get session directory for post-processing:", sessionError);
+            broadcastConsole(`Action failed: Could not get session directory: ${sessionError.message}`, 'error');
+            return; // Stop if we can't get session dir
+        }
 
-            // Add directions to timeline
-            if (data.directions) {
-                data.directions.forEach(direction => {
-                    timeline.push({
-                        timeIn: direction['time-in'],
-                        timeOut: direction['time-out'],
-                        type: 'direction',
-                        character: character,
-                        text: direction.text,
-                        style: 'bold' // Directions are denoted with *
-                    });
-                });
-            }
-        });
-
-        // Sort timeline by timeIn
-        timeline.sort((a, b) => a.timeIn - b.timeIn);
-
-        // Play through the timeline
-        broadcastConsole('Starting scene timeline playback...');
-        let currentTime = 0;
-        timeline.forEach(event => {
-            setTimeout(() => {
-                // Broadcast the event to the frontend
-                broadcast({
-                    type: 'SCENE_EVENT',
-                    event: {
-                        character: event.character,
-                        text: event.text,
-                        style: event.type === 'line' ? 'actor' : 'direction'
-                    }
-                });
-
-                // If it's a line, use AI voice to speak it
-                if (event.type === 'line') {
-                    aiVoice.speak(event.text);
-                }
-            }, event.timeIn * 1000); // Convert seconds to milliseconds
-        });
-
-        // Wait for the recording to complete
-        broadcastConsole('Waiting for video recording process to finish...');
-        await recordingPromise; // Now we await the promise
-        broadcastConsole('Video recording process finished successfully.');
-
-        // ---- Add Pose Processing Steps ----
-        broadcastConsole('Starting pose processing...');
-        const RAW_DIR = path.join(__dirname, '..', config.framesRawDir);
-        const OVERLAY_DIR = path.join(__dirname, '..', config.framesOverlayDir);
-        const OUT_ORIG = config.videoOriginal; // Already defined in config
-        const OUT_OVER = config.videoOverlay; // Already defined in config
-
+        broadcastConsole('Extracting frames...');
         await ffmpegHelper.extractFrames(OUT_ORIG, RAW_DIR);
-        broadcastConsole('Frames extracted.');
-        await poseTracker.processFrames(RAW_DIR, OVERLAY_DIR);
-        broadcastConsole('Pose tracking complete.');
+
+        broadcastConsole('Processing frames for pose tracking...');
+        const absoluteRawDir = path.join(sessionDir, RAW_DIR);
+        const absoluteOverlayDir = path.join(sessionDir, OVERLAY_DIR);
+        await poseTracker.processFrames(absoluteRawDir, absoluteOverlayDir);
+
+        broadcastConsole('Encoding final overlay video...');
         await ffmpegHelper.encodeVideo(OVERLAY_DIR, OUT_OVER);
-        broadcastConsole(`Overlay video created: ${OUT_OVER}`);
-        // ---- End Pose Processing Steps ----
+        // --- End Post-processing ---
+
+        broadcastConsole(`✅ Scene ${currentScene} completed. Overlay video: ${OUT_OVER}`);
+
+        // TODO: Maybe increment sceneTakeIndex here or handle scene completion logic
 
     } catch (err) {
         // Catch errors from camera setup (like missing device path) or the recording/processing steps

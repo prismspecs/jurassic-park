@@ -1,153 +1,169 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="UTF-8" />
-  <title>AI Director Interface</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Director Control Panel</title>
   <link rel="stylesheet" href="/views/styles/main.css" />
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
 </head>
 
 <body>
-  <div class="main-content">
-    <h1>AI Director Shots</h1>
-    <div class="scene-container">
-      <% scenes.forEach((scene, idx)=> { %>
-        <div class="scene-card" onclick="initScene('<%= encodeURIComponent(scene.directory) %>')">
-          <div class="scene-title">
-            Scene #<%= idx + 1 %>: <%= scene.description %>
+  <div class="page-layout">
+    <!-- NEW Left Sidebar -->
+    <div class="left-sidebar">
+      <div class="controls-section card">
+        <h2>Session Management</h2>
+        <p><strong>Current Session:</strong> <span id="current-session-id">
+            <%= currentSessionId %>
+          </span></p>
+        <p><strong>Existing Sessions:</strong></p>
+        <div id="existing-sessions-list" class="session-list">
+          <% if (existingSessions && existingSessions.length> 0) { %>
+            <% existingSessions.forEach(session=> { %>
+              <div class="session-item">
+                <button class="session-button <%= session === currentSessionId ? 'active' : '' %>"
+                  onclick="selectSession('<%= session %>')">
+                  <%= session %>
+                </button>
+                <% if (session !==currentSessionId) { %>
+                  <button class="delete-session-button" title="Delete session <%= session %>"
+                    onclick="deleteSession('<%= session %>')">
+                    ❌
+                  </button>
+                  <% } %>
+              </div>
+              <% }); %>
+                <% } else { %>
+                  <p>No other sessions found.</p>
+                  <% } %>
+        </div>
+      </div>
+    </div>
+    <!-- End Left Sidebar -->
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+      <h1>AI Director Shots</h1>
+      <div class="scene-container">
+        <% scenes.forEach((scene, idx)=> { %>
+          <div class="scene-card" onclick="initScene('<%= encodeURIComponent(scene.directory) %>')">
+            <div class="scene-title">
+              Scene #<%= idx + 1 %>: <%= scene.description %>
+            </div>
+            <img src="./database/scenes/<%= scene.directory %>/thumbnail.jpg" alt="<%= scene.description %>" />
           </div>
-          <img src="./database/scenes/<%= scene.directory %>/thumbnail.jpg" alt="<%= scene.description %>" />
-        </div>
-        <% }); %>
-    </div>
-    <div id="videos"></div>
-    <div class="controls-section">
-      <h2>Console Output</h2>
-      <div id="console-output"></div>
-    </div>
-  </div>
-  <div class="sidebar">
-    <div class="controls-section">
-      <h2>Camera Controls</h2>
-      <div id="cameraControls">
-        <!-- Camera controls will be populated by CameraManager -->
+          <% }); %>
       </div>
-      <button onclick="cameraManager.addCamera()">Add Camera</button>
+      <div id="videos"></div>
+
+      <!-- MOVED Console Output back to Main Content -->
+      <div class="controls-section card">
+        <h2>Console Output</h2>
+        <div id="console-output"></div>
+      </div>
+      <!-- End Console Output -->
+
     </div>
-    <div id="status"></div>
-    <div class="controls-section">
-      <h2>Controls</h2>
-      <div id="buttons">
-        <div class="recording-options">
-          <label for="recording-pipeline">Recording Pipeline:</label>
-          <select id="recording-pipeline" class="form-control" onchange="handlePipelineChange(this.value)">
-            <option value="gstreamer" selected>GStreamer (Default)</option>
-            <option value="ffmpeg">FFmpeg</option>
-          </select>
-        </div>
-        <div class="recording-options">
-          <label for="recording-resolution">Recording Resolution:</label>
-          <select id="recording-resolution" class="form-control">
-            <option value="1920x1080" selected>1920x1080 (1080p)</option>
-            <option value="3840x2160">3840x2160 (4K)</option>
-            <option value="1280x720">1280x720 (720p)</option>
-            <option value="640x480">640x480 (VGA)</option>
-            <!-- Add more resolutions as needed -->
-          </select>
-        </div>
-        <button id="actionBtn" onclick="action()" style="
-              display: none;
-              background-color: #e8f5e9;
-              border-color: #4caf50;
-              color: #2e7d32;
-            ">
-          Action!
-        </button>
-        <button id="actorsReadyBtn" onclick="actorsReady()" style="
-              display: none;
-              background-color: #e8f5e9;
-              border-color: #4caf50;
-              color: #2e7d32;
-            ">
-          Actors are Ready
-        </button>
-        <button onclick="recordVideo()">
-          Test Record Video & Process Pose
-        </button>
-        <button id="voiceBypassBtn" onclick="toggleVoiceBypass()">
-          Enable Voice Bypass
-        </button>
+    <!-- End Main Content Area -->
 
-        <button onclick="testConsole()">Test Console</button>
-        <button onclick="loadActors()">Load New Actors</button>
-
-        <div class="audio-controls">
-          <div class="group-label">Audio Controls</div>
-          <button onclick="testAudioRecord()" class="success-btn">
-            🎤 Record Audio (5s)
-          </button>
-          <button onclick="playLastRecording()" class="info-btn">
-            ▶️ Play Last Recording
-          </button>
-          <button onclick="clearAudio()" class="warning-btn">
-            🗑️ Clear Audio
-          </button>
+    <!-- Right Sidebar -->
+    <div class="sidebar">
+      <!-- Removed Session Management -->
+      <div class="controls-section card">
+        <h2>Camera Controls</h2>
+        <div id="cameraControls">
+          <!-- Camera controls will be populated by CameraManager -->
         </div>
+        <button onclick="cameraManager.addCamera()">Add Camera</button>
+      </div>
 
-        <div class="teleprompter-button-group">
-          <div class="group-label">Teleprompter Controls</div>
-          <button onclick="openTeleprompter()">Open Teleprompter</button>
-          <button onclick="openCharacterTeleprompter('alan')">
-            Open Alan's Teleprompter
-          </button>
-          <button onclick="openCharacterTeleprompter('ellie')">
-            Open Ellie's Teleprompter
-          </button>
-          <button onclick="testTeleprompter()">Test Teleprompter</button>
-          <button onclick="testTeleprompterVideo()">
-            Test Teleprompter Video
-          </button>
-          <button onclick="clearTeleprompter()">Clear Teleprompter</button>
-          <button onclick="pauseAllTeleprompters()" class="warning-btn">
-            ⏸️ Pause All Teleprompters
-          </button>
-          <button onclick="playAllTeleprompters()" class="success-btn">
-            ▶️ Resume All Teleprompters
-          </button>
+      <div id="status"></div>
+
+      <div class="controls-section card">
+        <h2>Controls</h2>
+        <div id="buttons">
+          <div class="recording-options">
+            <label for="recording-pipeline">Recording Pipeline:</label>
+            <select id="recording-pipeline" class="form-control" onchange="handlePipelineChange(this.value)">
+              <option value="gstreamer" selected>GStreamer (Default)</option>
+              <option value="ffmpeg">FFmpeg</option>
+            </select>
+          </div>
+          <div class="recording-options">
+            <label for="recording-resolution">Recording Resolution:</label>
+            <select id="recording-resolution" class="form-control">
+              <option value="1920x1080" selected>1920x1080 (1080p)</option>
+              <option value="3840x2160">3840x2160 (4K)</option>
+              <option value="1280x720">1280x720 (720p)</option>
+              <option value="640x480">640x480 (VGA)</option>
+            </select>
+          </div>
+          <button id="actionBtn" onclick="action()"
+            style="display: none; background-color: #e8f5e9; border-color: #4caf50; color: #2e7d32;">Action!</button>
+          <button id="actorsReadyBtn" onclick="actorsReady()"
+            style="display: none; background-color: #e8f5e9; border-color: #4caf50; color: #2e7d32;">Actors are
+            Ready</button>
+          <button onclick="recordVideo()">Test Record Video & Process Pose</button>
+          <button id="voiceBypassBtn" onclick="toggleVoiceBypass()">Enable Voice Bypass</button>
+          <button onclick="testConsole()">Test Console</button>
+
+          <div class="actor-loading">
+            <label for="actorFiles">Load Actors:</label>
+            <input type="file" id="actorFiles" multiple accept=".json, .jpg, .jpeg, .png">
+            <button id="loadActorsBtn">Load Selected</button>
+            <p id="loadActorsStatus"></p>
+          </div>
+
+          <div class="audio-controls">
+            <div class="group-label">Audio Controls</div>
+            <button onclick="testAudioRecord()" class="success-btn">🎤 Record Audio (5s)</button>
+            <button onclick="playLastRecording()" class="info-btn">▶️ Play Last Recording</button>
+            <button onclick="clearAudio()" class="warning-btn">🗑️ Clear Audio</button>
+          </div>
+          <div class="teleprompter-button-group">
+            <div class="group-label">Teleprompter Controls</div>
+            <button onclick="openTeleprompter()">Open Teleprompter</button>
+            <button onclick="openCharacterTeleprompter('alan')">Open Alan's Teleprompter</button>
+            <button onclick="openCharacterTeleprompter('ellie')">Open Ellie's Teleprompter</button>
+            <button onclick="testTeleprompter()">Test Teleprompter</button>
+            <button onclick="testTeleprompterVideo()">Test Teleprompter Video</button>
+            <button onclick="clearTeleprompter()">Clear Teleprompter</button>
+            <button onclick="pauseAllTeleprompters()" class="warning-btn">⏸️ Pause All Teleprompters</button>
+            <button onclick="playAllTeleprompters()" class="success-btn">▶️ Resume All Teleprompters</button>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="controls-section">
-      <h2>Teleprompter Preview</h2>
-      <div class="teleprompter-container">
-        <iframe id="teleprompter-frame" src="/teleprompter"></iframe>
+      <div class="controls-section card">
+        <h2>Teleprompter Preview</h2>
+        <div class="teleprompter-container">
+          <iframe id="teleprompter-frame" src="/teleprompter"></iframe>
+        </div>
       </div>
+
+      <!-- Console moved to main content -->
+
     </div>
-  </div>
+    <!-- End Right Sidebar -->
+
+  </div> <!-- End Page Layout -->
 
   <script>
-    // WebSocket connection for real-time updates
     const ws = new WebSocket("ws://" + window.location.host);
+    const consoleOutput = document.getElementById("console-output"); // Updated selector
+    let voiceBypassEnabled = true; // Keep state if needed
 
     ws.onopen = function () {
       console.log("WebSocket connection established");
-      appendToConsole("WebSocket connected", "info");
-
-      // Fetch initial voice bypass state from server
+      logToConsole("WebSocket connected", "info"); // Use new log function
+      // Fetch initial voice bypass state
       fetch("/getVoiceBypass")
         .then((res) => res.json())
         .then((data) => {
           voiceBypassEnabled = data.enabled;
-          const btn = document.getElementById("voiceBypassBtn");
-          if (btn) {
-            btn.textContent = voiceBypassEnabled
-              ? "Disable Voice Bypass"
-              : "Enable Voice Bypass";
-            btn.style.backgroundColor = voiceBypassEnabled
-              ? "#ff4444"
-              : "#4CAF50";
-          }
+          updateVoiceBypassButton(); // Use helper function
         })
         .catch((err) => {
           console.error("Error fetching voice bypass state:", err);
@@ -156,72 +172,150 @@
 
     ws.onerror = function (error) {
       console.error("WebSocket error:", error);
-      appendToConsole("WebSocket error: " + error.message, "error");
+      logToConsole("WebSocket error: " + error.message, "error");
     };
 
     ws.onclose = function () {
       console.log("WebSocket connection closed");
-      appendToConsole("WebSocket connection closed", "warn");
+      logToConsole("WebSocket connection closed", "warn");
     };
 
-    // Voice bypass state
-    let voiceBypassEnabled = true;
-
-    function toggleVoiceBypass() {
-      voiceBypassEnabled = !voiceBypassEnabled;
-      const btn = document.getElementById("voiceBypassBtn");
-      btn.textContent = voiceBypassEnabled
-        ? "Disable Voice Bypass"
-        : "Enable Voice Bypass";
-      btn.style.backgroundColor = voiceBypassEnabled ? "#ff4444" : "#4CAF50";
-
-      // Send the bypass state to the server
-      fetch("/setVoiceBypass", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ enabled: voiceBypassEnabled }),
-      })
-        .then((res) => res.json())
-        .then((info) => {
-          document.getElementById("status").innerText = info.message;
-        })
-        .catch((err) => {
-          console.error(err);
-          document.getElementById("status").innerText = "Error: " + err;
-        });
-    }
-
     ws.onmessage = function (event) {
-      console.log("Received WebSocket message:", event.data);
-      const data = JSON.parse(event.data);
-      console.log("Parsed WebSocket data:", data);
-      if (data.type === "CONSOLE") {
-        console.log("Handling console message:", data.message);
-        appendToConsole(data.message, data.level);
-      } else if (data.type === "ACTORS_CALLED") {
-        document.getElementById("actorsReadyBtn").style.display =
-          "inline-block";
-        document.getElementById("status").innerText =
-          "Waiting for actors to be ready...";
-      } else if (data.type === "ACTORS_READY") {
-        document.getElementById("actorsReadyBtn").style.display = "none";
-        document.getElementById("actionBtn").style.display = "inline-block";
-        document.getElementById("status").innerText =
-          "Actors are ready to perform!";
+      try {
+        const data = JSON.parse(event.data);
+        console.log('Message from server:', data);
+
+        if (data.type === 'CONSOLE') {
+          logToConsole(data.message, data.level);
+        } else if (data.type === 'SESSION_UPDATE') {
+          // Update the display when session changes
+          const currentSessionSpan = document.getElementById('current-session-id');
+          if (currentSessionSpan) {
+            currentSessionSpan.textContent = data.sessionId;
+          }
+          // Update button active state
+          document.querySelectorAll('.session-button').forEach(button => {
+            if (button.textContent.trim() === data.sessionId) {
+              button.classList.add('active');
+            } else {
+              button.classList.remove('active');
+            }
+          });
+          logToConsole(`Session updated to: ${data.sessionId}`, 'info');
+        } else if (data.type === 'ACTORS_CALLED') {
+          document.getElementById("actorsReadyBtn").style.display = "inline-block";
+          document.getElementById("status").innerText = "Waiting for actors to be ready...";
+        } else if (data.type === 'ACTORS_READY') {
+          document.getElementById("actorsReadyBtn").style.display = "none";
+          document.getElementById("actionBtn").style.display = "inline-block";
+          document.getElementById("status").innerText = "Actors are ready to perform!";
+        } else {
+          // Handle other message types if necessary
+          console.log("Received unhandled message type:", data.type);
+        }
+      } catch (error) {
+        console.error('Error parsing message or handling update:', error);
+        logToConsole('Received non-JSON message or error handling message.', 'error');
       }
     };
 
-    function appendToConsole(message, level = "info") {
-      const console = document.getElementById("console-output");
+    // NEW Log function (replacing appendToConsole)
+    function logToConsole(message, level = 'info') {
+      const entry = document.createElement('div');
       const timestamp = new Date().toLocaleTimeString();
-      const entry = document.createElement("div");
-      entry.className = level;
-      entry.innerHTML =
-        '<span class="timestamp">[' + timestamp + "]</span> " + message;
-      console.appendChild(entry);
-      console.scrollTop = console.scrollHeight;
+      entry.className = `log-entry log-${level}`;
+      entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+      if (consoleOutput) {
+        consoleOutput.appendChild(entry);
+        consoleOutput.scrollTop = consoleOutput.scrollHeight; // Auto-scroll
+      } else {
+        console.error("Console output element not found!");
+      }
+    }
+
+    // NEW Session Selection function
+    async function selectSession(sessionId) {
+      logToConsole(`Attempting to switch to session: ${sessionId}`, 'info');
+      try {
+        const response = await fetch('/api/select-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: `sessionId=${encodeURIComponent(sessionId)}`
+        });
+        const result = await response.json();
+        if (response.ok && result.success) {
+          logToConsole(`Successfully switched to session: ${sessionId}`, 'success');
+          // The SESSION_UPDATE WS message should handle the UI update
+        } else {
+          throw new Error(result.message || 'Failed to select session');
+        }
+      } catch (error) {
+        console.error('Error selecting session:', error);
+        logToConsole(`Error selecting session: ${error.message}`, 'error');
+      }
+    }
+
+    // NEW Delete Session function
+    async function deleteSession(sessionId) {
+      if (!confirm(`Are you sure you want to permanently delete session ${sessionId} and all its recordings?`)) {
+        return; // Abort if user cancels
+      }
+      logToConsole(`Attempting to delete session: ${sessionId}`, 'warn');
+      try {
+        const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+          method: 'DELETE'
+        });
+        const result = await response.json();
+        if (response.ok && result.success) {
+          logToConsole(`Successfully deleted session: ${sessionId}`, 'success');
+          // Remove the session item from the UI
+          const sessionList = document.getElementById('existing-sessions-list');
+          const buttons = sessionList.querySelectorAll('button');
+          buttons.forEach(button => {
+            // Find the parent .session-item of the button matching the sessionId
+            if (button.textContent.trim() === sessionId || button.title.includes(sessionId)) {
+              const itemToRemove = button.closest('.session-item');
+              if (itemToRemove) {
+                itemToRemove.remove();
+              }
+            }
+          });
+          // Check if the list is now empty
+          if (!sessionList.querySelector('.session-item')) {
+            sessionList.innerHTML = '<p>No other sessions found.</p>';
+          }
+        } else {
+          throw new Error(result.error || 'Failed to delete session');
+        }
+      } catch (error) {
+        console.error('Error deleting session:', error);
+        logToConsole(`Error deleting session ${sessionId}: ${error.message}`, 'error');
+      }
+    }
+
+    // --- Existing Functions (adapted slightly) ---
+    function updateVoiceBypassButton() {
+      const btn = document.getElementById("voiceBypassBtn");
+      if (btn) {
+        btn.textContent = voiceBypassEnabled ? "Disable Voice Bypass" : "Enable Voice Bypass";
+        btn.style.backgroundColor = voiceBypassEnabled ? "#ff4444" : "#4CAF50";
+      }
+    }
+
+    function toggleVoiceBypass() {
+      voiceBypassEnabled = !voiceBypassEnabled;
+      updateVoiceBypassButton(); // Update UI
+      // Send the bypass state to the server
+      fetch("/setVoiceBypass", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: voiceBypassEnabled }),
+      })
+        .then((res) => res.json())
+        .then((info) => { document.getElementById("status").innerText = info.message; })
+        .catch((err) => { console.error(err); document.getElementById("status").innerText = "Error: " + err; });
     }
 
     function openTeleprompter() {
@@ -229,766 +323,406 @@
     }
 
     function openCharacterTeleprompter(character) {
-      const url = `/teleprompter/${character}`;
-      window.open(url, `teleprompter-${character}`, "width=800,height=600");
+      window.open(`/teleprompter/${character}`, `teleprompter-${character}`, "width=800,height=600");
     }
 
     function testTeleprompter() {
-      // First send a message with an image
       fetch("/teleprompter/updateTeleprompter", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: "This is a test message with an image for the teleprompter.",
-          image: "/database/test_content/headshot.jpg",
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Test message with image", image: "/database/test_content/headshot.jpg" }), // Check path
       });
-
-      // Then send a message without an image
       setTimeout(() => {
         fetch("/teleprompter/updateTeleprompter", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            text: "This is a test message without an image for the teleprompter.",
-          }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: "Test message without image" }),
         });
-      }, 3000); // Wait 3 seconds before sending the second message
+      }, 3000);
     }
 
     function testTeleprompterVideo() {
       fetch("/teleprompter/playTeleprompterVideo", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          videoPath: "/database/test_content/freefall.mp4",
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoPath: "/database/test_content/freefall.mp4" }), // Check path
       });
     }
 
     function clearTeleprompter() {
       fetch("/teleprompter/clearTeleprompter", { method: "POST" })
-        .then((res) => res.json())
-        .then((info) => {
-          document.getElementById("status").innerText = info.message;
-        })
-        .catch((err) => {
-          console.error(err);
-          document.getElementById("status").innerText = "Error: " + err;
-        });
+        .then(res => res.json()).then(info => { document.getElementById("status").innerText = info.message; })
+        .catch(err => { console.error(err); document.getElementById("status").innerText = "Error: " + err; });
     }
 
     function initScene(directory) {
       fetch("/initScene/" + encodeURIComponent(directory))
-        .then((res) => res.json())
-        .then((info) => {
-          document.getElementById("status").innerText = info.message;
-        })
-        .catch((err) => {
-          console.error(err);
-          document.getElementById("status").innerText = "Error: " + err;
-        });
+        .then(res => res.json()).then(info => { document.getElementById("status").innerText = info.message; })
+        .catch(err => { console.error(err); document.getElementById("status").innerText = "Error: " + err; });
     }
 
     function actorsReady() {
-      document.getElementById("status").innerText =
-        "Notifying system that actors are ready...";
+      document.getElementById("status").innerText = "Notifying system: actors ready...";
       fetch("/actorsReady", { method: "POST" })
-        .then((res) => res.json())
-        .then((info) => {
-          document.getElementById("status").innerText = info.message;
-        })
-        .catch((err) => {
-          console.error(err);
-          document.getElementById("status").innerText = "Error: " + err;
-        });
+        .then(res => res.json()).then(info => { document.getElementById("status").innerText = info.message; })
+        .catch(err => { console.error(err); document.getElementById("status").innerText = "Error: " + err; });
     }
 
     function handlePipelineChange(pipeline) {
-      console.log(`Switched recording pipeline to: ${pipeline}`);
-      appendToConsole(`Recording pipeline set to: ${pipeline}`, "info");
+      logToConsole(`Recording pipeline set to: ${pipeline}`, "info");
     }
 
     async function recordVideo() {
       document.getElementById("status").innerText = "Recording video...";
       const pipeline = document.getElementById("recording-pipeline").value;
       const useFfmpeg = pipeline === "ffmpeg";
-      const resolution = document.getElementById(
-        "recording-resolution"
-      ).value;
-
-      console.log(
-        `Starting recording with ${pipeline} pipeline at ${resolution}`
-      );
-      appendToConsole(
-        `Starting recording with ${pipeline} pipeline at ${resolution}`,
-        "info"
-      );
-
+      const resolution = document.getElementById("recording-resolution").value;
+      logToConsole(`Starting recording with ${pipeline} pipeline at ${resolution}`, "info");
       try {
-        const response = await fetch(
-          `/camera/recordVideo?useFfmpeg=${useFfmpeg}&resolution=${resolution}`
-        );
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const text = await response.text();
-        let info;
-        try {
-          info = JSON.parse(text);
-        } catch (e) {
-          console.error("Failed to parse response:", text);
-          throw new Error("Invalid response from server");
-        }
+        logToConsole("Test Record Button: Needs implementation update for camera selection.", "warn");
+        // Example call (needs camera name): 
+        // await fetch(`/camera/Camera%201/record?useFfmpeg=${useFfmpeg}&resolution=${resolution}`, { method: 'POST' });
 
-        if (info.success) {
-          document.getElementById("status").innerText =
-            info.message || "Video recorded.";
-          const vidDiv = document.getElementById("videos");
-          vidDiv.innerHTML = `
-              <!-- Remove original video section -->
-              <!-- <h3>Original Video</h3>
-              <video controls src="/video/${info.originalName}"></video> -->
-              <h3>Overlay Video</h3>
-              <video controls src="/video/${info.overlayName}"></video>
-            `;
-          console.log(`Recording completed successfully with ${pipeline}`);
-          appendToConsole(
-            `Recording completed with ${pipeline} pipeline`,
-            "success"
-          );
-        } else {
-          document.getElementById("status").innerText =
-            "Error: " + info.message;
-          console.error("Recording failed:", info.message);
-          appendToConsole(`Recording failed: ${info.message}`, "error");
-        }
       } catch (error) {
-        console.error("Error starting recording:", error);
-        document.getElementById("status").innerText =
-          "Error: " + error.message;
-        appendToConsole(`Recording error: ${error.message}`, "error");
+        logToConsole(`Recording error: ${error.message}`, "error");
       }
     }
-
-    function updatePTZ() {
-      // Get slider values directly - they are already in the correct step size
-      const data = {
-        pan: parseInt(document.getElementById("panSlider").value),
-        tilt: parseInt(document.getElementById("tiltSlider").value),
-        zoom: parseInt(document.getElementById("zoomSlider").value),
-      };
-
-      // Update display values - convert hardware values to physical degrees
-      document.getElementById("panValue").textContent =
-        data.pan === 0 ? "0°" : ((data.pan / 468000) * 140).toFixed(1) + "°";
-      document.getElementById("tiltValue").textContent =
-        data.tilt === 0
-          ? "0°"
-          : ((data.tilt / 324000) * (data.tilt > 0 ? 30 : -70)).toFixed(1) +
-          "°";
-      document.getElementById("zoomValue").textContent = data.zoom + "%";
-
-      // Send to server
-      fetch("/camera/ptz", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-    }
-
-    function selectCamera(camera) {
-      if (!camera) return;
-
-      fetch("/camera/selectCamera", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ camera }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) {
-            document.getElementById("status").innerText = data.message;
-            // Reinitialize webcam with selected camera
-            initWebcam(camera);
-          } else {
-            document.getElementById("status").innerText =
-              "Error: " + data.message;
-          }
-        })
-        .catch((err) => {
-          document.getElementById("status").innerText = "Error: " + err;
-        });
-    }
-
-    // Initialize camera controls when page loads
-    window.addEventListener("load", async () => {
-      // Don't automatically initialize webcam on load
-      // Let the user select a camera first
-      await cameraManager.initialize();
-    });
 
     function action() {
       document.getElementById("status").innerText = "Starting action...";
       fetch("/action", { method: "POST" })
-        .then((res) => res.json())
-        .then((info) => {
-          document.getElementById("status").innerText = info.message;
-        })
-        .catch((err) => {
-          console.error(err);
-          document.getElementById("status").innerText = "Error: " + err;
-        });
+        .then(res => res.json()).then(info => { document.getElementById("status").innerText = info.message; })
+        .catch(err => { console.error(err); document.getElementById("status").innerText = "Error: " + err; });
     }
 
     function testConsole() {
       fetch("/testConsole", { method: "POST" })
-        .then((res) => res.json())
-        .then((info) => {
-          document.getElementById("status").innerText = info.message;
-        })
-        .catch((err) => {
-          console.error(err);
-          document.getElementById("status").innerText = "Error: " + err;
-        });
-    }
-
-    function loadActors() {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.click();
+        .then(res => res.json()).then(info => { document.getElementById("status").innerText = info.message; })
+        .catch(err => { console.error(err); document.getElementById("status").innerText = "Error: " + err; });
     }
 
     function pauseAllTeleprompters() {
-      ws.send(
-        JSON.stringify({
-          type: "TELEPROMPTER_CONTROL",
-          action: "PAUSE",
-        })
-      );
-      appendToConsole("Paused all teleprompters", "info");
+      ws.send(JSON.stringify({ type: "TELEPROMPTER_CONTROL", action: "PAUSE" }));
+      logToConsole("Paused all teleprompters", "info");
     }
 
     function playAllTeleprompters() {
-      ws.send(
-        JSON.stringify({
-          type: "TELEPROMPTER_CONTROL",
-          action: "PLAY",
-        })
-      );
-      appendToConsole("Resumed all teleprompters", "info");
+      ws.send(JSON.stringify({ type: "TELEPROMPTER_CONTROL", action: "PLAY" }));
+      logToConsole("Resumed all teleprompters", "info");
     }
 
+    // Audio Recording Functions (Adapted)
+    let lastAudioRecording = null; // Keep track of last recording filename
+
     function testAudioRecord() {
-      // Request microphone access
-      navigator.mediaDevices
-        .getUserMedia({ audio: true })
+      navigator.mediaDevices.getUserMedia({ audio: true })
         .then((stream) => {
-          const mediaRecorder = new MediaRecorder(stream, {
-            mimeType: "audio/webm", // Use webm for better compatibility
-          });
+          const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
           const audioChunks = [];
-
-          mediaRecorder.ondataavailable = (e) => {
-            audioChunks.push(e.data);
-          };
-
+          mediaRecorder.ondataavailable = (e) => { audioChunks.push(e.data); };
           mediaRecorder.onstop = async () => {
-            // Convert to wav format
             const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-
-            // Create FormData and append the blob
             const formData = new FormData();
-            formData.append("audio", audioBlob, "recording.webm");
-
+            formData.append("audio", audioBlob, `rec_${Date.now()}.webm`); // Unique temp name
             try {
-              const response = await fetch("/recordAudio", {
-                method: "POST",
-                body: formData,
-              });
+              const response = await fetch("/recordAudio", { method: "POST", body: formData });
               const data = await response.json();
-              appendToConsole(`Audio recorded: ${data.filename}`, "info");
-              // Store the filename for playback
-              window.lastAudioRecording = data.filename;
+              if (response.ok && data.success) {
+                logToConsole(`Audio recorded: ${data.filename}`, "info");
+                lastAudioRecording = data.filename; // Store filename (relative to session)
+              } else {
+                throw new Error(data.message || 'Failed to save audio');
+              }
             } catch (err) {
-              console.error("Error recording audio:", err);
-              appendToConsole("Error recording audio", "error");
+              logToConsole(`Error recording audio: ${err.message}`, "error");
             }
           };
-
-          // Start recording
-          mediaRecorder.start(100); // Collect data every 100ms
-          appendToConsole("Recording audio for 5 seconds...", "info");
-
-          // Stop after 5 seconds
-          setTimeout(() => {
-            mediaRecorder.stop();
-            stream.getTracks().forEach((track) => track.stop());
-          }, 5000);
+          mediaRecorder.start();
+          logToConsole("Recording audio for 5 seconds...", "info");
+          setTimeout(() => { mediaRecorder.stop(); stream.getTracks().forEach((track) => track.stop()); }, 5000);
         })
-        .catch((err) => {
-          console.error("Error accessing microphone:", err);
-          appendToConsole("Error accessing microphone", "error");
-        });
+        .catch((err) => logToConsole(`Error accessing microphone: ${err.message}`, "error"));
     }
 
     function playLastRecording() {
-      if (!window.lastAudioRecording) {
-        appendToConsole("No audio recording available to play", "warn");
+      if (!lastAudioRecording) {
+        logToConsole("No audio recording available to play", "warn");
         return;
       }
-
-      const audio = new Audio(`/temp/${window.lastAudioRecording}`);
-      audio
-        .play()
-        .then(() => {
-          appendToConsole("Playing last recording...", "info");
-        })
-        .catch((err) => {
-          console.error("Error playing audio:", err);
-          appendToConsole("Error playing audio", "error");
-        });
+      const currentSessionId = document.getElementById('current-session-id')?.textContent;
+      if (!currentSessionId) {
+        logToConsole("Cannot determine current session ID to play audio.", "error");
+        return;
+      }
+      // Assumes Express serves /recordings directory - **NEEDS SERVER SETUP**
+      const audioUrl = `/recordings/${currentSessionId}/${lastAudioRecording}`;
+      logToConsole(`Attempting to play: ${audioUrl}`, 'info'); // Log URL
+      const audio = new Audio(audioUrl);
+      audio.onerror = (e) => { // Added error handler
+        console.error("Audio playback error:", e);
+        logToConsole(`Error playing audio from ${audioUrl}: Check server setup and file path.`, "error");
+      };
+      audio.play()
+        .then(() => logToConsole(`Playing ${lastAudioRecording}...`, "info"))
+        .catch((err) => logToConsole(`Error initiating audio playback: ${err.message}`, "error"));
     }
 
     function clearAudio() {
-      if (!window.lastAudioRecording) {
-        appendToConsole("No audio recording to clear", "warn");
+      if (!lastAudioRecording) {
+        logToConsole("No audio recording to clear", "warn");
         return;
       }
-
-      fetch("/clearAudio", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ filename: window.lastAudioRecording }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) {
-            window.lastAudioRecording = null;
-            appendToConsole("Audio recording cleared", "info");
-          } else {
-            appendToConsole("Error clearing audio: " + data.message, "error");
-          }
-        })
-        .catch((err) => {
-          console.error("Error clearing audio:", err);
-          appendToConsole("Error clearing audio", "error");
-        });
+      logToConsole("Clear Audio button needs server-side implementation for session files.", "warn");
+      // fetch("/clearAudio", { ... }) // Needs server endpoint
     }
 
-    // Camera management
-    class CameraManager {
-      constructor() {
-        this.cameras = [];
-        this.cameraElements = new Map();
-        this.availableDevices = []; // Browser devices { deviceId, label, kind, groupId }
-        this.ptzDevices = [];
-        this.serverDevices = []; // Server devices { id, name }
-        this.cameraDefaults = [];
-      }
-
-      async initialize() {
-        try {
-          // --- Get Browser Devices and Request Permissions FIRST ---
-          console.log("Attempting to enumerate browser devices...");
-          let browserDevicesRaw = await navigator.mediaDevices.enumerateDevices();
-          this.availableDevices = browserDevicesRaw.filter(
-            (device) => device.kind === "videoinput"
-          );
-          console.log("Initial browser devices found:", this.availableDevices);
-          if (this.availableDevices.length > 0) {
-            const labelsMissing = !this.availableDevices[0].label;
-            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-            if (labelsMissing || isMac) {
-              console.log("Labels missing or on macOS, requesting camera access for labels...");
-              try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                stream.getTracks().forEach((track) => track.stop());
-                browserDevicesRaw = await navigator.mediaDevices.enumerateDevices();
-                this.availableDevices = browserDevicesRaw.filter(device => device.kind === "videoinput");
-                console.log("Browser devices after requesting permission:", this.availableDevices);
-              } catch (err) { /* handle error */ }
-            }
-          } else { /* handle no devices */ }
-          // --- END: Get Browser Devices ---
-
-          // --- Get Server Configuration & Devices ---
-          console.log("Fetching server configuration and devices...");
-          const camerasResponse = await fetch("/camera/cameras");
-          this.cameras = await camerasResponse.json();
-          const configResponse = await fetch("/config");
-          if (!configResponse.ok) throw new Error(`HTTP error! status: ${configResponse.status}`);
-          const config = await configResponse.json();
-          this.cameraDefaults = config.cameraDefaults || [];
-          const devicesResponse = await fetch("/camera/devices");
-          if (!devicesResponse.ok) throw new Error(`HTTP error! status: ${devicesResponse.status}`);
-          this.serverDevices = await devicesResponse.json(); // Still need server devices for Recording dropdown
-          console.log("Server reported devices:", this.serverDevices);
-          // --- END: Get Server Configuration & Devices ---
-
-          // --- Get PTZ Devices ---
-          if (this.cameras.length > 0) {
-            console.log("Fetching PTZ devices...");
-            try {
-              const ptzResponse = await fetch("/camera/ptz-devices");
-              this.ptzDevices = await ptzResponse.json();
-              console.log("PTZ devices:", this.ptzDevices);
-            } catch (ptzError) { /* handle error */ this.ptzDevices = []; }
-          } else { this.ptzDevices = []; }
-          // --- END: Get PTZ Devices ---
-
-          this.renderCameraControls();
-          appendToConsole("Camera initialization complete.", "info");
-
-        } catch (err) { /* handle error */ }
-      }
-
-      async addCamera() {
-        const cameraIndex = this.cameras.length;
-        const name = `Camera ${cameraIndex + 1}`;
-
-        // Get the defaults for this camera index, or use empty defaults if none exist
-        const defaults = this.cameraDefaults[cameraIndex] || {
-          previewDevice: "",
-          recordingDevice: "",
-          ptzDevice: "",
-        };
-
-        try {
-          const response = await fetch("/camera/add", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name,
-              previewDevice: defaults.previewDevice,
-              recordingDevice: defaults.recordingDevice,
-              ptzDevice: defaults.ptzDevice,
-            }),
-          });
-
-          if (response.ok) {
-            await this.initialize(); // Refresh the camera list
-          }
-        } catch (err) {
-          console.error("Error adding camera:", err);
+    // Actor Loading Logic (Adapted)
+    const loadActorsBtn = document.getElementById('loadActorsBtn');
+    const actorFilesInput = document.getElementById('actorFiles');
+    const loadActorsStatus = document.getElementById('loadActorsStatus');
+    if (loadActorsBtn && actorFilesInput && loadActorsStatus) {
+      loadActorsBtn.addEventListener('click', async () => {
+        const files = actorFilesInput.files;
+        if (files.length === 0) {
+          loadActorsStatus.textContent = 'Please select files to load.';
+          loadActorsStatus.className = 'status-error'; return;
         }
-      }
-
-      async removeCamera(name) {
+        const formData = new FormData();
+        for (const file of files) { formData.append('files', file); }
+        loadActorsStatus.textContent = 'Loading...';
+        loadActorsStatus.className = 'status-info';
         try {
-          const response = await fetch("/camera/remove", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name }),
-          });
-
-          if (response.ok) {
-            await this.initialize(); // Refresh the camera list
-          }
-        } catch (err) {
-          console.error("Error removing camera:", err);
-        }
-      }
-
-      renderCameraControls() {
-        const container = document.getElementById("cameraControls");
-        container.innerHTML = "";
-        this.cameras.forEach((camera) => {
-          const cameraElement = this.createCameraElement(camera);
-          container.appendChild(cameraElement);
-          this.cameraElements.set(camera.name, cameraElement);
-        });
-      }
-
-      createCameraElement(camera) {
-        const div = document.createElement("div");
-        div.className = "camera-control";
-
-        // --- Determine Preview Display Label & Initial ID --- 
-        // Revert: Find the BROWSER device that corresponds to the saved PREVIEW ID
-        // We assume camera.previewDevice now holds a browserDeviceId (from previous workaround)
-        let currentPreviewDisplayLabel = "No device selected";
-        const currentPreviewBrowserId = camera.previewDevice;
-        let initialPreviewCallNeeded = false;
-        if (currentPreviewBrowserId) {
-          const browserDevice = this.availableDevices.find(d => d.deviceId === currentPreviewBrowserId);
-          if (browserDevice) {
-            currentPreviewDisplayLabel = browserDevice.label || currentPreviewBrowserId;
-            initialPreviewCallNeeded = true; // We have a valid browser ID to init with
-          } else {
-            currentPreviewDisplayLabel = `Saved ID not found: ${currentPreviewBrowserId}`;
-          }
-        }
-        // --- End Preview Display Label --- 
-
-        div.innerHTML = `
-            <div class="camera-header">
-              <h3>${camera.name}</h3>
-              <button onclick="cameraManager.removeCamera('${camera.name}')" class="remove-btn">Remove</button>
-            </div>
-            <div class="camera-preview">
-              <video id="preview-${camera.name}" autoplay playsinline></video>
-              <div class="device-info">Using: ${currentPreviewDisplayLabel}</div>
-            </div>
-            <div class="camera-settings">
-              <div class="setting-group">
-                <label>Preview Device:</label>
-                <select class="preview-device" onchange="cameraManager.updatePreviewDevice('${camera.name
-          // Revert: Pass browserDeviceId (value) 
-          }', this.value)">
-                  <option value="">Select Preview Device</option>
-                  // Revert: Use availableDevices (browser) list 
-                  ${this.availableDevices
-            .map(
-              (browserDevice) => `
-                    <option value="${browserDevice.deviceId}" ${
-                // Select based on current browser ID saved in camera config
-                browserDevice.deviceId === currentPreviewBrowserId ? "selected" : ""
-                }>
-                      ${browserDevice.label || browserDevice.deviceId}
-                    </option>
-                  `
-            )
-            .join("")}
-                </select>
-              </div>
-              <div class="setting-group">
-                <label>Recording Device:</label>
-                 <select class="recording-device" 
-                   onchange="console.log('Recording Device CHANGED to:', this.value); cameraManager.updateRecordingDevice('${camera.name
-          }', this.value)">
-                  <option value="">Select Recording Device</option>
-                  ${this.serverDevices
-            .map(
-              (serverDevice) => `
-                           <option value="${serverDevice.id}" ${serverDevice.id === camera.recordingDevice ? "selected" : ""
-                }>
-                              ${serverDevice.name || serverDevice.id}
-                           </option>
-                         `
-            )
-            .join("")}
-                </select>
-              </div>
-              <div class="setting-group">
-                <label>PTZ Device:</label>
-                <select class="ptz-device" onchange="cameraManager.updatePTZDevice('${camera.name
-          }', this.value)">
-                   <option value="">Select PTZ Device</option> 
-                   ${this.ptzDevices
-            .map(
-              (device) => `
-                     <option value="${device.id || device.path}" ${(device.id || device.path) === camera.ptzDevice ? "selected" : ""
-                }>
-                       ${device.name || device.id || device.path}
-                     </option>
-                   `
-            )
-            .join("")}
-                </select>
-              </div>
-              <div class="ptz-controls-container">${/* ... */ ''}</div>
-              <div class="camera-controls">
-                <button onclick="cameraManager.recordVideo('${camera.name}')">Test Record Video</button>
-              </div>
-            </div>
-          `;
-
-        // Revert: Initialize preview if we have a valid browser ID from config
-        if (initialPreviewCallNeeded) {
-          console.log(`Initializing preview for ${camera.name} using browserId: ${currentPreviewBrowserId}`);
-          setTimeout(() => {
-            // Call updatePreviewDevice with the BROWSER ID
-            cameraManager.updatePreviewDevice(camera.name, currentPreviewBrowserId);
-          }, 100);
-        }
-
-        return div;
-      }
-
-      // REVERT updatePreviewDevice 
-      // Expects browserDeviceId from dropdown
-      async updatePreviewDevice(cameraName, browserDeviceId) {
-        console.log(
-          `[updatePreviewDevice] Called for ${cameraName} with browser device ID: ${browserDeviceId}`
-        );
-        try {
-          // Update server - send browserDeviceId 
-          // (Server might ignore it or try to map it, but frontend needs it)
-          console.log(`[updatePreviewDevice] Sending browser ID ${browserDeviceId} to server endpoint /camera/preview-device`);
-          await fetch("/camera/preview-device", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ cameraName, deviceId: browserDeviceId }),
-          });
-
-          const videoElement = document.getElementById(`preview-${cameraName}`);
-          if (!videoElement) { return; }
-
-          // Use browserDeviceId directly for getUserMedia
-          if (browserDeviceId) {
-            console.log(`[updatePreviewDevice] Attempting getUserMedia directly with browser device ID: ${browserDeviceId}`);
-            const constraints = { /* ... */ };
-            try {
-              const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: browserDeviceId } } }); // Simplified constraints
-              videoElement.srcObject = stream;
-              const browserDevice = this.availableDevices.find(d => d.deviceId === browserDeviceId);
-              const displayLabel = browserDevice ? (browserDevice.label || browserDeviceId) : 'Unknown';
-              const deviceInfoElement = videoElement.nextElementSibling;
-              if (deviceInfoElement) { deviceInfoElement.textContent = `Using: ${displayLabel}`; }
-            } catch (err) {
-              console.error(`[updatePreviewDevice] getUserMedia error:`, err);
-              /* Handle getUserMedia error */
-            }
-          } else {
-            // Stop preview if "Select" chosen
-            if (videoElement.srcObject) { /* ... stop tracks ... */ }
-            const deviceInfoElement = videoElement.nextElementSibling;
-            if (deviceInfoElement) { deviceInfoElement.textContent = "No device selected"; }
-          }
-        } catch (err) { /* Handle fetch error */ }
-      }
-
-      // Keep updateRecordingDevice as it was (takes serverId)
-      async updateRecordingDevice(cameraName, serverDeviceId) {
-        console.log(
-          `[updateRecordingDevice] Called for ${cameraName} with server device ID: ${serverDeviceId}`
-        );
-        try {
-          console.log(`[updateRecordingDevice] Attempting to send fetch request for server ID ${serverDeviceId}...`);
-          const response = await fetch("/camera/recording-device", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ cameraName, deviceId: serverDeviceId }),
-          });
-          console.log(`[updateRecordingDevice] Fetch response status: ${response.status}`);
-          if (!response.ok) {
-            // Log error details if the response status is not OK (e.g., 4xx, 5xx)
-            const errorText = await response.text();
-            console.error(`[updateRecordingDevice] Server responded with error ${response.status}: ${errorText}`);
-            appendToConsole(`Error setting recording device: Server responded with ${response.status}`, "error");
-            throw new Error(`Server error: ${response.status}`);
-          }
-          // Optionally, log success if needed
-          const responseData = await response.json();
-          console.log("[updateRecordingDevice] Fetch successful:", responseData);
-          // appendToConsole("Recording device successfully set on server.", "info"); 
-
-        } catch (err) {
-          // Log any error that occurs during the fetch itself (e.g., network error, CORS issue)
-          console.error("[updateRecordingDevice] Error updating recording device (fetch failed):", err);
-          appendToConsole(`Error updating recording device: ${err.message}`, "error");
-        }
-      }
-
-      // Keep updatePTZDevice as it was (takes serverId)
-      async updatePTZDevice(cameraName, serverDeviceId) {
-        // ... (existing correct logic) ...
-      }
-
-      // Keep updatePTZ as it was
-      async updatePTZ(cameraName, control, value) {
-        // ... (existing correct logic) ...
-      }
-
-      // --- Check recordVideo method --- 
-      async recordVideo(cameraName) {
-        console.log(`recordVideo called for: ${cameraName}`); // Add log
-        const pipeline = document.getElementById("recording-pipeline").value;
-        const useFfmpeg = pipeline === "ffmpeg";
-        const resolution = document.getElementById("recording-resolution").value;
-        // ... (rest of existing recordVideo logic seems okay) ...
-        appendToConsole(`Starting recording for ${cameraName} using ${pipeline}...`, "info");
-        try {
-          const response = await fetch(
-            `/camera/${cameraName}/record?useFfmpeg=${useFfmpeg}&resolution=${resolution}`,
-            { method: "POST" }
-          );
-          // ... handle response ...
+          const response = await fetch('/loadActors', { method: 'POST', body: formData });
+          const result = await response.json();
+          if (response.ok && result.success) {
+            loadActorsStatus.textContent = result.message || 'Actors loaded!';
+            loadActorsStatus.className = 'status-success';
+            actorFilesInput.value = '';
+          } else { throw new Error(result.message || 'Failed to load actors'); }
         } catch (error) {
-          // ... handle error ...
+          loadActorsStatus.textContent = `Error: ${error.message}`;
+          loadActorsStatus.className = 'status-error';
         }
-      }
+      });
     }
 
-    // Initialize camera manager
+    // Camera management class placeholder
+    class CameraManager { initialize() { console.log("CameraManager placeholder initialized"); } addCamera() { logToConsole("Add Camera clicked.", "info"); } }
     const cameraManager = new CameraManager();
+    window.addEventListener("load", async () => {
+      if (cameraManager.initialize) {
+        await cameraManager.initialize();
+      }
+    });
+
   </script>
 
   <style>
-    .camera-control {
-      margin-bottom: 20px;
-      padding: 15px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-    }
-
-    .camera-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-
-    .remove-btn {
-      background-color: #ff4444;
-      color: white;
-      border: none;
-      padding: 5px 10px;
-      border-radius: 3px;
-      cursor: pointer;
-    }
-
-    .camera-preview video {
-      width: 100%;
-      max-height: 200px;
-      background: #000;
-    }
-
-    .camera-settings {
+    /* Add styles for session list */
+    .session-list {
+      max-height: 150px;
+      overflow-y: auto;
       margin-top: 10px;
+      border: 1px solid #ddd;
+      padding: 5px;
     }
 
-    .setting-group {
-      margin: 10px 0;
+    .session-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
     }
 
-    .setting-group label {
+    .session-button {
+      flex-grow: 1;
+      /* Take available space */
+      margin-right: 5px;
+      /* Space before delete button */
+      padding: 8px;
+      text-align: left;
+      border: 1px solid #ccc;
+      background-color: #f9f9f9;
+      cursor: pointer;
+      box-sizing: border-box;
+      white-space: nowrap;
+      /* Prevent wrapping */
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .delete-session-button {
+      padding: 4px 6px;
+      background-color: #fdd;
+      border: 1px solid #f99;
+      color: #c00;
+      cursor: pointer;
+      font-size: 0.8em;
+      line-height: 1;
+      flex-shrink: 0;
+      /* Prevent shrinking */
+    }
+
+    .delete-session-button:hover {
+      background-color: #fcc;
+      border-color: #f66;
+    }
+
+    .log-entry {
+      font-family: monospace;
+      margin-bottom: 3px;
+      white-space: pre-wrap;
+      font-size: 0.9em;
+    }
+
+    .log-timestamp {
+      color: #888;
+      margin-right: 5px;
+    }
+
+    .log-info {
+      color: #333;
+    }
+
+    .log-warn {
+      color: orange;
+    }
+
+    .log-error {
+      color: red;
+      font-weight: bold;
+    }
+
+    .log-success {
+      color: green;
+    }
+
+    .actor-loading {
+      margin-top: 15px;
+      padding-top: 10px;
+      border-top: 1px dashed #ccc;
+    }
+
+    .actor-loading label {
       display: block;
       margin-bottom: 5px;
     }
 
-    .setting-group select {
-      width: 100%;
-      padding: 5px;
+    .actor-loading input[type="file"] {
+      display: block;
+      margin-bottom: 10px;
     }
 
-    .ptz-controls {
-      margin-top: 15px;
+    #loadActorsStatus {
+      margin-top: 5px;
+      font-style: italic;
     }
 
-    .ptz-slider {
-      margin: 10px 0;
+    .status-info {
+      color: #555;
     }
 
-    .ptz-slider input {
-      width: 100%;
+    .status-success {
+      color: green;
     }
 
-    .ptz-slider label {
+    .status-error {
+      color: red;
+    }
+
+    /* --- ADDED Layout Styles --- */
+    body {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+      /* Prevent body scroll */
+    }
+
+    .page-layout {
+      display: flex;
+      width: 100%;
+      height: 100%;
+    }
+
+    .left-sidebar {
+      width: 250px;
+      /* Adjust as needed */
+      padding: 15px;
+      border-right: 1px solid #ccc;
+      overflow-y: auto;
+      background-color: #f8f8f8;
+      height: 100%;
+      box-sizing: border-box;
+    }
+
+    .main-content {
+      flex-grow: 1;
+      /* Takes remaining space */
+      padding: 15px;
+      overflow-y: auto;
+      height: 100%;
+      box-sizing: border-box;
+    }
+
+    .sidebar {
+      /* This is the RIGHT sidebar now */
+      width: 350px;
+      /* Adjust as needed */
+      padding: 15px;
+      border-left: 1px solid #ccc;
+      overflow-y: auto;
+      background-color: #f8f8f8;
+      height: 100%;
+      box-sizing: border-box;
+    }
+
+    .controls-section.card {
+      margin-bottom: 20px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background-color: #fff;
+    }
+
+    h1,
+    h2 {
+      margin-top: 0;
+    }
+
+    /* Adjust scene container if needed */
+    .scene-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+
+    .scene-card {
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 4px;
+      width: 200px;
+      /* Example width */
+      cursor: pointer;
+    }
+
+    .scene-card:hover {
+      border-color: #aaa;
+    }
+
+    .scene-card img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin-top: 10px;
+    }
+
+    #console-output {
+      height: 300px;
+      /* Example height */
+      overflow-y: scroll;
+      border: 1px solid #ccc;
+      background-color: #fdfdfd;
+      padding: 5px;
     }
   </style>
 </body>

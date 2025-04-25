@@ -47,9 +47,10 @@ The **AI director** orchestrates the performance and ensures that each shot clos
 
 The application is built with **Node.js**, acting as the core event controller:
 
+- **Session Management**: The application uses a session ID (format `YYYYMMDD_HHMMSS`) generated at startup. All recordings and processed files are stored in a subdirectory within `recordings/` named after the current session ID (e.g., `recordings/20231027_103000/`). The active session can be changed via the UI.
 - **WebSocket-based real-time communication** between AI components.
 - **Integrates pose tracking models** (e.g., TensorFlow.js, MediaPipe) for movement analysis.
-- **Manages file storage**, shot metadata, and retrieval.
+- **Manages file storage**, shot metadata, and retrieval within session directories.
 - **Plays AI audio voice cues** via text-to-speech APIs (this will not be in use for the first run of the project, which uses a human comedian).
 - **Coordinates main and mobile teleprompter displays** through a local web interface and WebSocket communication. The main teleprompter shows initialization status and actor assignments with headshots and QR codes. Character teleprompters show specific lines and cues.
 
@@ -71,7 +72,7 @@ The application is built with **Node.js**, acting as the core event controller:
 
 ```
 /
-│── app.js              # Main application entry point
+│── app.js              # Main application entry point, initializes session
 │── config.json         # Configuration settings
 │── package.json        # Node.js dependencies
 │── package-lock.json   # Locked dependencies
@@ -83,8 +84,8 @@ The application is built with **Node.js**, acting as the core event controller:
 │── .DS_Store           # macOS specific file
 │
 ├── /controllers        # Request handlers / business logic
-│   └── sceneController.js
-│   └── videoController.js
+│   └── sceneController.js # Uses sessionService for path construction
+│   └── videoController.js # Uses sessionService for path construction
 ├── /database           # Database related files (JSON files act as DB)
 │   ├── scenes.json       # Scene definitions and shot list
 │   ├── /actors         # Actor data (likely JSON files)
@@ -97,28 +98,35 @@ The application is built with **Node.js**, acting as the core event controller:
 ├── /old                # Older or deprecated code (contents not listed)
 ├── /public             # Static assets served by Express
 │   └── favicon.ico     # Favicon for web interfaces
-├── /recordings         # Stored video and audio files (contents not listed)
+├── /recordings         # Stored video and audio files per session
+│   └── /<session_id>   # Directory for each session (e.g., 20231027_103000)
+│       ├── original.mp4  # Original recording for a scene/shot
+│       ├── overlay.mp4   # Processed video with overlay
+│       ├── frames_raw/   # Extracted raw frames
+│       └── frames_overlay/ # Frames with pose overlay
+│       └── *.wav         # Converted audio recordings
 ├── /routes             # API and web routes definition
-│   ├── camera.js         # Camera control routes
-│   ├── main.js           # Main application routes
-│   └── teleprompter.js   # Teleprompter related routes (main display and character-specific via /:character)
+│   ├── camera.js         # Camera control routes, uses sessionService
+│   ├── main.js           # Main application routes, includes session API endpoints (/api/sessions, /api/select-session)
+│   └── teleprompter.js   # Teleprompter related routes
 ├── /services           # Business logic services
 │   ├── aiVoice.js        # Text-to-speech service
 │   ├── callsheetService.js # Manages callsheet/actor assignment logic
 │   ├── camera.js         # Camera interaction service (distinct from routes/control)
 │   ├── cameraControl.js  # PTZ camera control logic
-│   ├── ffmpegHelper.js   # Helper for FFmpeg operations (frame extraction, video encoding with overlay)
-│   ├── gstreamerHelper.js # Helper for GStreamer operations (video capture)
-│   ├── poseTracker.js    # Pose tracking service
-│   └── sceneService.js   # Service for managing scene progression
+│   ├── ffmpegHelper.js   # Helper for FFmpeg operations, uses sessionService for paths
+│   ├── gstreamerHelper.js # Helper for GStreamer operations, uses sessionService for paths
+│   ├── poseTracker.js    # Pose tracking service (takes absolute paths)
+│   ├── sceneService.js   # Service for managing scene progression
+│   └── sessionService.js # NEW: Manages session ID and directories
 ├── /skeletor           # Cuts participants from video using skeletal data
-├── /temp               # Temporary files (contents not listed)
-├── /temp_uploads       # Temporary uploads directory (contents not listed)
+├── /temp               # Temporary files (e.g., uploaded audio before conversion)
+├── /temp_uploads       # Temporary uploads directory (e.g., uploaded actor files)
 ├── /views              # Server-side templates and view logic
-│   ├── homeView.js       # Logic for the main/home view
+│   ├── homeView.js       # Logic for the main/home view, fetches session data
 │   ├── teleprompterView.js # Logic for the teleprompter view
 │   ├── /styles         # CSS Stylesheets
-│   └── /templates      # HTML/EJS templates (e.g., teleprompter.ejs, characterTeleprompter.ejs)
+│   └── /templates      # HTML/EJS templates (home.ejs includes session UI)
 ├── /websocket          # WebSocket handling logic
 │   ├── broadcaster.js    # Handles broadcasting messages to clients
 │   └── handler.js        # Handles incoming WebSocket messages
@@ -126,3 +134,10 @@ The application is built with **Node.js**, acting as the core event controller:
 ├── /.git               # Git repository data (contents not listed)
 
 ```
+
+### **API Endpoints**
+
+(Add a summary of key endpoints if desired, including the new session ones)
+
+- `GET /api/sessions`: Returns a list of existing session IDs (directory names in `recordings/`).
+- `POST /api/select-session`: Sets the active session ID for the application. Expects `sessionId` in the body.
