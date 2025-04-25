@@ -17,7 +17,6 @@ body {
     flex-direction: column;
     justify-content: flex-start;
     align-items: center;
-    padding: 1.25rem;
     box-sizing: border-box;
     font-size: 3rem;
     line-height: 1.4;
@@ -53,20 +52,16 @@ body {
 }
 
 .message {
-    max-width: 90%;
-    margin: 1.25rem auto;
-    padding: 1.25rem;
-    border-radius: 0.5rem;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(5px);
+    max-width: 100%;
+    width: 100%;
     transform: translateY(0);
     opacity: 1;
     transition: all 0.5s ease;
     display: flex;
     align-items: center;
-    gap: 1.25rem;
-    width: 100%;
     box-sizing: border-box;
+    border-bottom: 1px solid #555;
+    padding: 10px 5px;
 }
 
 .message.new {
@@ -82,7 +77,9 @@ body {
 .message-content {
     flex: 1;
     font-size: 1rem;
+    line-height: 1.4;
     min-width: 0;
+    padding: 10px 15px;
 }
 
 .message-image {
@@ -107,30 +104,23 @@ body {
     border: 1px solid #eee;
 }
 
-.message.actor {
-    background: rgba(0, 255, 0, 0.1);
-}
-
-.message.direction {
-    background: rgba(255, 255, 0, 0.1);
-}
-
-.message.action {
-    background: rgba(255, 0, 0, 0.1);
-}
-
+/* Remove background colors for different message types */
+.message.actor,
+.message.direction,
+.message.action,
 .message.normal {
-    background: rgba(255, 255, 255, 0.1);
+    background: none;
+    /* Remove background */
 }
 
 /* Styles for the new Actor Calls message type */
 .actor-calls-container {
+    /* .message base styles apply (width, border-bottom) */
     flex-direction: column;
-    /* Stack title and grid vertically */
     align-items: stretch;
-    /* Allow grid to stretch */
-    width: 95%;
-    /* Make it slightly wider maybe */
+    /* Removed width: 95% */
+    padding: 15px;
+    /* Add internal padding */
 }
 
 .actor-calls-title {
