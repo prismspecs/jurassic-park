@@ -8,6 +8,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const sessionService = require('./sessionService');
 
 module.exports = {
     /**
@@ -29,8 +30,20 @@ module.exports = {
         // but is not currently used in the ffmpeg commands below.
         // The video_size is hardcoded for Linux.
         return new Promise((resolve, reject) => {
-            if (fs.existsSync(outVideoName)) {
-                fs.unlinkSync(outVideoName);
+            let fullOutVideoName;
+            try {
+                const sessionDir = sessionService.getSessionDirectory();
+                fullOutVideoName = path.join(sessionDir, outVideoName);
+                if (!fs.existsSync(sessionDir)) {
+                    fs.mkdirSync(sessionDir, { recursive: true });
+                }
+            } catch (error) {
+                console.error("Error getting session directory for video capture:", error);
+                return reject(error);
+            }
+
+            if (fs.existsSync(fullOutVideoName)) {
+                fs.unlinkSync(fullOutVideoName);
             }
 
             const platform = os.platform();
@@ -55,7 +68,7 @@ module.exports = {
                     '-thread_queue_size', '512',
                     '-max_muxing_queue_size', '2048',
                     '-vsync', 'vfr',
-                    outVideoName
+                    fullOutVideoName
                 ];
             } else {
                 // Linux configuration - optimized for camera capture
@@ -76,15 +89,15 @@ module.exports = {
                     '-fflags', '+nobuffer',
                     '-flags', 'low_delay',
                     '-strict', 'experimental',
-                    outVideoName
+                    fullOutVideoName
                 ];
             }
 
-            console.log(`Starting FFmpeg capture for ${durationSec} sec from ${devicePath || 'default device'} => ${outVideoName}`);
+            console.log(`Starting FFmpeg capture for ${durationSec} sec from ${devicePath || 'default device'} => ${fullOutVideoName}`);
             // Log the exact command being run
             const command = `ffmpeg ${ffmpegArgs.join(' ')}`;
             console.log('Running FFmpeg command:', command);
-            
+
             const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
             let errorOutput = '';
@@ -101,22 +114,22 @@ module.exports = {
                     deviceNotFoundError = true;
                     // We don't reject here immediately, let ffmpeg finish exiting
                 }
-                
+
                 // Keep existing logic for trying alternative config for other errors
-                if (!deviceNotFoundError && 
-                    (output.includes('Cannot allocate memory') || 
-                     output.includes('buf_len[0] = 0') || 
-                     output.includes('Invalid argument') ||
-                     output.includes('Inappropriate ioctl'))) {
+                if (!deviceNotFoundError &&
+                    (output.includes('Cannot allocate memory') ||
+                        output.includes('buf_len[0] = 0') ||
+                        output.includes('Invalid argument') ||
+                        output.includes('Inappropriate ioctl'))) {
                     console.log('Detected capture issue, trying alternative configuration...');
                     ffmpeg.kill();  // Kill the current process
-                    
+
                     // Try alternative configuration - maybe default format detection works better
                     // Let's try removing explicit input_format to let ffmpeg autodetect
                     const altFfmpegArgs = [
                         '-f', 'v4l2',
                         '-thread_queue_size', '512',
-                       // '-input_format', 'yuyv422', // REMOVED - Let FFmpeg autodetect
+                        // '-input_format', 'yuyv422', // REMOVED - Let FFmpeg autodetect
                         '-video_size', '640x480',
                         '-i', devicePath || '/dev/video0',
                         '-t', durationSec.toString(),
@@ -129,21 +142,21 @@ module.exports = {
                         '-fflags', '+nobuffer',
                         '-flags', 'low_delay',
                         '-strict', 'experimental',
-                        outVideoName
+                        fullOutVideoName
                     ];
-                    
+
                     // Log the alternative command
                     const altCommand = `ffmpeg ${altFfmpegArgs.join(' ')}`;
                     console.log('Running alternative FFmpeg command:', altCommand);
-                    
+
                     const altFfmpeg = spawn('ffmpeg', altFfmpegArgs);
                     altFfmpeg.stderr.on('data', (data) => {
                         console.log(`ffmpeg (alt): ${data}`);
                     });
-                    
+
                     altFfmpeg.on('close', (code) => {
                         if (code === 0) {
-                            console.log(`✅ Captured video with alternative configuration: ${outVideoName}`);
+                            console.log(`✅ Captured video with alternative configuration: ${fullOutVideoName}`);
                             resolve();
                         } else {
                             reject(new Error(`FFmpeg exited with code ${code} using alternative configuration`));
@@ -154,23 +167,23 @@ module.exports = {
 
             ffmpeg.on('error', (err) => {
                 // Handle spawn errors (e.g., ffmpeg command not found)
-                 console.error('FFmpeg spawn error:', err);
-                 reject(new Error(`FFmpeg failed to start: ${err.message}`));
-             });
+                console.error('FFmpeg spawn error:', err);
+                reject(new Error(`FFmpeg failed to start: ${err.message}`));
+            });
 
             ffmpeg.on('close', (code) => {
                 if (code === 0) {
-                    console.log(`✅ Captured video: ${outVideoName}`);
+                    console.log(`✅ Captured video: ${fullOutVideoName}`);
                     resolve();
                 } else if (deviceNotFoundError) {
                     // Reject with the specific device error
                     reject(new Error(`Recording device '${devicePath}' not found or could not be opened.`));
-                } else if (!errorOutput.includes('Cannot allocate memory') && 
-                           !errorOutput.includes('Invalid argument') && 
-                           !errorOutput.includes('buf_len[0] = 0') && 
-                           !errorOutput.includes('Inappropriate ioctl')) {
-                     // Reject with generic error if it wasn't handled by the alternative config logic
-                     // or wasn't the specific device error
+                } else if (!errorOutput.includes('Cannot allocate memory') &&
+                    !errorOutput.includes('Invalid argument') &&
+                    !errorOutput.includes('buf_len[0] = 0') &&
+                    !errorOutput.includes('Inappropriate ioctl')) {
+                    // Reject with generic error if it wasn't handled by the alternative config logic
+                    // or wasn't the specific device error
                     reject(new Error(`FFmpeg exited with code ${code}`));
                 } else {
                     // If we are here, it means an error occurred that *should* have triggered 
@@ -187,19 +200,34 @@ module.exports = {
      */
     extractFrames(inVideoName, outDir) {
         return new Promise((resolve, reject) => {
-            if (!fs.existsSync(outDir)) {
-                fs.mkdirSync(outDir, { recursive: true });
-            } else {
-                fs.readdirSync(outDir).forEach(f => fs.unlinkSync(path.join(outDir, f)));
+            let fullInVideoName, fullOutDir;
+            try {
+                const sessionDir = sessionService.getSessionDirectory();
+                fullInVideoName = path.join(sessionDir, inVideoName);
+                fullOutDir = path.join(sessionDir, outDir);
+                if (!fs.existsSync(fullOutDir)) {
+                    fs.mkdirSync(fullOutDir, { recursive: true });
+                }
+            } catch (error) {
+                console.error("Error getting session directory for frame extraction:", error);
+                return reject(error);
             }
 
+            if (!fs.existsSync(fullInVideoName)) {
+                console.error(`Input video not found: ${fullInVideoName}`);
+                return reject(new Error(`Input video not found: ${fullInVideoName}`));
+            }
+
+            // Clear existing frames in session-specific dir
+            fs.readdirSync(fullOutDir).forEach(f => fs.unlinkSync(path.join(fullOutDir, f)));
+
             const ffmpegArgs = [
-                '-i', inVideoName,
+                '-i', fullInVideoName,
                 '-qscale:v', '2',
-                path.join(outDir, 'frame_%03d.jpg')
+                path.join(fullOutDir, 'frame_%03d.jpg')
             ];
 
-            console.log(`Extracting frames from ${inVideoName} => ${outDir}`);
+            console.log(`Extracting frames from ${fullInVideoName} => ${fullOutDir}`);
             const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
             ffmpeg.stderr.on('data', data => {
@@ -210,7 +238,7 @@ module.exports = {
 
             ffmpeg.on('close', code => {
                 if (code === 0) {
-                    console.log(`✅ Frames extracted to ${outDir}`);
+                    console.log(`✅ Frames extracted to ${fullOutDir}`);
                     resolve();
                 } else {
                     reject(new Error(`FFmpeg error code ${code} extracting frames`));
@@ -224,19 +252,33 @@ module.exports = {
      */
     encodeVideo(framesDir, outVideoName) {
         return new Promise((resolve, reject) => {
-            if (fs.existsSync(outVideoName)) {
-                fs.unlinkSync(outVideoName);
+            let fullFramesDir, fullOutVideoName;
+            try {
+                const sessionDir = sessionService.getSessionDirectory();
+                fullFramesDir = path.join(sessionDir, framesDir);
+                fullOutVideoName = path.join(sessionDir, outVideoName);
+                // Ensure parent directory exists (session dir)
+                if (!fs.existsSync(sessionDir)) {
+                    fs.mkdirSync(sessionDir, { recursive: true });
+                }
+            } catch (error) {
+                console.error("Error getting session directory for video encoding:", error);
+                return reject(error);
+            }
+
+            if (fs.existsSync(fullOutVideoName)) {
+                fs.unlinkSync(fullOutVideoName);
             }
 
             const ffmpegArgs = [
                 '-framerate', '30',
-                '-i', path.join(framesDir, 'frame_%03d.jpg'),
+                '-i', path.join(fullFramesDir, 'frame_%03d.jpg'),
                 '-c:v', 'libx264',
                 '-pix_fmt', 'yuv420p',
-                outVideoName
+                fullOutVideoName
             ];
 
-            console.log(`Encoding frames in ${framesDir} => ${outVideoName}`);
+            console.log(`Encoding frames in ${fullFramesDir} => ${fullOutVideoName}`);
             const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
             ffmpeg.stderr.on('data', data => {
@@ -247,7 +289,7 @@ module.exports = {
 
             ffmpeg.on('close', code => {
                 if (code === 0) {
-                    console.log(`✅ Encoded video => ${outVideoName}`);
+                    console.log(`✅ Encoded video => ${fullOutVideoName}`);
                     resolve();
                 } else {
                     reject(new Error(`FFmpeg error code ${code} in encodeVideo`));

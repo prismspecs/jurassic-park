@@ -2,11 +2,12 @@ const express = require('express');
 const router = express.Router();
 const CameraControl = require('../services/cameraControl');
 const cameraControl = new CameraControl();
-const { recordVideo } = require('../controllers/videoController');
 const ffmpegHelper = require('../services/ffmpegHelper');
 const gstreamerHelper = require('../services/gstreamerHelper');
 const poseTracker = require('../services/poseTracker');
 const config = require('../config.json'); // Read the full config
+const sessionService = require('../services/sessionService');
+const path = require('path');
 
 // --- Auto-add default camera on startup ---
 async function initializeDefaultCamera() {
@@ -183,26 +184,34 @@ router.post('/:cameraName/record', async (req, res) => {
     const { useFfmpeg, resolution } = req.query;
 
     try {
-        console.log(`[Record Route] Handling request for: ${cameraName}`); // Log entry
+        console.log(`[Record Route] Handling request for: ${cameraName}`);
         const camera = cameraControl.getCamera(cameraName);
         if (!camera) {
             console.error(`[Record Route] Camera not found: ${cameraName}`);
             return res.status(404).json({ success: false, message: `Camera ${cameraName} not found` });
         }
-        console.log(`[Record Route] Found camera instance for ${cameraName}`); // Log instance found
+        console.log(`[Record Route] Found camera instance for ${cameraName}`);
 
         const devicePath = camera.getRecordingDevice();
-        // Log the device path IMMEDIATELY after getting it
         console.log(`[Record Route] Retrieved recording device ID from instance: ${devicePath}`);
 
-        if (!devicePath && devicePath !== 0) { // Allow index 0
+        if (!devicePath && devicePath !== 0) {
             console.error(`[Record Route] No recording device configured for ${cameraName}`);
             return res.status(400).json({ success: false, message: `No recording device configured for camera ${cameraName}` });
         }
 
-        // Parse the resolution string (e.g., "1920x1080")
-        let width = 1920; // Default width
-        let height = 1080; // Default height
+        // Get Session Directory
+        let sessionDir;
+        try {
+            sessionDir = sessionService.getSessionDirectory();
+        } catch (sessionError) {
+            console.error(`[Record Route] Error getting session directory for ${cameraName}:`, sessionError);
+            return res.status(500).json({ success: false, message: 'Could not determine session directory.' });
+        }
+
+        // Parse resolution
+        let width = 1920;
+        let height = 1080;
         if (resolution && resolution.includes('x')) {
             [width, height] = resolution.split('x').map(Number);
         } else {
@@ -212,23 +221,33 @@ router.post('/:cameraName/record', async (req, res) => {
         const recordingMethod = useFfmpeg === 'true' ? 'ffmpeg' : 'gstreamer';
         console.log(`[Record Route] Recording from camera: ${cameraName} (ID: ${devicePath}) using ${recordingMethod} at ${width}x${height}`);
 
-        // Choose the appropriate helper based on the method
         const recordingHelper = useFfmpeg === 'true' ? ffmpegHelper : gstreamerHelper;
 
-        // Pass the parsed width and height to the captureVideo function
-        await recordingHelper.captureVideo(config.tempRecord, 10, devicePath, { width, height });
+        // --- Define Relative Paths --- 
+        const TEMP_RECORD = config.tempRecord;         // e.g., temp_record.mp4
+        const RAW_DIR = config.framesRawDir;           // e.g., frames_raw
+        const OVERLAY_DIR = config.framesOverlayDir;   // e.g., frames_overlay
+        const OUT_OVER = config.videoOverlay;        // e.g., overlay.mp4
 
-        // The rest of the processing remains the same
+        // Pass relative paths to helpers
+        await recordingHelper.captureVideo(TEMP_RECORD, 10, devicePath, { width, height });
+
         console.log(`[Record Route] Processing recorded video for ${cameraName}`);
-        await ffmpegHelper.extractFrames(config.tempRecord, config.framesRawDir);
-        await poseTracker.processFrames(config.framesRawDir, config.framesOverlayDir);
-        await ffmpegHelper.encodeVideo(config.framesOverlayDir, config.videoOverlay);
+        await ffmpegHelper.extractFrames(TEMP_RECORD, RAW_DIR);
+
+        // Construct absolute paths for poseTracker
+        const absoluteRawDir = path.join(sessionDir, RAW_DIR);
+        const absoluteOverlayDir = path.join(sessionDir, OVERLAY_DIR);
+        await poseTracker.processFrames(absoluteRawDir, absoluteOverlayDir);
+
+        // Pass relative paths to helper
+        await ffmpegHelper.encodeVideo(OVERLAY_DIR, OUT_OVER);
         console.log(`[Record Route] Processing complete for ${cameraName}`);
 
         res.json({
             success: true,
             message: 'Video recorded and pose processed!',
-            overlayName: config.videoOverlay
+            overlayName: OUT_OVER // Return relative path
         });
     } catch (err) {
         console.error(`[Record Route] Error during recording for ${cameraName}:`, err);

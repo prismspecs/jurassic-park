@@ -99,7 +99,7 @@ router.post('/status', express.json(), (req, res) => {
         return res.status(400).json({ success: false, message: "Missing 'message' in request body" });
     }
     // Use the specific broadcast function
-    broadcastTeleprompterStatus(String(message)); 
+    broadcastTeleprompterStatus(String(message));
     res.json({ success: true, message: 'Teleprompter status updated' });
 });
 

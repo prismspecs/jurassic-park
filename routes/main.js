@@ -8,10 +8,14 @@ const { buildHomeHTML } = require('../views/homeView');
 const { initScene, actorsReady, action } = require('../controllers/sceneController');
 const { scenes } = require('../services/sceneService');
 const aiVoice = require('../services/aiVoice');
-const { broadcastConsole } = require('../websocket/broadcaster');
+const sessionService = require('../services/sessionService');
+const { broadcastConsole, broadcast } = require('../websocket/broadcaster');
 const teleprompterRouter = require('./teleprompter');
 const cameraRouter = require('./camera');
 const authMiddleware = require('../middleware/auth');
+
+// Middleware for parsing application/x-www-form-urlencoded
+router.use(express.urlencoded({ extended: true }));
 
 // Create temp_uploads directory if it doesn't exist
 const tempDir = path.join(__dirname, '..', 'temp_uploads');
@@ -49,6 +53,96 @@ const audioStorage = multer.diskStorage({
 });
 
 const audioUpload = multer({ storage: audioStorage });
+
+// GET list of existing session IDs
+router.get('/api/sessions', (req, res) => {
+    try {
+        const sessions = sessionService.listExistingSessions();
+        res.json(sessions);
+    } catch (error) {
+        console.error("Error fetching sessions:", error);
+        res.status(500).json({ error: "Failed to retrieve sessions" });
+    }
+});
+
+// POST to select an existing session
+router.post('/api/select-session', (req, res) => {
+    const { sessionId } = req.body;
+    if (!sessionId) {
+        return res.status(400).json({ error: "Session ID is required" });
+    }
+
+    try {
+        const existingSessions = sessionService.listExistingSessions();
+        if (!existingSessions.includes(sessionId)) {
+            return res.status(404).json({ error: "Selected session not found" });
+        }
+
+        sessionService.setCurrentSessionId(sessionId);
+        broadcast({ type: 'SESSION_UPDATE', sessionId: sessionId }); // Notify clients
+        // Redirect back to home page after selection, or send success
+        // res.redirect('/'); // Option 1: Redirect
+        res.json({ success: true, message: `Session changed to ${sessionId}` }); // Option 2: JSON response
+
+    } catch (error) {
+        console.error("Error selecting session:", error);
+        res.status(500).json({ error: "Failed to select session" });
+    }
+});
+
+// DELETE a session directory
+router.delete('/api/sessions/:sessionId', (req, res) => {
+    const { sessionId } = req.params;
+    const currentSession = sessionService.getCurrentSessionId();
+    const recordingsBaseDir = path.join(__dirname, '..', 'recordings');
+    const sessionPath = path.join(recordingsBaseDir, sessionId);
+
+    // Basic validation
+    if (!sessionId) {
+        return res.status(400).json({ success: false, error: "Session ID parameter is required" });
+    }
+    // Prevent deleting the active session
+    if (sessionId === currentSession) {
+        return res.status(400).json({ success: false, error: "Cannot delete the currently active session" });
+    }
+    // Validate format (using the pattern from sessionService)
+    if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(sessionId)) {
+        return res.status(400).json({ success: false, error: `Invalid session ID format: ${sessionId}` });
+    }
+
+    try {
+        // Check if directory exists before attempting deletion
+        if (!fs.existsSync(sessionPath) || !fs.lstatSync(sessionPath).isDirectory()) {
+            return res.status(404).json({ success: false, error: `Session directory not found: ${sessionId}` });
+        }
+
+        console.log(`Attempting to delete session directory: ${sessionPath}`);
+        // Use fs.rm for recursive deletion (Node.js v14.14+ required)
+        fs.rm(sessionPath, { recursive: true, force: true }, (err) => {
+            if (err) {
+                console.error(`Error deleting session directory ${sessionPath}:`, err);
+                // Provide a more specific error if possible
+                let errorMessage = 'Failed to delete session directory.';
+                if (err.code === 'ENOENT') { // Should be caught above, but as fallback
+                    errorMessage = `Session directory not found during delete: ${sessionId}`;
+                    return res.status(404).json({ success: false, error: errorMessage });
+                } else if (err.code === 'EPERM' || err.code === 'EACCES') {
+                    errorMessage = `Permission denied when deleting session directory: ${sessionId}. Check file permissions.`;
+                    return res.status(403).json({ success: false, error: errorMessage });
+                }
+                return res.status(500).json({ success: false, error: errorMessage });
+            }
+            console.log(`Successfully deleted session directory: ${sessionId}`);
+            // Maybe broadcast an update? For now, just return success.
+            res.json({ success: true, message: `Session ${sessionId} deleted successfully` });
+        });
+
+    } catch (error) {
+        // Catch errors from initial lstatSync or other unexpected issues
+        console.error("Error checking session directory before deletion:", error);
+        res.status(500).json({ success: false, error: 'An unexpected error occurred while trying to delete the session.' });
+    }
+});
 
 // Test console broadcasting
 router.post('/testConsole', (req, res) => {
@@ -272,34 +366,54 @@ router.post('/recordAudio', audioUpload.single('audio'), async (req, res) => {
             });
         }
 
-        const inputPath = req.file.path;
-        const outputPath = inputPath.replace('.webm', '.wav');
+        const inputPath = req.file.path; // Path in temp/
+        let sessionDir, outputFilename, outputPath;
 
-        // Use ffmpeg to convert webm to wav
+        try {
+            sessionDir = sessionService.getSessionDirectory();
+            outputFilename = path.basename(inputPath).replace('.webm', '.wav');
+            outputPath = path.join(sessionDir, outputFilename);
+            // Ensure session dir exists
+            if (!fs.existsSync(sessionDir)) {
+                fs.mkdirSync(sessionDir, { recursive: true });
+            }
+        } catch (error) {
+            console.error("Error getting session directory for audio recording:", error);
+            // Attempt to clean up temporary input file
+            if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+            return res.status(500).json({ success: false, message: 'Could not get session directory' });
+        }
+
+        // Use ffmpeg to convert webm to wav and save to session directory
         const { spawn } = require('child_process');
         const ffmpeg = spawn('ffmpeg', [
             '-i', inputPath,
             '-acodec', 'pcm_s16le',
             '-ar', '44100',
             '-ac', '2',
-            outputPath
+            outputPath // Use the new output path
         ]);
 
         ffmpeg.stderr.on('data', (data) => {
-            console.log(`ffmpeg: ${data}`);
+            console.log(`ffmpeg audio conversion: ${data}`);
         });
 
         ffmpeg.on('close', (code) => {
-            if (code === 0) {
-                // Delete the original webm file
+            // Always delete the temporary input webm file
+            if (fs.existsSync(inputPath)) {
                 fs.unlinkSync(inputPath);
+                console.log(`Deleted temporary audio file: ${inputPath}`);
+            }
 
+            if (code === 0) {
+                console.log(`✅ Audio converted and saved to session: ${outputPath}`);
                 res.json({
                     success: true,
-                    message: 'Audio recording completed',
-                    filename: path.basename(outputPath)
+                    message: 'Audio recording completed and saved to session',
+                    filename: outputFilename // Return just the filename
                 });
             } else {
+                console.error(`FFmpeg audio conversion failed with code ${code} for output: ${outputPath}`);
                 res.status(500).json({
                     success: false,
                     message: `FFmpeg conversion failed with code ${code}`
@@ -308,23 +422,33 @@ router.post('/recordAudio', audioUpload.single('audio'), async (req, res) => {
         });
 
         ffmpeg.on('error', (err) => {
-            console.error('FFmpeg error:', err);
+            console.error('FFmpeg spawn error during audio conversion:', err);
+            // Attempt to clean up temporary input file
+            if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
             res.status(500).json({
                 success: false,
-                message: 'Error converting audio'
+                message: 'Error starting audio conversion process'
             });
         });
     } catch (error) {
-        console.error('Error processing audio:', error);
+        console.error('Error processing audio recording request:', error);
+        // Ensure temp file is cleaned up if possible
+        if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
         res.status(500).json({
             success: false,
-            message: 'Error processing audio'
+            message: 'Error processing audio recording request'
         });
     }
 });
 
 // Handle clearing audio files
 router.post('/clearAudio', express.json(), (req, res) => {
+    // This might need adjustment depending on how audio is cleared now.
+    // Does it clear from the session dir? Does it need the session ID?
+    // For now, assuming it clears from the *temp* dir (where recordings were stored before)
+    // If it needs to clear from the session dir, it needs the session ID.
     try {
         const { filename } = req.body;
         if (!filename) {
@@ -334,17 +458,27 @@ router.post('/clearAudio', express.json(), (req, res) => {
             });
         }
 
-        const audioPath = path.join(__dirname, '..', 'temp', filename);
+        // **Potentially needs update:** Where should this delete from?
+        // If it's meant to delete the *final* WAV from the session:
+        // const sessionDir = sessionService.getSessionDirectory();
+        // const audioPath = path.join(sessionDir, filename);
+        // console.log(`Attempting to delete audio file from session: ${audioPath}`);
+
+        // If it's meant to delete the *temporary* webm/wav before/after conversion:
+        const audioPath = path.join(__dirname, '..', 'temp', filename); // Current behavior
+        console.log(`Attempting to delete audio file from temp: ${audioPath}`);
+
+
         if (fs.existsSync(audioPath)) {
             fs.unlinkSync(audioPath);
             res.json({
                 success: true,
-                message: 'Audio file cleared successfully'
+                message: 'Audio file cleared successfully' // Adjust message based on actual behavior
             });
         } else {
             res.status(404).json({
                 success: false,
-                message: 'Audio file not found'
+                message: 'Audio file not found at specified location'
             });
         }
     } catch (error) {
