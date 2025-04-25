@@ -47,7 +47,13 @@
                                 "time-out": 4
                             }
                         ],
-                        "props": "sunglasses"
+                        "props": "sunglasses",
+                        "capture-camera": [
+                            {
+                                "in": 1,
+                                "out": 5
+                            }
+                        ]
                     },
                     "alan2": {
                         "full-name": "Dr. Alan Grant",
@@ -245,20 +251,6 @@
                     "ellie": {
                         "full-name": "Dr. Ellie Sattler",
                         "grid-position": "B3",
-                        "lines": [
-                            {
-                                "text": "_Oh... my... God!_",
-                                "time-in": 110,
-                                "time-out": 112
-                            }
-                        ],
-                        "movement": [
-                            {
-                                "text": "*Leans forward*",
-                                "time-in": 112,
-                                "time-out": 114
-                            }
-                        ],
                         "directions": [
                             {
                                 "text": "*Puts hand on Alan’s shoulder*",

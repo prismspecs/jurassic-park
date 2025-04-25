@@ -29,6 +29,7 @@ The **AI director** orchestrates the performance and ensures that each shot clos
 
 - Each shot is saved in a **directory structure matching the shot database**.
 - **Video files** are recorded, processed for pose tracking, and the resulting overlay video is stored with metadata (e.g., pose accuracy score, shot number). The initial raw recording is kept temporarily during processing.
+- **Skeletor** is a node module I have created which takes a video as input and uses the skeletal data from anyone detected to "cut them out" and place them on a transparent background in a new output video file.
 - **Actor dialogue and audience sound effects** are stored separately for post-processing.
 - A **final scene compilation** is created based on the best takes.
 
@@ -78,7 +79,6 @@ The application is built with **Node.js**, acting as the core event controller:
 │── todo.md             # Todo list
 │── readme.md           # Project documentation
 │── auth.json           # Authentication credentials
-│── favicon.ico         # Favicon for web interfaces
 │── .gitignore          # Git ignore rules
 │── .DS_Store           # macOS specific file
 │
@@ -95,6 +95,8 @@ The application is built with **Node.js**, acting as the core event controller:
 │   └── auth.js           # Authentication middleware
 ├── /node_modules       # Project dependencies (managed by npm/yarn)
 ├── /old                # Older or deprecated code (contents not listed)
+├── /public             # Static assets served by Express
+│   └── favicon.ico     # Favicon for web interfaces
 ├── /recordings         # Stored video and audio files (contents not listed)
 ├── /routes             # API and web routes definition
 │   ├── camera.js         # Camera control routes
@@ -109,7 +111,7 @@ The application is built with **Node.js**, acting as the core event controller:
 │   ├── gstreamerHelper.js # Helper for GStreamer operations (video capture)
 │   ├── poseTracker.js    # Pose tracking service
 │   └── sceneService.js   # Service for managing scene progression
-├── /skeletor           # Purpose unclear from name (contents not listed)
+├── /skeletor           # Cuts participants from video using skeletal data
 ├── /temp               # Temporary files (contents not listed)
 ├── /temp_uploads       # Temporary uploads directory (contents not listed)
 ├── /views              # Server-side templates and view logic
