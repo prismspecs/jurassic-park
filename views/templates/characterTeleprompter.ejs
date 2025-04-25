@@ -138,90 +138,109 @@
       });
 
     // ---- WEBSOCKET HANDLING ----
-    const ws = new WebSocket("ws://" + window.location.host);
+    let ws; // Define ws outside the function scope
 
-    ws.onmessage = function (event) {
-      try {
-        const data = JSON.parse(event.data);
-        console.log("WebSocket message received:", data);
+    function connectWebSocket() {
+      ws = new WebSocket("ws://" + window.location.host);
 
-        if (data.type === "SHOT_START") {
-          console.log(
-            "SHOT_START received, playing video for scene:",
-            data.scene.directory
-          );
-          // This is now the ONLY place we start the video
-          setupAndPlayVideo(data.scene.directory);
-        } else if (data.type === "TELEPROMPTER_CONTROL") {
-          // Existing pause/play logic for mid-scene control
-          if (data.action === "PAUSE") {
-            console.log("Pausing video via WebSocket");
-            videoElement.pause();
-          } else if (data.action === "PLAY") {
-            console.log("Resuming video via WebSocket");
-            videoElement.play().catch((err) => {
-              console.error("Error resuming video:", err);
-            });
+      ws.onopen = function () {
+        console.log("Character Teleprompter WebSocket connected");
+        // Reset to waiting message on new connection
+        showWaitingMessage();
+        console.log("Character Teleprompter reset to waiting state.");
+      };
+
+      ws.onmessage = function (event) {
+        try {
+          const data = JSON.parse(event.data);
+          console.log("WebSocket message received:", data);
+
+          if (data.type === "SHOT_START") {
+            console.log(
+              "SHOT_START received, playing video for scene:",
+              data.scene.directory
+            );
+            // This is now the ONLY place we start the video
+            setupAndPlayVideo(data.scene.directory);
+          } else if (data.type === "TELEPROMPTER_CONTROL") {
+            // Existing pause/play logic for mid-scene control
+            if (data.action === "PAUSE") {
+              console.log("Pausing video via WebSocket");
+              videoElement.pause();
+            } else if (data.action === "PLAY") {
+              console.log("Resuming video via WebSocket");
+              videoElement.play().catch((err) => {
+                console.error("Error resuming video:", err);
+              });
+            }
+          } else if (
+            data.type === "SCENE_ENDED" ||
+            data.type === "SYSTEM_RESET"
+          ) {
+            // Handle scene ending or reset
+            console.log(
+              "Scene ended or system reset, showing waiting message."
+            );
+            showWaitingMessage(); // Go back to waiting state
+          } else if (data.type === "TELEPROMPTER_STATUS") {
+            // Handle status updates
+            console.log("TELEPROMPTER_STATUS received:", data.message);
+            // Use the showWaitingMessage function structure, but update the text
+            let statusDiv = document.getElementById("status-message");
+            const videoContainer = document.getElementById("video-container"); // Get container ref
+
+            if (!statusDiv) {
+              // If the status div doesn't exist (e.g., video was playing), create it
+              statusDiv = document.createElement("div");
+              statusDiv.id = "status-message";
+              statusDiv.style.color = "white";
+              statusDiv.style.textAlign = "center";
+              statusDiv.style.padding = "40px 20px";
+              statusDiv.style.fontSize = "24px";
+              statusDiv.style.fontFamily = "sans-serif";
+              // !!! Don't clear body !!!
+              document.body.appendChild(statusDiv); // Append instead
+            }
+
+            // Hide video container when showing status
+            if (videoContainer) videoContainer.style.display = "none";
+
+            // Update the text content and ensure status is visible
+            statusDiv.textContent = data.message;
+            statusDiv.style.display = 'block';
           }
-        } else if (
-          data.type === "SCENE_ENDED" ||
-          data.type === "SYSTEM_RESET"
-        ) {
-          // Handle scene ending or reset
-          console.log(
-            "Scene ended or system reset, showing waiting message."
+        } catch (e) {
+          console.error(
+            "Error processing WebSocket message:",
+            e,
+            "Raw data:",
+            event.data
           );
-          showWaitingMessage(); // Go back to waiting state
-        } else if (data.type === "TELEPROMPTER_STATUS") {
-          // Handle status updates
-          console.log("TELEPROMPTER_STATUS received:", data.message);
-          // Use the showWaitingMessage function structure, but update the text
-          let statusDiv = document.getElementById("status-message");
-          const videoContainer = document.getElementById("video-container"); // Get container ref
-
-          if (!statusDiv) {
-            // If the status div doesn't exist (e.g., video was playing), create it
-            statusDiv = document.createElement("div");
-            statusDiv.id = "status-message";
-            statusDiv.style.color = "white";
-            statusDiv.style.textAlign = "center";
-            statusDiv.style.padding = "40px 20px";
-            statusDiv.style.fontSize = "24px";
-            statusDiv.style.fontFamily = "sans-serif";
-            // !!! Don't clear body !!!
-            document.body.appendChild(statusDiv); // Append instead
-          }
-
-          // Hide video container when showing status
-          if (videoContainer) videoContainer.style.display = "none";
-
-          // Update the text content and ensure status is visible
-          statusDiv.textContent = data.message;
-          statusDiv.style.display = 'block';
         }
-      } catch (e) {
-        console.error(
-          "Error processing WebSocket message:",
-          e,
-          "Raw data:",
-          event.data
-        );
-      }
-    };
+      };
 
-    ws.onerror = function (error) {
-      console.error("WebSocket error:", error);
-      showWaitingMessage(); // Show waiting message on connection error too
-      let statusDiv = document.getElementById("status-message");
-      if (statusDiv) statusDiv.textContent += " (WebSocket Error)";
-    };
+      ws.onerror = function (error) {
+        console.error("WebSocket error:", error);
+        showWaitingMessage(); // Show waiting message on connection error too
+        let statusDiv = document.getElementById("status-message");
+        if (statusDiv) statusDiv.textContent += " (WebSocket Error)";
+        // Attempt to reconnect after a delay
+        setTimeout(connectWebSocket, 5000);
+      };
 
-    ws.onclose = function () {
-      console.log("WebSocket connection closed");
-      showWaitingMessage(); // Show waiting message on connection close
-      let statusDiv = document.getElementById("status-message");
-      if (statusDiv) statusDiv.textContent += " (WebSocket Closed)";
-    };
+      ws.onclose = function () {
+        console.log("WebSocket connection closed");
+        showWaitingMessage(); // Show waiting message on connection close
+        let statusDiv = document.getElementById("status-message");
+        if (statusDiv) statusDiv.textContent += " (WebSocket Closed)";
+        // Attempt to reconnect after a delay
+        setTimeout(connectWebSocket, 5000);
+      };
+    } // End of connectWebSocket function
+
+    // Initial connection attempt
+    connectWebSocket();
+
   </script>
 </body>
 
