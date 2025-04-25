@@ -77,7 +77,9 @@ async function callActors(scene) {
     // Use appUrl from config for the base URL
     const baseUrl = config.appUrl || `http://localhost:${config.port || 3000}`; // Fallback just in case
 
-    // Call the actors
+    const actorCallData = []; // Array to hold data for the consolidated message
+
+    // Call the actors (generate data, but don't broadcast individually)
     for (let index = 0; index < actorsToCall.length; index++) {
         const actor = actorsToCall[index];
         const characterName = characterNames[index];
@@ -88,31 +90,43 @@ async function callActors(scene) {
             // Generate QR code as a Data URL
             const qrCodeDataUrl = await QRCode.toDataURL(characterUrl);
 
-            // Update the teleprompter text with headshot and QR code
-            broadcast({
-                type: 'TELEPROMPTER',
-                text: `Calling actor: ${actor.name} to play ${characterName}`,
-                headshotImage: headshotUrl,    // Send headshot URL
-                qrCodeImage: qrCodeDataUrl     // Send QR code data URL
+            // Add actor data to the array
+            actorCallData.push({
+                name: actor.name,
+                id: actor.id, // Keep id if needed elsewhere, maybe for debugging
+                character: characterName,
+                headshotImage: headshotUrl,
+                qrCodeImage: qrCodeDataUrl
             });
-            broadcastConsole(`Broadcasted TELEPROMPTER: Calling ${actor.name} as ${characterName} with headshot and QR code`);
 
-            callsheetService.updateActorSceneCount(actor.name);
+            // Speak the call (keep this individual)
             aiVoice.speak(`Calling actor: ${actor.name} to play ${characterName}`);
+            callsheetService.updateActorSceneCount(actor.name); // Update count here
 
         } catch (err) {
             broadcastConsole(`Error generating QR code or preparing message for ${characterName}: ${err}`, 'error');
-            broadcast({
-                type: 'TELEPROMPTER',
-                text: `Error creating link for ${actor.name} playing ${characterName}`,
-                style: 'error'
-                // Optionally send headshot even if QR fails?
-                // headshotImage: headshotUrl 
+            // Handle error - maybe add an error entry to actorCallData or broadcast separate error?
+            // For now, just log it and continue.
+            actorCallData.push({ // Add placeholder or error info
+                name: actor.name,
+                character: characterName,
+                error: `Failed to generate QR code`
             });
+            // Optionally broadcast an immediate error message?
+            // broadcast({ type: 'TELEPROMPTER', text: `Error creating link for ${actor.name} playing ${characterName}`, style: 'error' });
         }
     }
 
-    // Broadcast that actors are being called
+    // Broadcast the consolidated actor call data
+    if (actorCallData.length > 0) {
+        broadcast({
+            type: 'ACTOR_CALLS', // New message type
+            actors: actorCallData
+        });
+        broadcastConsole(`Broadcasted ACTOR_CALLS for ${actorCallData.length} actor(s)`);
+    }
+
+    // Broadcast that actors are being called (Original ACTORS_CALLED - keep for other UI logic?)
     broadcast({
         type: 'ACTORS_CALLED',
         scene: scene

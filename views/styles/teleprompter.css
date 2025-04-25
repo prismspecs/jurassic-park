@@ -122,3 +122,80 @@ body {
 .message.normal {
     background: rgba(255, 255, 255, 0.1);
 }
+
+/* Styles for the new Actor Calls message type */
+.actor-calls-container {
+    flex-direction: column;
+    /* Stack title and grid vertically */
+    align-items: stretch;
+    /* Allow grid to stretch */
+    width: 95%;
+    /* Make it slightly wider maybe */
+}
+
+.actor-calls-title {
+    text-align: center;
+    margin-bottom: 15px;
+    font-size: 1.5rem;
+    /* Adjust size */
+    color: #eee;
+}
+
+.actor-grid {
+    display: grid;
+    /* Responsive grid: columns are at least 180px wide, fit as many as possible */
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 20px;
+    /* Spacing between cards */
+    width: 100%;
+}
+
+.actor-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* Center items horizontally */
+    text-align: center;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.2);
+    /* Darker background for cards */
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.actor-card .message-image {
+    margin-top: 0;
+    border-radius: 5px;
+}
+
+.actor-card .message-image.headshot {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border: 1px solid #ccc;
+}
+
+.actor-card .message-image.qrcode {
+    max-width: 80px;
+    max-height: 80px;
+    border: 1px solid #eee;
+}
+
+.actor-card-text {
+    font-size: 0.9rem;
+    line-height: 1.3;
+    margin-bottom: 10px;
+    color: #fff;
+}
+
+.actor-card-text strong {
+    color: #eee;
+    /* Slightly lighter name */
+}
+
+.actor-card-error {
+    font-size: 0.8rem;
+    color: #ff8a80;
+    /* Reddish color for errors */
+    margin-top: 10px;
+}

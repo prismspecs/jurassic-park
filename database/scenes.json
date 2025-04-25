@@ -48,6 +48,39 @@
                             }
                         ],
                         "props": "sunglasses"
+                    },
+                    "alan2": {
+                        "full-name": "Dr. Alan Grant",
+                        "lines": [
+                            {
+                                "text": "_It’s… it’s a dinosaur._",
+                                "time-in": 1,
+                                "time-out": 4
+                            }
+                        ],
+                        "props": "sunglasses"
+                    },
+                    "alan3": {
+                        "full-name": "Dr. Alan Grant",
+                        "lines": [
+                            {
+                                "text": "_It’s… it’s a dinosaur._",
+                                "time-in": 1,
+                                "time-out": 4
+                            }
+                        ],
+                        "props": "sunglasses"
+                    },
+                    "alan4": {
+                        "full-name": "Dr. Alan Grant",
+                        "lines": [
+                            {
+                                "text": "_It’s… it’s a dinosaur._",
+                                "time-in": 1,
+                                "time-out": 4
+                            }
+                        ],
+                        "props": "sunglasses"
                     }
                 }
             }

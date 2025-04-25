@@ -99,6 +99,83 @@
             };
         }
 
+        // New function to display actor calls in a grid
+        function addActorCallsMessage(actors) {
+            const messageContainer = document.createElement('div');
+            messageContainer.className = 'message actor-calls-container'; // Use existing message styling + specific class
+
+            const title = document.createElement('h2');
+            title.textContent = 'Actors Called:';
+            title.className = 'actor-calls-title';
+            messageContainer.appendChild(title);
+
+            const gridContainer = document.createElement('div');
+            gridContainer.className = 'actor-grid';
+
+            actors.forEach(actor => {
+                const actorCard = document.createElement('div');
+                actorCard.className = 'actor-card';
+
+                // Headshot
+                if (actor.headshotImage) {
+                    const headshotImg = document.createElement('img');
+                    headshotImg.className = 'message-image headshot'; // Reuse styling if appropriate
+                    headshotImg.src = actor.headshotImage;
+                    headshotImg.alt = `${actor.name} headshot`;
+                    actorCard.appendChild(headshotImg);
+                }
+
+                // Text Info
+                const textInfo = document.createElement('p');
+                textInfo.className = 'actor-card-text';
+                textInfo.innerHTML = `<strong>${actor.name || 'Unknown'}</strong><br>as ${actor.character || 'Unknown'}`;
+                actorCard.appendChild(textInfo);
+
+                // QR Code or Error
+                if (actor.qrCodeImage) {
+                    const qrImg = document.createElement('img');
+                    qrImg.className = 'message-image qrcode'; // Reuse styling if appropriate
+                    qrImg.src = actor.qrCodeImage;
+                    qrImg.alt = `${actor.character} QR Code`;
+                    actorCard.appendChild(qrImg);
+                } else if (actor.error) {
+                    const errorText = document.createElement('p');
+                    errorText.className = 'actor-card-error';
+                    errorText.textContent = actor.error;
+                    actorCard.appendChild(errorText);
+                }
+
+                gridContainer.appendChild(actorCard);
+            });
+
+            messageContainer.appendChild(gridContainer);
+
+            // Add to the beginning of the list (similar to addMessage)
+            if (teleprompter.firstChild) {
+                teleprompter.insertBefore(messageContainer, teleprompter.firstChild);
+            } else {
+                teleprompter.appendChild(messageContainer);
+            }
+
+            // Optional: Trigger animation (similar to addMessage)
+            requestAnimationFrame(() => {
+                messageContainer.classList.add('new');
+                setTimeout(() => {
+                    messageContainer.classList.remove('new');
+                }, 50);
+            });
+
+            // Remove old messages if we have too many (adjust limit if needed)
+            const maxMessages = 10;
+            while (teleprompter.children.length > maxMessages) {
+                const lastMessage = teleprompter.lastChild;
+                lastMessage.classList.add('old');
+                setTimeout(() => {
+                    lastMessage.remove();
+                }, 500);
+            }
+        }
+
         function handleWebSocketMessage(event) {
             const data = JSON.parse(event.data);
             console.log('Teleprompter received:', data);
@@ -106,6 +183,9 @@
             if (data.type === 'TELEPROMPTER') {
                 console.log('Adding teleprompter message:', data.text);
                 addMessage(data.text, data.style || 'normal', data.headshotImage, data.qrCodeImage);
+            } else if (data.type === 'ACTOR_CALLS') { // Handle new type
+                console.log('Adding actor calls message:', data.actors);
+                addActorCallsMessage(data.actors);
             } else if (data.type === 'SCENE_EVENT') {
                 console.log('Adding scene event:', data.event);
                 const message = data.event.character + ": " + data.event.text;
