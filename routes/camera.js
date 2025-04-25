@@ -224,16 +224,16 @@ router.post('/:cameraName/record', async (req, res) => {
         const recordingHelper = useFfmpeg === 'true' ? ffmpegHelper : gstreamerHelper;
 
         // --- Define Relative Paths --- 
-        const TEMP_RECORD = config.tempRecord;         // e.g., temp_record.mp4
+        const VIDEO_ORIGINAL = config.videoOriginal;   // USE this instead
         const RAW_DIR = config.framesRawDir;           // e.g., frames_raw
         const OVERLAY_DIR = config.framesOverlayDir;   // e.g., frames_overlay
         const OUT_OVER = config.videoOverlay;        // e.g., overlay.mp4
 
         // Pass relative paths to helpers
-        await recordingHelper.captureVideo(TEMP_RECORD, 10, devicePath, { width, height });
+        await recordingHelper.captureVideo(VIDEO_ORIGINAL, 10, devicePath, { width, height });
 
         console.log(`[Record Route] Processing recorded video for ${cameraName}`);
-        await ffmpegHelper.extractFrames(TEMP_RECORD, RAW_DIR);
+        await ffmpegHelper.extractFrames(VIDEO_ORIGINAL, RAW_DIR);
 
         // Construct absolute paths for poseTracker
         const absoluteRawDir = path.join(sessionDir, RAW_DIR);

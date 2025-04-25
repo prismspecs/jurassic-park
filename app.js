@@ -78,6 +78,12 @@ app.use('/views', express.static(path.join(__dirname, 'views')));
 app.use('/video', express.static(__dirname));
 app.use('/database', express.static(path.join(__dirname, 'database')));
 
+// --- ADDED: Static serving for recordings ---
+const recordingsDir = path.join(__dirname, config.recordingsDir || 'recordings');
+console.log(`Serving recordings from: ${recordingsDir}`);
+app.use('/recordings', express.static(recordingsDir));
+// --- END: Static serving for recordings ---
+
 // Routes
 app.use('/', mainRouter);
 

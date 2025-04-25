@@ -3,19 +3,19 @@
     "id": "Brad Pitt",
     "name": "Brad Pitt",
     "available": true,
-    "sceneCount": 24
+    "sceneCount": 25
   },
   {
     "id": "Johannes Büttner",
     "name": "Johannes Buttner",
     "available": true,
-    "sceneCount": 24
+    "sceneCount": 25
   },
   {
     "id": "Tyra Banks",
     "name": "Tyra Banks",
     "available": true,
-    "sceneCount": 24
+    "sceneCount": 25
   },
   {
     "id": "Grayson-D6751A",
@@ -27,6 +27,6 @@
     "id": "Test-A7FD85",
     "name": "Test",
     "available": true,
-    "sceneCount": 23
+    "sceneCount": 24
   }
 ]
