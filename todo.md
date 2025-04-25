@@ -19,6 +19,8 @@
 
 - remove unncessary things
 
+- sometimes I get the FF message that the tab is causing my computer to slow down with the STOP button
+
 ## Scene Recording
 
 play the scene
