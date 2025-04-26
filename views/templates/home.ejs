@@ -1,179 +1,231 @@
 <!DOCTYPE html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Director Control Panel</title>
+    <link rel="stylesheet" href="/views/styles/home.css" />
+    <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+  </head>
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Director Control Panel</title>
-  <link rel="stylesheet" href="/views/styles/home.css" />
-  <link rel="icon" href="/favicon.ico" type="image/x-icon">
-</head>
+  <body>
+    <div class="page-layout">
+      <!-- NEW Left Sidebar -->
+      <div class="left-sidebar">
+        <div class="controls-section card">
+          <h2>Session Management</h2>
+          <p>
+            <strong>Current Session:</strong>
+            <span id="current-session-id"> <%= currentSessionId %> </span>
+          </p>
+          <p><strong>Existing Sessions:</strong></p>
+          <div id="existing-sessions-list" class="session-list">
+            <% if (existingSessions && existingSessions.length> 0) { %> <%
+            existingSessions.forEach(session=> { %>
+            <div class="session-item">
+              <button
+                class="session-button <%= session === currentSessionId ? 'active' : '' %>"
+                onclick="selectSession('<%= session %>')"
+              >
+                <%= session %>
+              </button>
+              <% if (session !==currentSessionId) { %>
+              <button
+                class="delete-session-button"
+                title="Delete session <%= session %>"
+                onclick="deleteSession('<%= session %>')"
+              >
+                ❌
+              </button>
+              <% } %>
+            </div>
+            <% }); %> <% } else { %>
+            <p>No other sessions found.</p>
+            <% } %>
+          </div>
+        </div>
 
-<body>
-  <div class="page-layout">
-    <!-- NEW Left Sidebar -->
-    <div class="left-sidebar">
-      <div class="controls-section card">
-        <h2>Session Management</h2>
-        <p><strong>Current Session:</strong> <span id="current-session-id">
-            <%= currentSessionId %>
-          </span></p>
-        <p><strong>Existing Sessions:</strong></p>
-        <div id="existing-sessions-list" class="session-list">
-          <% if (existingSessions && existingSessions.length> 0) { %>
-            <% existingSessions.forEach(session=> { %>
-              <div class="session-item">
-                <button class="session-button <%= session === currentSessionId ? 'active' : '' %>"
-                  onclick="selectSession('<%= session %>')">
-                  <%= session %>
-                </button>
-                <% if (session !==currentSessionId) { %>
-                  <button class="delete-session-button" title="Delete session <%= session %>"
-                    onclick="deleteSession('<%= session %>')">
-                    ❌
-                  </button>
-                  <% } %>
-              </div>
-              <% }); %>
-                <% } else { %>
-                  <p>No other sessions found.</p>
-                  <% } %>
+        <!-- MOVED Teleprompter Preview Here -->
+        <div class="controls-section card">
+          <h2>Teleprompter Preview</h2>
+          <div class="teleprompter-container">
+            <iframe id="teleprompter-frame" src="/teleprompter"></iframe>
+          </div>
+        </div>
+        <!-- End Teleprompter Preview -->
+
+        <!-- MOVED Status and Controls HERE -->
+        <div id="status"></div>
+
+        <div class="controls-section card">
+          <h2>Controls</h2>
+          <div id="buttons">
+            <div class="recording-options">
+              <label for="recording-pipeline">Recording Pipeline:</label>
+              <select
+                id="recording-pipeline"
+                class="form-control"
+                onchange="handlePipelineChange(this.value)"
+              >
+                <option value="gstreamer" selected>GStreamer (Default)</option>
+                <option value="ffmpeg">FFmpeg</option>
+              </select>
+            </div>
+            <div class="recording-options">
+              <label for="recording-resolution">Recording Resolution:</label>
+              <select id="recording-resolution" class="form-control">
+                <option value="1920x1080" selected>1920x1080 (1080p)</option>
+                <option value="3840x2160">3840x2160 (4K)</option>
+                <option value="1280x720">1280x720 (720p)</option>
+                <option value="640x480">640x480 (VGA)</option>
+              </select>
+            </div>
+            <button
+              id="actionBtn"
+              onclick="action()"
+              style="
+                display: none;
+                background-color: #e8f5e9;
+                border-color: #4caf50;
+                color: #2e7d32;
+              "
+            >
+              Action!
+            </button>
+            <button
+              id="actorsReadyBtn"
+              onclick="actorsReady()"
+              style="
+                display: none;
+                background-color: #e8f5e9;
+                border-color: #4caf50;
+                color: #2e7d32;
+              "
+            >
+              Actors are Ready
+            </button>
+            <button onclick="recordVideo()">
+              Test Record Video & Process Pose
+            </button>
+            <button id="voiceBypassBtn" onclick="toggleVoiceBypass()">
+              Enable Voice Bypass
+            </button>
+            <button onclick="testConsole()">Test Console</button>
+
+            <div class="actor-loading">
+              <label for="actorFiles">Load Actors:</label>
+              <input
+                type="file"
+                id="actorFiles"
+                multiple
+                accept=".json, .jpg, .jpeg, .png"
+              />
+              <button id="loadActorsBtn">Load Selected</button>
+              <p id="loadActorsStatus"></p>
+            </div>
+
+            <div class="audio-controls">
+              <div class="group-label">Audio Controls</div>
+              <button onclick="testAudioRecord()" class="success-btn">
+                🎤 Record Audio (5s)
+              </button>
+              <button onclick="playLastRecording()" class="info-btn">
+                ▶️ Play Last Recording
+              </button>
+              <button onclick="clearAudio()" class="warning-btn">
+                🗑️ Clear Audio
+              </button>
+            </div>
+            <div class="teleprompter-button-group">
+              <div class="group-label">Teleprompter Controls</div>
+              <button onclick="openTeleprompter()">Open Teleprompter</button>
+              <button onclick="openCharacterTeleprompter('alan')">
+                Open Alan's Teleprompter
+              </button>
+              <button onclick="openCharacterTeleprompter('ellie')">
+                Open Ellie's Teleprompter
+              </button>
+              <button onclick="testTeleprompter()">Test Teleprompter</button>
+              <button onclick="testTeleprompterVideo()">
+                Test Teleprompter Video
+              </button>
+              <button onclick="clearTeleprompter()">Clear Teleprompter</button>
+              <button onclick="pauseAllTeleprompters()" class="warning-btn">
+                ⏸️ Pause All Teleprompters
+              </button>
+              <button onclick="playAllTeleprompters()" class="success-btn">
+                ▶️ Resume All Teleprompters
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- End MOVED Controls -->
+      </div>
+      <!-- End Left Sidebar -->
+
+      <!-- ADD Resizer Handle -->
+      <div class="resizer-handle" id="resizer-left-main"></div>
+
+      <!-- Main Content Area -->
+      <div class="main-content">
+        <h1>AI Director Shots</h1>
+        <div class="shot-container">
+          <% scenes.forEach((scene, sceneIdx)=> { if (scene.shots &&
+          scene.shots.length > 0) { scene.shots.forEach((shot, shotIdx) => {
+          const shotIdentifier = shot.name || `shot_${shotIdx + 1}`; const
+          thumbnailPath =
+          `./database/scenes/${encodeURIComponent(scene.directory)}/${encodeURIComponent(shotIdentifier)}/thumbnail.jpg`;
+          %>
+          <div
+            class="shot-card"
+            onclick="initShot('<%= encodeURIComponent(scene.directory) %>', '<%= encodeURIComponent(shotIdentifier) %>')"
+          >
+            <div class="shot-title">
+              Scene #<%= sceneIdx + 1 %>: <%= scene.description %><br />
+              Shot #<%= shotIdx + 1 %>: <%= shot.description || shotIdentifier
+              %>
+            </div>
+            <img
+              src="<%= thumbnailPath %>"
+              alt="Shot thumbnail for <%= scene.description %> - <%= shot.description || shotIdentifier %>"
+              onerror="this.style.display='none'"
+            />
+          </div>
+          <% }); } else { %>
+          <p>Scene '<%= scene.description %>' has no defined shots.</p>
+          <% } }); %>
+        </div>
+
+        <!-- MOVED Console Output First -->
+        <div class="controls-section card">
+          <h2>Console Output</h2>
+          <div id="console-output"></div>
+        </div>
+        <!-- End Console Output -->
+
+        <!-- MOVED Video Display Below Console -->
+        <div id="videos"></div>
+        <!-- End Video Display -->
+      </div>
+      <!-- End Main Content Area -->
+
+      <!-- ADD Resizer Handle -->
+      <div class="resizer-handle" id="resizer-main-right"></div>
+
+      <!-- Right Sidebar -->
+      <div class="sidebar">
+        <div class="controls-section card">
+          <h2>Camera Controls</h2>
+          <div id="cameraControls">
+            <!-- Camera controls will be populated by CameraManager -->
+          </div>
+          <button onclick="cameraManager.addCamera()">Add Camera</button>
         </div>
       </div>
-
-      <!-- MOVED Teleprompter Preview Here -->
-      <div class="controls-section card">
-        <h2>Teleprompter Preview</h2>
-        <div class="teleprompter-container">
-          <iframe id="teleprompter-frame" src="/teleprompter"></iframe>
-        </div>
-      </div>
-      <!-- End Teleprompter Preview -->
+      <!-- End Right Sidebar -->
     </div>
-    <!-- End Left Sidebar -->
+    <!-- End Page Layout -->
 
-    <!-- ADD Resizer Handle -->
-    <div class="resizer-handle" id="resizer-left-main"></div>
-
-    <!-- Main Content Area -->
-    <div class="main-content">
-      <h1>AI Director Shots</h1>
-      <div class="shot-container">
-        <% scenes.forEach((scene, sceneIdx)=> {
-           if (scene.shots && scene.shots.length > 0) { 
-             scene.shots.forEach((shot, shotIdx) => {
-               const shotIdentifier = shot.name || `shot_${shotIdx + 1}`;
-               const thumbnailPath = `./database/scenes/${encodeURIComponent(scene.directory)}/${encodeURIComponent(shotIdentifier)}/thumbnail.jpg`;
-        %>
-                <div class="shot-card" 
-                     onclick="initShot('<%= encodeURIComponent(scene.directory) %>', '<%= encodeURIComponent(shotIdentifier) %>')">
-                  <div class="shot-title">
-                    Scene #<%= sceneIdx + 1 %>: <%= scene.description %><br>
-                    Shot #<%= shotIdx + 1 %>: <%= shot.description || shotIdentifier %>
-                  </div>
-                  <img src="<%= thumbnailPath %>" 
-                       alt="Shot thumbnail for <%= scene.description %> - <%= shot.description || shotIdentifier %>" 
-                       onerror="this.style.display='none'" />
-                </div>
-        <%      });
-            } else { %>
-              <p>Scene '<%= scene.description %>' has no defined shots.</p>
-        <%  } 
-          }); %>
-      </div>
-
-      <!-- MOVED Console Output First -->
-      <div class="controls-section card">
-        <h2>Console Output</h2>
-        <div id="console-output"></div>
-      </div>
-      <!-- End Console Output -->
-
-      <!-- MOVED Video Display Below Console -->
-      <div id="videos"></div>
-      <!-- End Video Display -->
-
-    </div>
-    <!-- End Main Content Area -->
-
-    <!-- ADD Resizer Handle -->
-    <div class="resizer-handle" id="resizer-main-right"></div>
-
-    <!-- Right Sidebar -->
-    <div class="sidebar">
-      <div class="controls-section card">
-        <h2>Camera Controls</h2>
-        <div id="cameraControls">
-          <!-- Camera controls will be populated by CameraManager -->
-        </div>
-        <button onclick="cameraManager.addCamera()">Add Camera</button>
-      </div>
-
-      <div id="status"></div>
-
-      <div class="controls-section card">
-        <h2>Controls</h2>
-        <div id="buttons">
-          <div class="recording-options">
-            <label for="recording-pipeline">Recording Pipeline:</label>
-            <select id="recording-pipeline" class="form-control" onchange="handlePipelineChange(this.value)">
-              <option value="gstreamer" selected>GStreamer (Default)</option>
-              <option value="ffmpeg">FFmpeg</option>
-            </select>
-          </div>
-          <div class="recording-options">
-            <label for="recording-resolution">Recording Resolution:</label>
-            <select id="recording-resolution" class="form-control">
-              <option value="1920x1080" selected>1920x1080 (1080p)</option>
-              <option value="3840x2160">3840x2160 (4K)</option>
-              <option value="1280x720">1280x720 (720p)</option>
-              <option value="640x480">640x480 (VGA)</option>
-            </select>
-          </div>
-          <button id="actionBtn" onclick="action()"
-            style="display: none; background-color: #e8f5e9; border-color: #4caf50; color: #2e7d32;">Action!</button>
-          <button id="actorsReadyBtn" onclick="actorsReady()"
-            style="display: none; background-color: #e8f5e9; border-color: #4caf50; color: #2e7d32;">Actors are
-            Ready</button>
-          <button onclick="recordVideo()">Test Record Video & Process Pose</button>
-          <button id="voiceBypassBtn" onclick="toggleVoiceBypass()">Enable Voice Bypass</button>
-          <button onclick="testConsole()">Test Console</button>
-
-          <div class="actor-loading">
-            <label for="actorFiles">Load Actors:</label>
-            <input type="file" id="actorFiles" multiple accept=".json, .jpg, .jpeg, .png">
-            <button id="loadActorsBtn">Load Selected</button>
-            <p id="loadActorsStatus"></p>
-          </div>
-
-          <div class="audio-controls">
-            <div class="group-label">Audio Controls</div>
-            <button onclick="testAudioRecord()" class="success-btn">🎤 Record Audio (5s)</button>
-            <button onclick="playLastRecording()" class="info-btn">▶️ Play Last Recording</button>
-            <button onclick="clearAudio()" class="warning-btn">🗑️ Clear Audio</button>
-          </div>
-          <div class="teleprompter-button-group">
-            <div class="group-label">Teleprompter Controls</div>
-            <button onclick="openTeleprompter()">Open Teleprompter</button>
-            <button onclick="openCharacterTeleprompter('alan')">Open Alan's Teleprompter</button>
-            <button onclick="openCharacterTeleprompter('ellie')">Open Ellie's Teleprompter</button>
-            <button onclick="testTeleprompter()">Test Teleprompter</button>
-            <button onclick="testTeleprompterVideo()">Test Teleprompter Video</button>
-            <button onclick="clearTeleprompter()">Clear Teleprompter</button>
-            <button onclick="pauseAllTeleprompters()" class="warning-btn">⏸️ Pause All Teleprompters</button>
-            <button onclick="playAllTeleprompters()" class="success-btn">▶️ Resume All Teleprompters</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  
-  <!-- End Right Sidebar -->
-
-  </div> <!-- End Page Layout -->
-
-  <script src="/js/home.js" defer></script>
-</body>
-
+    <script src="/js/home.js" defer></script>
+  </body>
 </html>
