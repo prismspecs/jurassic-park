@@ -751,17 +751,33 @@
       renderCameraControls() {
         const container = document.getElementById("cameraControls");
         container.innerHTML = "";
+        this.cameraElements.clear(); // Clear the map before re-rendering
 
         if (this.cameras.length === 0) {
           container.innerHTML = '<p>No cameras configured. Click "Add Camera" to set up a camera.</p>';
           return;
         }
 
+        // --- Render controls for each camera ---
         this.cameras.forEach((camera) => {
           const cameraElement = this.createCameraElement(camera);
           container.appendChild(cameraElement);
-          this.cameraElements.set(camera.name, cameraElement);
+          this.cameraElements.set(camera.name, cameraElement); // Store element reference
         });
+
+        // --- NEW: Initial render of PTZ controls AFTER elements are in DOM ---
+        this.cameras.forEach((camera) => {
+          if (camera.ptzDevice) {
+             // Check if the element exists before rendering
+             const cameraElement = this.cameraElements.get(camera.name);
+             if (cameraElement && container.contains(cameraElement)) {
+               this.renderPTZControlsForCamera(camera.name, camera.ptzDevice);
+             } else {
+               console.warn(`Camera element for ${camera.name} not found in DOM for initial PTZ render.`);
+             }
+          }
+        });
+        // --- END NEW ---
       }
 
       createCameraElement(camera) {
@@ -851,7 +867,9 @@
             .join("")}
                 </select>
               </div>
-              <div class="ptz-controls-container"></div>
+              <div class="ptz-controls-container">
+                <!-- PTZ controls will be added here if a PTZ device is selected -->
+              </div>
               <div class="camera-controls">
                 <button onclick="cameraManager.recordVideo('${camera.name}')">Test Record Video (${camera.name.replace(/_/g, ' ')})</button>
               </div>
@@ -961,11 +979,98 @@
 
           const responseData = await response.json();
           logToConsole(`PTZ device set for ${cameraName}`, "success");
+
+          // --- NEW: Render PTZ controls after setting a device ---
+          this.renderPTZControlsForCamera(cameraName, serverDeviceId);
+          // --- END NEW ---
+
         } catch (err) {
           logToConsole(`Error updating PTZ device: ${err.message}`, "error");
         }
       }
 
+      // --- NEW: Function to render PTZ controls for a specific camera ---
+      renderPTZControlsForCamera(cameraName, ptzDeviceId) {
+        const cameraElement = this.cameraElements.get(cameraName);
+        if (!cameraElement) return;
+
+        const ptzContainer = cameraElement.querySelector('.ptz-controls-container');
+        if (!ptzContainer) return;
+
+        // Clear previous controls
+        ptzContainer.innerHTML = '';
+
+        // Only render controls if a valid PTZ device is selected
+        if (ptzDeviceId) {
+          // Use unique IDs per camera instance
+          const panId = `ptz-pan-${cameraName}`;
+          const tiltId = `ptz-tilt-${cameraName}`;
+          const zoomId = `ptz-zoom-${cameraName}`;
+          const panValueId = `ptz-pan-value-${cameraName}`;
+          const tiltValueId = `ptz-tilt-value-${cameraName}`;
+          const zoomValueId = `ptz-zoom-value-${cameraName}`;
+
+          ptzContainer.innerHTML = `
+            <div class=\"ptz-control-group\">
+              <label for=\"${panId}\">Pan:</label>
+              <input type=\"range\" id=\"${panId}\" name=\"pan\" min=\"-468000\" max=\"468000\" step=\"3600\" value=\"0\" 
+                     oninput=\"cameraManager.handlePTZInputChange(\'${cameraName}\', \'pan\', this.value)\"
+                     title=\"Pan\">
+              <span id=\"${panValueId}\" class=\"ptz-value-display\">0.0°</span> 
+            </div>
+            <div class=\"ptz-control-group\">
+              <label for=\"${tiltId}\">Tilt:</label>
+              <input type=\"range\" id=\"${tiltId}\" name=\"tilt\" min=\"-324000\" max=\"324000\" step=\"3600\" value=\"0\"
+                     oninput=\"cameraManager.handlePTZInputChange(\'${cameraName}\', \'tilt\', this.value)\"
+                     title=\"Tilt\">
+              <span id=\"${tiltValueId}\" class=\"ptz-value-display\">0.0°</span> 
+            </div>
+            <div class=\"ptz-control-group\">
+              <label for=\"${zoomId}\">Zoom:</label>
+              <input type=\"range\" id=\"${zoomId}\" name=\"zoom\" min=\"0\" max=\"100\" step=\"1\" value=\"0\"
+                     oninput=\"cameraManager.handlePTZInputChange(\'${cameraName}\', \'zoom\', this.value)\"
+                     title=\"Zoom\">
+              <span id=\"${zoomValueId}\" class=\"ptz-value-display\">0%</span> 
+            </div>
+          `;
+        } else {
+          ptzContainer.innerHTML = '<p class=\"ptz-placeholder\">Select a PTZ device to enable controls.</p>';
+        }
+      }
+
+      // --- NEW: Handler for PTZ slider input changes ---
+      handlePTZInputChange(cameraName, control, value) {
+        const rawValue = parseInt(value);
+        let displayValue = '';
+        let displaySpanId = '';
+
+        // Update display span based on control type
+        switch (control) {
+          case 'pan':
+            displayValue = (rawValue / 3600).toFixed(1) + '°';
+            displaySpanId = `ptz-pan-value-${cameraName}`;
+            break;
+          case 'tilt':
+            displayValue = (rawValue / 3600).toFixed(1) + '°';
+            displaySpanId = `ptz-tilt-value-${cameraName}`;
+            break;
+          case 'zoom':
+            displayValue = rawValue + '%';
+            displaySpanId = `ptz-zoom-value-${cameraName}`;
+            break;
+        }
+
+        const displaySpan = document.getElementById(displaySpanId);
+        if (displaySpan) {
+          displaySpan.textContent = displayValue;
+        }
+
+        // Call the existing method to send data to the server
+        this.updatePTZ(cameraName, control, rawValue);
+      }
+      // --- END NEW ---
+
+      // Existing method to send PTZ command to server
       async updatePTZ(cameraName, control, value) {
         try {
           await fetch("/camera/ptz", {
@@ -1516,6 +1621,56 @@
     .camera-controls button:hover {
       background-color: #45a049;
     }
+
+    /* --- Updated PTZ Control Styling --- */
+    .ptz-control-group {
+      display: flex;
+      align-items: center;
+      margin: 10px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .ptz-control-group label {
+      flex: 0 0 55px;
+      text-align: right;
+      font-weight: normal;
+      margin-right: 10px;
+    }
+
+    .ptz-control-group input[type="range"] {
+      flex: 1;
+      margin: 0 10px 0 0;
+      height: 20px;
+      width: 100%; /* Ensure all sliders have 100% width */
+      min-width: 0; /* Override any browser defaults */
+      box-sizing: border-box;
+    }
+
+    .ptz-value-display {
+      flex: 0 0 45px;
+      text-align: right;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+
+    .ptz-controls-container {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 0;
+      border-top: 1px solid #eee;
+      border-bottom: 1px solid #eee;
+      margin: 10px 0;
+    }
+
+    .ptz-placeholder {
+      text-align: center;
+      color: #999;
+      font-style: italic;
+      margin: 10px 0;
+    }
+    /* --- END Updated --- */
+
   </style>
 </body>
 

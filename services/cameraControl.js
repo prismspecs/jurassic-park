@@ -230,8 +230,8 @@ class CameraControl {
                 const setPTZControl = async (control, value) => {
                     try {
                         return new Promise((resolve) => {
-                            const cmd = `v4l2 - ctl--device = ${device} --set - ctrl=${control}=${value} `;
-                            console.log(`Executing: ${cmd} `);
+                            const cmd = `v4l2-ctl --device ${device} --set-ctrl ${control}=${value}`;
+                            console.log(`Executing: ${cmd}`);
                             exec(cmd, (error, stdout, stderr) => {
                                 if (error) {
                                     console.error(`Error setting ${control}: `, error.message);
