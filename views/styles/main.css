@@ -195,6 +195,41 @@ button {
     transition: background-color 0.2s;
 }
 
+/* Style for individual session items */
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 5px; /* Space between session button and delete button */
+  margin-bottom: 5px; /* Space between session items */
+}
+
+.session-button {
+  flex-grow: 1; /* Allow button to take available space */
+  /* Inherits general button styles */
+}
+
+.session-button.active {
+  background-color: #e0e0e0; /* Light grey background for active */
+  font-weight: bold;
+  border-color: #a0a0a0; /* Darker border for active */
+}
+
+.delete-session-button {
+  padding: 5px; /* Smaller padding */
+  width: auto; /* Auto width based on content */
+  font-size: 12px; /* Smaller font */
+  background: none;
+  border: none;
+  color: #cc0000; /* Red color for delete */
+  cursor: pointer;
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+.delete-session-button:hover {
+  color: #ff0000; /* Brighter red on hover */
+  background: none; /* Override general button hover */
+}
+
 button:hover {
     background: #f0f0f0;
 }
