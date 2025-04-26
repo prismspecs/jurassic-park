@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { Worker } = require('worker_threads'); // Import Worker
 const CameraControl = require('../services/cameraControl');
 const cameraControl = new CameraControl();
 const ffmpegHelper = require('../services/ffmpegHelper');
@@ -9,6 +10,7 @@ const config = require('../config.json'); // Read the full config
 const sessionService = require('../services/sessionService');
 const path = require('path');
 const fs = require('fs');
+const { broadcastConsole } = require('../websocket/broadcaster'); // Import broadcaster
 
 // --- Auto-add default camera on startup ---
 async function initializeDefaultCamera() {
@@ -179,16 +181,18 @@ router.post('/ptz', (req, res) => {
     }
 });
 
-// Record video from a specific camera
-router.post('/:cameraName/record', async (req, res) => {
+// Record video from a specific camera using a Worker Thread
+router.post('/:cameraName/record', (req, res) => { // Remove async, no top-level await needed
     const { cameraName } = req.params;
     const { useFfmpeg, resolution } = req.query;
 
     try {
         console.log(`[Record Route] Handling request for: ${cameraName}`);
+        broadcastConsole(`[Record Route] Handling request for: ${cameraName}`, 'info');
         const camera = cameraControl.getCamera(cameraName);
         if (!camera) {
             console.error(`[Record Route] Camera not found: ${cameraName}`);
+            broadcastConsole(`[Record Route] Camera not found: ${cameraName}`, 'error');
             return res.status(404).json({ success: false, message: `Camera ${cameraName} not found` });
         }
         console.log(`[Record Route] Found camera instance for ${cameraName}`);
@@ -197,8 +201,10 @@ router.post('/:cameraName/record', async (req, res) => {
         console.log(`[Record Route] Retrieved recording device ID from instance: ${devicePath}`);
 
         if (!devicePath && devicePath !== 0) {
-            console.error(`[Record Route] No recording device configured for ${cameraName}`);
-            return res.status(400).json({ success: false, message: `No recording device configured for camera ${cameraName}` });
+            const errorMsg = `No recording device configured for camera ${cameraName}`;
+            console.error(`[Record Route] ${errorMsg}`);
+            broadcastConsole(`[Record Route] ${errorMsg}`, 'error');
+            return res.status(400).json({ success: false, message: errorMsg });
         }
 
         // Get Session Directory
@@ -207,11 +213,13 @@ router.post('/:cameraName/record', async (req, res) => {
             sessionDir = sessionService.getSessionDirectory();
         } catch (sessionError) {
             console.error(`[Record Route] Error getting session directory for ${cameraName}:`, sessionError);
+            broadcastConsole(`[Record Route] Error getting session directory: ${sessionError.message}`, 'error');
             return res.status(500).json({ success: false, message: 'Could not determine session directory.' });
         }
 
-        // --- Create Camera-Specific Subdirectory ---
-        const cameraSubDir = path.join(sessionDir, cameraName); 
+        // --- Ensure Camera-Specific Subdirectory Exists ---
+        // Worker will use this directory, so ensure it's created beforehand
+        const cameraSubDir = path.join(sessionDir, cameraName);
         try {
             if (!fs.existsSync(cameraSubDir)) {
                 fs.mkdirSync(cameraSubDir, { recursive: true });
@@ -219,6 +227,7 @@ router.post('/:cameraName/record', async (req, res) => {
             }
         } catch (mkdirError) {
             console.error(`[Record Route] Error creating camera subdirectory ${cameraSubDir}:`, mkdirError);
+            broadcastConsole(`[Record Route] Error creating camera subdirectory: ${mkdirError.message}`, 'error');
             return res.status(500).json({ success: false, message: 'Could not create camera recording directory.' });
         }
 
@@ -228,43 +237,65 @@ router.post('/:cameraName/record', async (req, res) => {
         if (resolution && resolution.includes('x')) {
             [width, height] = resolution.split('x').map(Number);
         } else {
-            console.warn(`[Record Route] Invalid resolution '${resolution}', defaulting.`);
+            console.warn(`[Record Route] Invalid resolution '${resolution}', defaulting to ${width}x${height}.`);
         }
 
-        const recordingMethod = useFfmpeg === 'true' ? 'ffmpeg' : 'gstreamer';
-        console.log(`[Record Route] Recording from camera: ${cameraName} (ID: ${devicePath}) using ${recordingMethod} at ${width}x${height}`);
+        const workerData = {
+            cameraName,
+            useFfmpeg: useFfmpeg === 'true',
+            resolution: { width, height },
+            devicePath,
+            sessionDirectory: sessionDir
+            // durationSec is not passed for test recordings, worker uses default
+        };
 
-        const recordingHelper = useFfmpeg === 'true' ? ffmpegHelper : gstreamerHelper;
+        console.log(`[Record Route] Starting worker for ${cameraName}...`);
+        broadcastConsole(`[Record Route] Starting worker for ${cameraName}...`, 'info');
 
-        // --- Define Relative Paths WITHIN Session + Camera Dir --- 
-        // These paths are now relative to the session directory, but include the camera name
-        const VIDEO_ORIGINAL_REL = path.join(cameraName, config.videoOriginal);
-        const RAW_DIR_REL = path.join(cameraName, config.framesRawDir);
-        const OVERLAY_DIR_REL = path.join(cameraName, config.framesOverlayDir);
-        const OUT_OVER_REL = path.join(cameraName, config.videoOverlay);
+        // --- Start the Worker ---
+        const worker = new Worker(path.resolve(__dirname, '../workers/recordingWorker.js'), {
+            workerData
+        });
 
-        // Pass paths relative to sessionDir to helpers
-        await recordingHelper.captureVideo(VIDEO_ORIGINAL_REL, 10, devicePath, { width, height });
+        worker.on('message', (message) => {
+            console.log(`[Worker ${cameraName}] Message:`, message);
+            // Broadcast worker status updates to the frontend
+            broadcastConsole(`[Worker ${cameraName}] ${message.status}: ${message.message || ''}`, message.status === 'error' ? 'error' : 'info');
+            // Look for 'capture_complete' now
+            if (message.status === 'capture_complete') {
+                broadcastConsole(`[Worker ${cameraName}] Video capture complete! Output: ${message.resultPath}`, 'success');
+                // Post-processing is no longer done by worker
+            }
+        });
 
-        console.log(`[Record Route] Processing recorded video for ${cameraName}`);
-        await ffmpegHelper.extractFrames(VIDEO_ORIGINAL_REL, RAW_DIR_REL);
+        worker.on('error', (error) => {
+            console.error(`[Worker ${cameraName}] Error:`, error);
+            broadcastConsole(`[Worker ${cameraName}] Fatal error: ${error.message}`, 'error');
+            // Optionally, send a specific error status back to the client who initiated?
+        });
 
-        // Construct absolute paths for poseTracker (using the new relative dirs)
-        const absoluteRawDir = path.join(sessionDir, RAW_DIR_REL);
-        const absoluteOverlayDir = path.join(sessionDir, OVERLAY_DIR_REL);
-        await poseTracker.processFrames(absoluteRawDir, absoluteOverlayDir);
+        worker.on('exit', (code) => {
+            if (code !== 0) {
+                console.error(`[Worker ${cameraName}] Exited with code ${code}`);
+                broadcastConsole(`[Worker ${cameraName}] Worker stopped unexpectedly (code ${code})`, 'error');
+            } else {
+                console.log(`[Worker ${cameraName}] Exited successfully after capture.`);
+                // Message was already sent on 'capture_complete'
+            }
+        });
 
-        // Pass relative path to helper
-        await ffmpegHelper.encodeVideo(OVERLAY_DIR_REL, OUT_OVER_REL);
-        console.log(`[Record Route] Processing complete for ${cameraName}`);
-
+        // --- Respond Immediately --- 
+        // Don't wait for the worker to finish
         res.json({
             success: true,
-            message: 'Video recorded and pose processed!',
-            overlayName: OUT_OVER_REL // Return relative path including camera name
+            message: `Recording process initiated for ${cameraName}. Check console/UI for progress.`
+            // overlayName is no longer available immediately, worker sends it on completion
         });
+
     } catch (err) {
-        console.error(`[Record Route] Error during recording for ${cameraName}:`, err);
+        // Catch synchronous errors during setup before worker starts
+        console.error(`[Record Route] Pre-worker error for ${cameraName}:`, err);
+        broadcastConsole(`[Record Route] Failed to start recording for ${cameraName}: ${err.message}`, 'error');
         res.status(500).json({ success: false, message: err.message });
     }
 });

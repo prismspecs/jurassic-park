@@ -21,24 +21,31 @@ module.exports = {
      *   -c:v libx264, -pix_fmt yuv420p => standard h264
      *   -c:a aac => audio codec
      *   -b:a 192k => audio bitrate
-     * @param {string} devicePath - Camera device path (Linux/macOS specific)
-     * @param {object} [resolution] - Optional resolution object (unused by ffmpegHelper currently)
+     * @param {string} outVideoName - Relative path within session/camera dir
+     * @param {number} durationSec
+     * @param {string|number} devicePath
+     * @param {object} [resolution]
+     * @param {string} [baseSessionDir] - Optional: Absolute path to the session dir (for workers)
      * @returns {Promise} - Resolves when recording is complete
      */
-    captureVideo(outVideoName, durationSec, devicePath = null, resolution = null) {
+    captureVideo(outVideoName, durationSec, devicePath = null, resolution = null, baseSessionDir = null) {
         // Note: The resolution parameter is accepted for consistency with gstreamerHelper 
         // but is not currently used in the ffmpeg commands below.
         // The video_size is hardcoded for Linux.
         return new Promise((resolve, reject) => {
             let fullOutVideoName;
             try {
-                const sessionDir = sessionService.getSessionDirectory();
+                // Use provided baseSessionDir if available (from worker), otherwise use sessionService
+                const sessionDir = baseSessionDir || sessionService.getSessionDirectory();
                 fullOutVideoName = path.join(sessionDir, outVideoName);
-                if (!fs.existsSync(sessionDir)) {
-                    fs.mkdirSync(sessionDir, { recursive: true });
+
+                // Ensure the *parent* directory of the output file exists
+                const outputDir = path.dirname(fullOutVideoName);
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
                 }
             } catch (error) {
-                console.error("Error getting session directory for video capture:", error);
+                console.error("Error determining output path for video capture:", error);
                 return reject(error);
             }
 
@@ -198,19 +205,23 @@ module.exports = {
 
     /**
      * extractFrames: from the input MP4 => outDir/frame_%03d.jpg
+     * @param {string} inVideoName - Relative path within session/camera dir
+     * @param {string} outDir - Relative path within session/camera dir
+     * @param {string} [baseSessionDir] - Optional: Absolute path to the session dir (for workers)
      */
-    extractFrames(inVideoName, outDir) {
+    extractFrames(inVideoName, outDir, baseSessionDir = null) {
         return new Promise((resolve, reject) => {
             let fullInVideoName, fullOutDir;
             try {
-                const sessionDir = sessionService.getSessionDirectory();
+                // Use provided baseSessionDir if available (from worker), otherwise use sessionService
+                const sessionDir = baseSessionDir || sessionService.getSessionDirectory();
                 fullInVideoName = path.join(sessionDir, inVideoName);
                 fullOutDir = path.join(sessionDir, outDir);
                 if (!fs.existsSync(fullOutDir)) {
                     fs.mkdirSync(fullOutDir, { recursive: true });
                 }
             } catch (error) {
-                console.error("Error getting session directory for frame extraction:", error);
+                console.error("Error determining paths for frame extraction:", error);
                 return reject(error);
             }
 
@@ -250,20 +261,26 @@ module.exports = {
 
     /**
      * encodeVideo: from frames => outVideoName
+     * @param {string} framesDir - Relative path within session/camera dir
+     * @param {string} outVideoName - Relative path within session/camera dir
+     * @param {string} [baseSessionDir] - Optional: Absolute path to the session dir (for workers)
      */
-    encodeVideo(framesDir, outVideoName) {
+    encodeVideo(framesDir, outVideoName, baseSessionDir = null) {
         return new Promise((resolve, reject) => {
             let fullFramesDir, fullOutVideoName;
             try {
-                const sessionDir = sessionService.getSessionDirectory();
+                // Use provided baseSessionDir if available (from worker), otherwise use sessionService
+                const sessionDir = baseSessionDir || sessionService.getSessionDirectory();
                 fullFramesDir = path.join(sessionDir, framesDir);
                 fullOutVideoName = path.join(sessionDir, outVideoName);
-                // Ensure parent directory exists (session dir)
-                if (!fs.existsSync(sessionDir)) {
-                    fs.mkdirSync(sessionDir, { recursive: true });
+                
+                // Ensure the *parent* directory of the output file exists
+                const outputDir = path.dirname(fullOutVideoName);
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
                 }
             } catch (error) {
-                console.error("Error getting session directory for video encoding:", error);
+                console.error("Error determining paths for video encoding:", error);
                 return reject(error);
             }
 

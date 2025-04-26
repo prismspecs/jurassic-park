@@ -9,6 +9,7 @@ const { initScene, actorsReady, action, initShot } = require('../controllers/sce
 const { scenes } = require('../services/sceneService');
 const aiVoice = require('../services/aiVoice');
 const sessionService = require('../services/sessionService');
+const settingsService = require('../services/settingsService');
 const { broadcastConsole, broadcast } = require('../websocket/broadcaster');
 const teleprompterRouter = require('./teleprompter');
 const cameraRouter = require('./camera');
@@ -16,6 +17,7 @@ const authMiddleware = require('../middleware/auth');
 
 // Middleware for parsing application/x-www-form-urlencoded
 router.use(express.urlencoded({ extended: true }));
+router.use(express.json());
 
 // Create temp_uploads directory if it doesn't exist
 const tempDir = path.join(__dirname, '..', 'temp_uploads');
@@ -148,6 +150,29 @@ router.delete('/api/sessions/:sessionId', (req, res) => { // Remove async
 
         console.log(`Successfully deleted session directory: ${sessionId}`);
         res.json({ success: true, message: `Session ${sessionId} deleted successfully` });
+    });
+});
+
+// POST to set recording pipeline
+router.post('/api/settings/recording-pipeline', (req, res) => {
+    const { pipeline } = req.body;
+    if (!pipeline) {
+        return res.status(400).json({ success: false, message: 'Pipeline value is required' });
+    }
+    const success = settingsService.setRecordingPipeline(pipeline);
+    if (success) {
+        broadcast({ type: 'SETTINGS_UPDATE', settings: { recordingPipeline: pipeline } }); // Notify clients
+        res.json({ success: true, message: `Recording pipeline set to ${pipeline}` });
+    } else {
+        res.status(400).json({ success: false, message: `Invalid pipeline value: ${pipeline}` });
+    }
+});
+
+router.get('/api/settings', (req, res) => {
+    // Simple endpoint to get all current settings if needed
+    res.json({
+        recordingPipeline: settingsService.getRecordingPipeline()
+        // Add other settings here in the future
     });
 });
 

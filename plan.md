@@ -28,7 +28,9 @@ The **AI director** orchestrates the performance and ensures that each shot clos
 #### **Performance Recording & File Organization**
 
 - Each shot is saved in a **directory structure matching the shot database**.
-- **Video files** are recorded, processed for pose tracking, and the resulting overlay video is stored with metadata (e.g., pose accuracy score, shot number). The initial raw recording is kept temporarily during processing.
+- **Video files** are recorded concurrently for all cameras specified in a shot using **Node.js Worker Threads**. Each worker handles the full pipeline (capture, frame extraction, pose tracking, overlay encoding) for a single camera, preventing the main thread from blocking.
+- The recording process uses either **FFmpeg** or **GStreamer**, initiated by helper services (`ffmpegHelper.js`, `gstreamerHelper.js`).
+- Pose tracking is performed on the extracted frames, and the resulting overlay video is stored with metadata (e.g., pose accuracy score, shot number) in a camera-specific subdirectory within the session directory (e.g., `recordings/<session_id>/<camera_name>/`).
 - **Skeletor** is a node module I have created which takes a video as input and uses the skeletal data from anyone detected to "cut them out" and place them on a transparent background in a new output video file.
 - **Actor dialogue and audience sound effects** are stored separately for post-processing.
 - A **final scene compilation** is created based on the best takes.
@@ -47,9 +49,10 @@ The **AI director** orchestrates the performance and ensures that each shot clos
 
 The application is built with **Node.js**, acting as the core event controller:
 
-- **Session Management**: The application uses a session ID (format `YYYYMMDD_HHMMSS`) generated at startup. All recordings and processed files are stored in a subdirectory within `recordings/` named after the current session ID (e.g., `recordings/20231027_103000/`). The active session can be changed via the UI.
-- **WebSocket-based real-time communication** between AI components.
-- **Integrates pose tracking models** (e.g., TensorFlow.js, MediaPipe) for movement analysis.
+- **Session Management**: The application uses a session ID (format `YYYYMMDD_HHMMSS`) generated at startup. All recordings and processed files are stored in a subdirectory within `recordings/` named after the current session ID (e.g., `recordings/20231027_103000/`). Camera-specific recordings are stored within named subdirectories (e.g., `recordings/20231027_103000/Camera_1/`). The active session can be changed via the UI.
+- **WebSocket-based real-time communication** between AI components and the frontend UI for status updates (including recording progress from workers).
+- **Concurrent Recording**: Uses Node.js **Worker Threads** (`workers/recordingWorker.js`) to handle the computationally intensive recording and processing pipeline for each camera simultaneously, ensuring non-blocking operation during shots.
+- **Integrates pose tracking models** (e.g., TensorFlow.js, MediaPipe) for movement analysis, executed within the recording worker threads.
 - **Manages file storage**, shot metadata, and retrieval within session directories.
 - **Plays AI audio voice cues** via text-to-speech APIs (this will not be in use for the first run of the project, which uses a human comedian).
 - **Coordinates main and mobile teleprompter displays** through a local web interface and WebSocket communication. The main teleprompter shows initialization status and actor assignments with headshots and QR codes. Character teleprompters show specific lines and cues.
@@ -113,13 +116,13 @@ The application is built with **Node.js**, acting as the core event controller:
 ├── /services           # Business logic services
 │   ├── aiVoice.js        # Text-to-speech service
 │   ├── callsheetService.js # Manages callsheet/actor assignment logic
-│   ├── camera.js         # Camera interaction service (distinct from routes/control)
-│   ├── cameraControl.js  # PTZ camera control logic
-│   ├── ffmpegHelper.js   # Helper for FFmpeg operations, uses sessionService for paths
-│   ├── gstreamerHelper.js # Helper for GStreamer operations, uses sessionService for paths
-│   ├── poseTracker.js    # Pose tracking service (takes absolute paths)
-│   ├── sceneService.js   # Service for managing scene progression
-│   └── sessionService.js # NEW: Manages session ID and directories
+│   ├── camera.js         # Camera class definition
+│   ├── cameraControl.js  # PTZ camera control & device management logic
+│   ├── ffmpegHelper.js   # Helper for FFmpeg operations (capture, frames, encode)
+│   ├── gstreamerHelper.js # Helper for GStreamer operations (capture)
+│   ├── poseTracker.js    # Pose tracking service
+│   ├── sceneService.js   # Service for managing scene progression (DEPRECATED? Verify usage)
+│   └── sessionService.js # Manages session ID and directories
 ├── /skeletor           # Cuts participants from video using skeletal data
 ├── /temp               # Temporary files (e.g., uploaded audio before conversion)
 ├── /temp_uploads       # Temporary uploads directory (e.g., uploaded actor files)
@@ -132,6 +135,8 @@ The application is built with **Node.js**, acting as the core event controller:
 ├── /websocket          # WebSocket handling logic
 │   ├── broadcaster.js    # Handles broadcasting messages to clients
 │   └── handler.js        # Handles incoming WebSocket messages
+├── /workers            # NEW: Worker thread scripts
+│   └── recordingWorker.js # Handles concurrent camera recording & processing pipeline
 │
 ├── /.git               # Git repository data (contents not listed)
 

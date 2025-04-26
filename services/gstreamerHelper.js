@@ -7,27 +7,30 @@ const sessionService = require('./sessionService'); // Added
 module.exports = {
     /**
      * captureVideo: Records video using GStreamer
-     * @param {string} outVideoName - Output video file path
+     * @param {string} outVideoName - Relative path within session/camera dir
      * @param {number} durationSec - Duration in seconds
      * @param {string|number} serverDeviceId - Camera device path (Linux) or index (macOS)
      * @param {object} [resolution={width: 1920, height: 1080}] - Optional resolution object
+     * @param {string} [baseSessionDir] - Optional: Absolute path to the session dir (for workers)
      * @returns {Promise} - Resolves when recording is complete
      */
-    captureVideo(outVideoName, durationSec, serverDeviceId, resolution = { width: 1920, height: 1080 }) {
+    captureVideo(outVideoName, durationSec, serverDeviceId, resolution = { width: 1920, height: 1080 }, baseSessionDir = null) {
         return new Promise((resolve, reject) => {
             const platform = os.platform();
             let fullOutVideoName;
 
             try {
-                const sessionDir = sessionService.getSessionDirectory();
+                // Use provided baseSessionDir if available (from worker), otherwise use sessionService
+                const sessionDir = baseSessionDir || sessionService.getSessionDirectory();
                 fullOutVideoName = path.join(sessionDir, outVideoName);
+                
                 // Ensure output directory exists (including potential camera sub dir)
                 const outputDir = path.dirname(fullOutVideoName);
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
                 }
             } catch (error) {
-                console.error("Error getting session directory for GStreamer capture:", error);
+                console.error("Error determining GStreamer output path:", error);
                 return reject(error);
             }
 

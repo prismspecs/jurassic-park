@@ -12,6 +12,7 @@ const cameraControl = CameraControl.getInstance();
 const poseTracker = require('../services/poseTracker');
 const path = require('path');
 const QRCode = require('qrcode');
+const { Worker } = require('worker_threads');
 
 // globals
 let sceneTakeIndex = 0;
@@ -332,139 +333,154 @@ async function action() {
     }
     const shot = scene.shots[currentSceneTakeIndex];
 
-    // Define relative paths from config (these might need to be per-shot now?)
-    // For now, assume they are per-session/scene
-    const RAW_DIR = config.framesRawDir;
-    const OVERLAY_DIR = config.framesOverlayDir;
-    const OUT_ORIG = config.videoOriginal; // e.g., original.mp4
-    const OUT_OVER = config.videoOverlay; // e.g., overlay.mp4
+    broadcastConsole('Initiating recording for shot cameras...');
 
-    // Modify output filenames to include shot info
-    const shotNameSafe = (shot.name || `shot_${currentSceneTakeIndex + 1}`).replace(/W+/g, '_'); // Sanitize shot name
-    const outOrigShot = `${shotNameSafe}_${OUT_ORIG}`;
-    const outOverShot = `${shotNameSafe}_${OUT_OVER}`;
-
-    // start recording video
-    broadcastConsole('Initiating video recording sequence for shot...');
-
-    let recordingPromise;
+    let sessionDir;
     try {
-        // Determine which camera(s) to use based on the current shot data
-        // FIXME: Assuming only ONE recording camera per shot for now, using the first one defined
+        sessionDir = sessionService.getSessionDirectory();
+    } catch (sessionError) {
+        console.error("Action failed: Could not get session directory:", sessionError);
+        broadcastConsole(`Action failed: Could not get session directory: ${sessionError.message}`, 'error');
+        return;
+    }
+
+    // Determine shot duration
+    const shotDurationStr = shot.duration || '0:05'; // Default if not specified
+    const durationParts = shotDurationStr.split(':').map(Number);
+    const shotDurationSec = (durationParts.length === 2) ? (durationParts[0] * 60 + durationParts[1]) : (durationParts[0] || 5); // Default to 5s
+    broadcastConsole(`Shot duration: ${shotDurationSec} seconds`);
+
+    const activeWorkers = [];
+
+    try {
+        // --- Start Recording Worker for EACH camera in the shot --- 
         if (!shot.cameras || shot.cameras.length === 0) {
-             broadcastConsole(`Action aborted: No cameras defined for shot '${currentShotIdentifier}' in scene '${currentScene}'.`, 'error');
-             return;
-        }
-        const shotCameraInfo = shot.cameras[0]; // Use the first camera in the shot's list
-        const recordingCameraName = shotCameraInfo.name;
+            broadcastConsole(`Action warning: No cameras defined for shot '${currentShotIdentifier}' in scene '${currentScene}'. Cannot record.`, 'warn');
+            // Decide if we should still proceed with the action without recording
+        } else {
+            for (const shotCameraInfo of shot.cameras) {
+                const recordingCameraName = shotCameraInfo.name;
+                broadcastConsole(`Setting up recording for camera: ${recordingCameraName}`);
 
-        broadcastConsole(`Attempting to get camera: ${recordingCameraName} (defined in shot)`);
-        const camera = cameraControl.getCamera(recordingCameraName);
+                const camera = cameraControl.getCamera(recordingCameraName);
+                if (!camera) {
+                    const errorMsg = `Skipping recording: Camera '${recordingCameraName}' (required by shot) is not currently managed.`;
+                    broadcastConsole(errorMsg, 'error');
+                    continue; // Skip this camera, maybe proceed with others?
+                }
 
-        if (!camera) {
-            const errorMsg = `Error: Recording camera '${recordingCameraName}' (required by shot) is not currently managed. Please add/configure it via the Camera Controls section.`;
-            broadcastConsole(errorMsg, 'error');
-            return; 
-        }
+                const recordingDevicePath = camera.getRecordingDevice();
+                if (!recordingDevicePath && recordingDevicePath !== 0) {
+                    const errorMsg = `Skipping recording: No recording device configured for camera '${recordingCameraName}'.`;
+                    broadcastConsole(errorMsg, 'error');
+                    continue; // Skip this camera
+                }
 
-        broadcastConsole(`Found camera: ${camera.name}`);
-        const recordingDevicePath = camera.getRecordingDevice();
-        broadcastConsole(`Retrieved recording device path for ${camera.name}: ${recordingDevicePath}`); 
+                // FIXME: Pipeline/resolution should ideally come from shotCameraInfo or global config
+                const useFfmpeg = true; // Still hardcoded
+                const resolution = { width: 1920, height: 1080 }; // Still hardcoded
 
-        if (!recordingDevicePath) {
-            const errorMsg = `Error: No recording device configured for camera '${recordingCameraName}'. Please configure it in the UI.`;
-            broadcastConsole(errorMsg, 'error');
-            throw new Error(errorMsg);
-        }
+                // Ensure Camera-Specific Subdirectory Exists
+                const cameraSubDir = path.join(sessionDir, recordingCameraName);
+                try {
+                    if (!fs.existsSync(cameraSubDir)) {
+                        fs.mkdirSync(cameraSubDir, { recursive: true });
+                        console.log(`[Action] Created camera subdirectory: ${cameraSubDir}`);
+                    }
+                } catch (mkdirError) {
+                    console.error(`[Action] Error creating camera subdirectory ${cameraSubDir}:`, mkdirError);
+                    broadcastConsole(`[Action] Error creating subdirectory for ${recordingCameraName}: ${mkdirError.message}`, 'error');
+                    continue; // Skip this camera
+                }
 
-        broadcastConsole(`Attempting to record from: ${recordingCameraName} (${recordingDevicePath})`);
+                const workerData = {
+                    cameraName: recordingCameraName,
+                    useFfmpeg: useFfmpeg,
+                    resolution: resolution,
+                    devicePath: recordingDevicePath,
+                    sessionDirectory: sessionDir,
+                    durationSec: shotDurationSec // Pass the calculated shot duration
+                };
 
-        // Record video for the duration of the shot
-        const shotDurationStr = shot.duration || '0:05'; // Default if not specified
-        const durationParts = shotDurationStr.split(':').map(Number);
-        const shotDurationSec = (durationParts.length === 2) ? (durationParts[0] * 60 + durationParts[1]) : (durationParts[0] || 5); // Default to 5s if parse fails
-        broadcastConsole(`Shot duration: ${shotDurationSec} seconds`);
+                console.log(`[Action] Starting worker for ${recordingCameraName}...`);
+                broadcastConsole(`[Action] Starting worker for ${recordingCameraName}...`, 'info');
+                const worker = new Worker(path.resolve(__dirname, '../workers/recordingWorker.js'), { workerData });
 
-        // Get pipeline/resolution (How is this selected now? Per shot? Global?)
-        // FIXME: Still hardcoding FFmpeg/1080p
-        const useFfmpeg = true; 
-        const resolution = { width: 1920, height: 1080 }; 
-        const recordingHelper = useFfmpeg ? ffmpegHelper : gstreamerHelper;
-        const pipelineName = useFfmpeg ? 'FFmpeg' : 'GStreamer';
+                worker.on('message', (message) => {
+                    console.log(`[Action Worker ${message.camera}] Message:`, message);
+                    broadcastConsole(`[Worker ${message.camera}] ${message.status}: ${message.message || ''}`, message.status === 'error' ? 'error' : 'info');
+                    // Look for 'capture_complete' now
+                    if (message.status === 'capture_complete') {
+                        broadcastConsole(`✅ [Worker ${message.camera}] Video capture complete! Output: ${message.resultPath}`, 'success');
+                        // Post-processing is no longer done by worker
+                    }
+                });
+                worker.on('error', (error) => {
+                    console.error(`[Action Worker ${recordingCameraName}] Error:`, error);
+                    broadcastConsole(`[Worker ${recordingCameraName}] Fatal error: ${error.message}`, 'error');
+                });
+                worker.on('exit', (code) => {
+                    if (code !== 0) {
+                        console.error(`[Action Worker ${recordingCameraName}] Exited with code ${code}`);
+                        broadcastConsole(`[Worker ${recordingCameraName}] Worker stopped unexpectedly (code ${code})`, 'error');
+                    }
+                    // Remove worker from active list or mark as complete
+                    const index = activeWorkers.indexOf(worker);
+                    if (index > -1) activeWorkers.splice(index, 1);
+                    console.log(`[Action Worker ${recordingCameraName}] Exited after capture. Remaining workers: ${activeWorkers.length}`);
+                    // Check if all workers are done if needed later
+                });
 
-        broadcastConsole(`Using pipeline: ${pipelineName}`);
+                activeWorkers.push(worker);
+                broadcastConsole(`[Action] Worker started for ${recordingCameraName}. Total active workers: ${activeWorkers.length}`);
+            } // End loop through shot.cameras
+        } // End else (has cameras)
 
-        // Start recording using the shot-specific output filename
-        recordingPromise = recordingHelper.captureVideo(
-            outOrigShot, 
-            shotDurationSec,
-            recordingDevicePath,
-            resolution
-        );
+        // --- Proceed with the rest of the action IMMEDIATELY --- 
+        // Don't wait for workers here
 
-        broadcastConsole('Waiting briefly for recording process to initialize...');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        broadcastConsole('Proceeding with shot...');
-
-        // --- Broadcast SHOT_START (already done in initShot? Maybe rename SHOT_INIT?) --
-        // We might not need this specific SHOT_START if SHOT_INIT serves the purpose
-        // broadcast({ type: 'SHOT_START', scene: scene, shot: shot });
-        // --------------------------------------------------------------------------
+        broadcastConsole('Brief pause for recording(s) to initialize...');
+        await new Promise(resolve => setTimeout(resolve, 500)); // Short pause remains
+        broadcastConsole('Proceeding with shot actions...');
 
         // --- Perform camera movements for this shot --- 
-        // TODO: Implement camera movement logic based on shotCameraInfo.movements
+        // TODO: Implement camera movement logic - needs careful coordination if multiple cameras move
         broadcastConsole('Camera movement logic needs implementation.', 'warn');
         // --------------------------------------------
 
         // aiSpeak the action
         aiVoice.speak("action!");
 
-        // wait for the shot duration + a buffer
+        // Wait for the shot duration + a buffer
+        // This wait is for the *performance* duration, not the recording process
         const waitDuration = shotDurationSec * 1000 + 2000; // Add 2s buffer
-        broadcastConsole(`Waiting ${waitDuration / 1000} seconds for shot completion...`);
+        broadcastConsole(`Waiting ${waitDuration / 1000} seconds for shot performance duration...`);
         await new Promise(resolve => setTimeout(resolve, waitDuration));
-        broadcastConsole('Shot time elapsed.');
+        broadcastConsole('Shot performance time elapsed.');
 
-        // Wait for the recording process to actually finish
-        broadcastConsole('Ensuring recording process is complete...');
-        await recordingPromise; 
-        broadcastConsole('Recording process finished.');
+        // --- IMPORTANT: Post-processing is now handled *within* the worker --- 
+        // The code previously here (extractFrames, processFrames, encodeVideo) is GONE.
+        // The main 'action' function is now only responsible for *starting* the workers
+        // and managing the live performance timing.
 
-        // --- Post-processing (using shot-specific filenames) --- 
-        broadcastConsole('Starting post-processing...');
-        let sessionDir;
-        try {
-            sessionDir = sessionService.getSessionDirectory();
-        } catch (sessionError) {
-            console.error("Action failed: Could not get session directory for post-processing:", sessionError);
-            broadcastConsole(`Action failed: Could not get session directory: ${sessionError.message}`, 'error');
-            return; 
-        }
+        broadcastConsole(`Shot '${currentShotIdentifier}' performance concluded. Recording/processing continues in background workers.`);
 
-        broadcastConsole('Extracting frames...');
-        await ffmpegHelper.extractFrames(outOrigShot, RAW_DIR); // Use shot-specific input
+        // Broadcast SHOT_ENDED - maybe rename to SHOT_PERFORMANCE_ENDED?
+        // The actual video files aren't ready yet.
+        broadcast({ type: 'SHOT_PERFORMANCE_ENDED', scene: scene, shot: shot, shotIndex: currentSceneTakeIndex });
 
-        broadcastConsole('Processing frames for pose tracking...');
-        const absoluteRawDir = path.join(sessionDir, RAW_DIR);
-        const absoluteOverlayDir = path.join(sessionDir, OVERLAY_DIR);
-        await poseTracker.processFrames(absoluteRawDir, absoluteOverlayDir);
-
-        broadcastConsole('Encoding final overlay video...');
-        await ffmpegHelper.encodeVideo(OVERLAY_DIR, outOverShot); // Use shot-specific output
-        // --- End Post-processing ---
-
-        broadcastConsole(`✅ Shot '${currentShotIdentifier}' completed. Overlay video: ${outOverShot}`);
-
-        // Broadcast SHOT_ENDED ?
-        broadcast({ type: 'SHOT_ENDED', scene: scene, shot: shot, shotIndex: currentSceneTakeIndex });
-
-        // TODO: Logic for advancing to the next shot or scene completion
+        // TODO: Logic for advancing. Should we wait for workers to finish before advancing?
+        // For now, we advance immediately after performance time.
+        // If we need to wait, we'd need to track worker completion (e.g., using Promise.all on worker exit promises)
 
     } catch (err) {
-        broadcastConsole(`Error during shot recording sequence: ${err.message}`, 'error');
-        console.error("Shot Recording Error:", err); 
+        // This catches errors during the setup phase (finding cameras, starting workers)
+        broadcastConsole(`Error during action setup: ${err.message}`, 'error');
+        console.error("Action Setup Error:", err);
+        // Ensure any started workers are terminated?
+        activeWorkers.forEach(worker => worker.terminate());
     }
-    broadcastConsole('Action function finished.');
+    broadcastConsole('Action function finished dispatching tasks.');
 }
 
 module.exports = {
