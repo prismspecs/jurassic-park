@@ -4,7 +4,7 @@
  */
 
 let currentSettings = {
-    recordingPipeline: 'gstreamer', // Default to gstreamer
+    recordingPipeline: 'ffmpeg', // Default to ffmpeg
     recordingResolution: { width: 1920, height: 1080 } // Default to 1080p
 };
 
