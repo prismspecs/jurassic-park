@@ -161,18 +161,33 @@ router.post('/api/settings/recording-pipeline', (req, res) => {
     }
     const success = settingsService.setRecordingPipeline(pipeline);
     if (success) {
-        broadcast({ type: 'SETTINGS_UPDATE', settings: { recordingPipeline: pipeline } }); // Notify clients
+        broadcast({ type: 'SETTINGS_UPDATE', settings: { recordingPipeline: pipeline } });
         res.json({ success: true, message: `Recording pipeline set to ${pipeline}` });
     } else {
         res.status(400).json({ success: false, message: `Invalid pipeline value: ${pipeline}` });
     }
 });
 
+router.post('/api/settings/recording-resolution', (req, res) => {
+    const { resolution } = req.body; // Expecting string like "1920x1080"
+    if (!resolution) {
+        return res.status(400).json({ success: false, message: 'Resolution value is required' });
+    }
+    const success = settingsService.setRecordingResolution(resolution);
+    if (success) {
+        const currentResolution = settingsService.getRecordingResolution(); // Get the object back for broadcast
+        broadcast({ type: 'SETTINGS_UPDATE', settings: { recordingResolution: currentResolution } });
+        res.json({ success: true, message: `Recording resolution set to ${resolution}` });
+    } else {
+        res.status(400).json({ success: false, message: `Invalid resolution value: ${resolution}` });
+    }
+});
+
 router.get('/api/settings', (req, res) => {
     // Simple endpoint to get all current settings if needed
     res.json({
-        recordingPipeline: settingsService.getRecordingPipeline()
-        // Add other settings here in the future
+        recordingPipeline: settingsService.getRecordingPipeline(),
+        recordingResolution: settingsService.getRecordingResolution()
     });
 });
 

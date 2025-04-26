@@ -356,6 +356,10 @@ async function action() {
     const pipelineName = useFfmpeg ? 'FFmpeg' : 'GStreamer';
     broadcastConsole(`Using recording pipeline from settings: ${pipelineName}`, 'info');
 
+    // Get the currently selected recording resolution from settings service
+    const resolution = settingsService.getRecordingResolution(); // Returns {width, height}
+    broadcastConsole(`Using recording resolution from settings: ${resolution.width}x${resolution.height}`, 'info');
+
     const activeWorkers = [];
 
     try {
@@ -381,8 +385,8 @@ async function action() {
                     continue;
                 }
 
-                // FIXME: resolution should ideally come from shotCameraInfo or global config
-                const resolution = { width: 1920, height: 1080 }; // Still hardcoded
+                // --- Resolution is now fetched from settingsService above --- 
+                // const resolution = { width: 1920, height: 1080 }; // REMOVED HARDCODING
 
                 // Ensure Camera-Specific Subdirectory Exists
                 const cameraSubDir = path.join(sessionDir, recordingCameraName);
@@ -399,15 +403,15 @@ async function action() {
 
                 const workerData = {
                     cameraName: recordingCameraName,
-                    useFfmpeg: useFfmpeg, // Use value from settingsService
-                    resolution: resolution,
+                    useFfmpeg: useFfmpeg,
+                    resolution: resolution, // Use resolution object from settingsService
                     devicePath: recordingDevicePath,
                     sessionDirectory: sessionDir,
                     durationSec: shotDurationSec
                 };
 
-                console.log(`[Action] Starting worker for ${recordingCameraName} using ${pipelineName}...`);
-                broadcastConsole(`[Action] Starting worker for ${recordingCameraName} using ${pipelineName}...`, 'info');
+                console.log(`[Action] Starting worker for ${recordingCameraName} using ${pipelineName} at ${resolution.width}x${resolution.height}...`);
+                broadcastConsole(`[Action] Starting worker for ${recordingCameraName} using ${pipelineName} at ${resolution.width}x${resolution.height}...`, 'info');
                 const worker = new Worker(path.resolve(__dirname, '../workers/recordingWorker.js'), { workerData });
 
                 worker.on('message', (message) => {

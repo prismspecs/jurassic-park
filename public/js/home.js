@@ -1253,6 +1253,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize resizers after DOM is ready
   initializeResizers();
 
+  // --- Event Listeners for Controls ---
+  const pipelineSelect = document.getElementById('recording-pipeline');
+  if (pipelineSelect) {
+      pipelineSelect.addEventListener('change', (e) => handlePipelineChange(e.target.value));
+  }
+
+  const resolutionSelect = document.getElementById('recording-resolution');
+  if (resolutionSelect) {
+      resolutionSelect.addEventListener('change', (e) => handleResolutionChange(e.target.value));
+  }
+
   // --- Make functions globally available IF they are called by inline `onclick` handlers ---
   // It's better to attach event listeners programmatically instead.
   // Example: document.getElementById('someButton').addEventListener('click', someFunction);
@@ -1280,5 +1291,27 @@ document.addEventListener('DOMContentLoaded', () => {
   // but we also need to expose the instance methods used by onclicks
   window.cameraManager = cameraManager; 
 
+  // --- Added: Function to handle resolution change ---
+  function handleResolutionChange(resolution) {
+    logToConsole(`Resolution changed to: ${resolution}`, 'info');
+    // Update the server-side setting
+    fetch('/api/settings/recording-resolution', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolution: resolution })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => { throw new Error(text || 'Failed to set resolution') });
+        }
+        return response.json();
+    })
+    .then(data => {
+        logToConsole(`Server resolution setting updated: ${data.message}`, 'success');
+    })
+    .catch(error => {
+        logToConsole(`Error updating server resolution setting: ${error.message}`, 'error');
+    });
+  }
 
 }); // End DOMContentLoaded 
