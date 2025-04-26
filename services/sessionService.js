@@ -36,8 +36,19 @@ function setCurrentSessionId(id) {
         console.warn(`Attempting to set session ID with unexpected format: ${id}`);
     }
     currentSessionId = id;
-    console.log(`Current session set to: ${id} (Directory will be created on first save)`);
-    // Do NOT create directory here
+    console.log(`Current session set to: ${id}`);
+
+    // Ensure the directory exists when the session is set
+    const sessionDir = path.join(recordingsBaseDir, id);
+    try {
+        if (!fs.existsSync(sessionDir)) {
+            fs.mkdirSync(sessionDir, { recursive: true });
+            console.log(`Created directory for new session: ${sessionDir}`);
+        }
+    } catch (error) {
+        console.error(`Error creating directory for session ${id}:`, error);
+        // Decide if we should proceed or throw error
+    }
 }
 
 /**
@@ -83,15 +94,7 @@ function listExistingSessions() {
                 if (!dirent.isDirectory()) return false;
                 // Check if directory name matches the new format
                 if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(dirent.name)) return false;
-                // Check if the directory is non-empty (simple check)
-                try {
-                    const sessionDirPath = path.join(recordingsBaseDir, dirent.name);
-                    return fs.readdirSync(sessionDirPath).length > 0;
-                } catch (e) {
-                    // Error reading dir (e.g., permissions), treat as empty/invalid
-                    console.error(`Error checking contents of session directory ${dirent.name}:`, e);
-                    return false;
-                }
+                return true; // Keep directory if it matches format
             })
             .map(dirent => dirent.name)
             .sort() // Sorts alphabetically/chronologically

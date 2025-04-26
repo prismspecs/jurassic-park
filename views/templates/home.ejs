@@ -1268,8 +1268,6 @@
     .session-button {
       flex-grow: 1;
       /* Take available space */
-      margin-right: 5px;
-      /* Space before delete button */
       padding: 8px;
       text-align: left;
       border: 1px solid #ccc;
@@ -1293,6 +1291,7 @@
       /* Remove padding */
       text-align: center;
       /* Center X */
+      margin-left: 5px; /* Add space to the left */
       background-color: #fdd;
       border: 1px solid #f99;
       color: #c00;
@@ -1303,8 +1302,7 @@
       /* Vertical align */
       flex-shrink: 0;
       /* Prevent shrinking */
-      border-radius: 3px;
-      /* Optional rounding */
+      border-radius: 3px; /* Restore optional rounding */
     }
 
     .delete-session-button:hover {
