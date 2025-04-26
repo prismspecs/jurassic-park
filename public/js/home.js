@@ -1152,6 +1152,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const startResize = (e, resizer) => {
       // Prevent text selection during drag
       e.preventDefault(); 
+      console.log('Resizer mousedown detected on:', resizer.id);
       
       isResizing = true;
       currentResizer = resizer;
@@ -1203,22 +1204,32 @@ document.addEventListener('DOMContentLoaded', () => {
               mainContent.style.flexGrow = '0'; // Prevent flex grow during drag
 
           } else if (currentResizer === resizerMainRight) {
-              let newRightBasis = initialRightBasis - dx; // Right sidebar shrinks as mouse moves right
-              let newMainWidth = initialMainContentWidth + dx; // Main grows
+              // Adjust main content width based on initial width and mouse delta
+              let newMainWidth = initialMainContentWidth + dx; 
 
-              // Ensure minimums are respected
-              if (newRightBasis < minRightWidth) {
-                  newRightBasis = minRightWidth;
-                  newMainWidth = totalWidth - initialLeftBasis - newRightBasis - (resizerLeftMain.offsetWidth + resizerMainRight.offsetWidth);
-              }
+              // Calculate how much space WOULD BE left for the right sidebar
+              const potentialRightWidth = totalWidth - initialLeftBasis - newMainWidth - (resizerLeftMain.offsetWidth + resizerMainRight.offsetWidth);
+
+              // Clamp newMainWidth if it violates min widths
+              // 1. If main content gets too small
               if (newMainWidth < minMainWidth) {
                   newMainWidth = minMainWidth;
-                  newRightBasis = totalWidth - initialLeftBasis - newMainWidth - (resizerLeftMain.offsetWidth + resizerMainRight.offsetWidth);
+              }
+              // 2. If main content gets so large that right sidebar becomes too small
+              else if (potentialRightWidth < minRightWidth) {
+                  // Limit main width to leave minimum space for right sidebar
+                  newMainWidth = totalWidth - initialLeftBasis - minRightWidth - (resizerLeftMain.offsetWidth + resizerMainRight.offsetWidth);
               }
               
-              rightSidebar.style.flexBasis = `${newRightBasis}px`;
+              // Calculate and set right sidebar width explicitly
+              const newRightWidth = totalWidth - initialLeftBasis - newMainWidth - (resizerLeftMain.offsetWidth + resizerMainRight.offsetWidth);
+              rightSidebar.style.flexBasis = `${newRightWidth}px`;
+              rightSidebar.style.flexGrow = '0';
+              
+              // Apply the clamped width to main content
               mainContent.style.flexBasis = `${newMainWidth}px`;
-              mainContent.style.flexGrow = '0'; 
+              mainContent.style.flexGrow = '0';
+              // DO NOT explicitly set rightSidebar.style.flexBasis - let flexbox handle it
           }
       });
     };
@@ -1235,13 +1246,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.style.cursor = '';
         // document.body.style.pointerEvents = '';
 
-        // Allow flexbox to take over again by removing explicit basis and restoring grow
-        mainContent.style.flexGrow = '1'; 
-        mainContent.style.flexBasis = '0'; // Or 'auto', '0' often works better with flex-grow=1
-        // Optionally reset sidebar basis if needed, or let them keep their dragged size
-        // leftSidebar.style.flexBasis = 'auto'; // Example if you want it to reset
-        // rightSidebar.style.flexBasis = 'auto'; // Example
-
+        // IMPORTANT: We DO NOT reset flex-basis for ANY element to maintain the dragged layout
+        // Only restore flex-grow to 1 for the main content so it can expand with window resizing
+        mainContent.style.flexGrow = '1';
+        
         currentResizer = null; // Clear the current resizer
       }
     };
