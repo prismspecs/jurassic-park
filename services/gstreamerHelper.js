@@ -47,16 +47,28 @@ module.exports = {
                 if (typeof serverDeviceId !== 'string' || !serverDeviceId.startsWith('/dev/video')) {
                     return reject(new Error(`Invalid Linux device path provided to GStreamer: ${serverDeviceId}`));
                 }
+                // Add capsfilter for resolution
+                const caps = `video/x-raw,width=${resWidth},height=${resHeight}`; 
                 pipelineElements = [
                     `${sourceElementName} device=${serverDeviceId}`,
+                    '!',
+                    'queue',
                     '!',
                     'jpegdec',
                     '!',
                     'videoconvert',
                     '!',
+                    'videoscale method=bilinear',
+                    '!',
+                    caps,
+                    '!',
                     'videorate',
                     '!',
-                    'x264enc tune=zerolatency bitrate=8000 speed-preset=ultrafast key-int-max=30',
+                    'queue',
+                    '!',
+                    'x264enc tune=zerolatency bitrate=8000 speed-preset=ultrafast key-int-max=60',
+                    '!',
+                    'queue',
                     '!',
                     'mp4mux',
                     '!',
@@ -71,16 +83,26 @@ module.exports = {
                     }
                     serverDeviceId = potentialIndex;
                 }
-                // Simplify pipeline for macOS: Remove strict caps after avfvideosrc
-                // Let GStreamer negotiate the format with videoconvert.
+                // Add capsfilter for resolution
+                const caps = `video/x-raw,width=${resWidth},height=${resHeight}`; 
                 pipelineElements = [
                     `${sourceElementName} device-index=${serverDeviceId}`,
                     '!',
-                    'videoconvert', // Convert pixel format if necessary
+                    'queue',
                     '!',
-                    'videorate', // Ensure correct frame rate
+                    'videoconvert',
                     '!',
-                    'x264enc tune=zerolatency bitrate=8000 speed-preset=ultrafast key-int-max=30',
+                    'videoscale method=bilinear',
+                    '!',
+                    caps,
+                    '!',
+                    'videorate',
+                    '!',
+                    'queue',
+                    '!',
+                    'x264enc tune=zerolatency bitrate=8000 speed-preset=ultrafast key-int-max=60',
+                    '!',
+                    'queue',
                     '!',
                     'mp4mux',
                     '!',

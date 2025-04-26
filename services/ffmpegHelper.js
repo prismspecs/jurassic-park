@@ -54,6 +54,7 @@ module.exports = {
                 ffmpegArgs = [
                     '-f', 'avfoundation',
                     '-framerate', '30',
+                    ...(resolution && resolution.width && resolution.height ? ['-video_size', `${resolution.width}x${resolution.height}`] : []),
                     '-i', '0:1',  // 0 is video, 1 is audio
                     '-t', durationSec.toString(),
                     '-c:v', 'libx264',
@@ -77,7 +78,7 @@ module.exports = {
                     '-f', 'v4l2',
                     '-thread_queue_size', '512',
                     '-input_format', 'mjpeg', // Use MJPEG instead of yuyv422
-                    '-video_size', '640x480',
+                    '-video_size', `${(resolution && resolution.width) || 1920}x${(resolution && resolution.height) || 1080}`,
                     '-i', devicePath || '/dev/video0',  // Use provided device path or default
                     '-t', durationSec.toString(),
                     '-c:v', 'libx264',
@@ -130,7 +131,7 @@ module.exports = {
                         '-f', 'v4l2',
                         '-thread_queue_size', '512',
                         // '-input_format', 'yuyv422', // REMOVED - Let FFmpeg autodetect
-                        '-video_size', '640x480',
+                        '-video_size', `${(resolution && resolution.width) || 1920}x${(resolution && resolution.height) || 1080}`,
                         '-i', devicePath || '/dev/video0',
                         '-t', durationSec.toString(),
                         '-c:v', 'libx264',
