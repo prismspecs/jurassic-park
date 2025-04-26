@@ -58,15 +58,28 @@
     <!-- Main Content Area -->
     <div class="main-content">
       <h1>AI Director Shots</h1>
-      <div class="scene-container">
-        <% scenes.forEach((scene, idx)=> { %>
-          <div class="scene-card" onclick="initScene('<%= encodeURIComponent(scene.directory) %>')">
-            <div class="scene-title">
-              Scene #<%= idx + 1 %>: <%= scene.description %>
-            </div>
-            <img src="./database/scenes/<%= scene.directory %>/thumbnail.jpg" alt="<%= scene.description %>" />
-          </div>
-          <% }); %>
+      <div class="shot-container">
+        <% scenes.forEach((scene, sceneIdx)=> {
+           if (scene.shots && scene.shots.length > 0) { 
+             scene.shots.forEach((shot, shotIdx) => {
+               const shotIdentifier = shot.name || `shot_${shotIdx + 1}`;
+               const thumbnailPath = `./database/scenes/${encodeURIComponent(scene.directory)}/${encodeURIComponent(shotIdentifier)}/thumbnail.jpg`;
+        %>
+                <div class="shot-card" 
+                     onclick="initShot('<%= encodeURIComponent(scene.directory) %>', '<%= encodeURIComponent(shotIdentifier) %>')">
+                  <div class="shot-title">
+                    Scene #<%= sceneIdx + 1 %>: <%= scene.description %><br>
+                    Shot #<%= shotIdx + 1 %>: <%= shot.description || shotIdentifier %>
+                  </div>
+                  <img src="<%= thumbnailPath %>" 
+                       alt="Shot thumbnail for <%= scene.description %> - <%= shot.description || shotIdentifier %>" 
+                       onerror="this.style.display='none'" />
+                </div>
+        <%      });
+            } else { %>
+              <p>Scene '<%= scene.description %>' has no defined shots.</p>
+        <%  } 
+          }); %>
       </div>
 
       <!-- MOVED Console Output First -->
@@ -198,6 +211,44 @@
         const data = JSON.parse(event.data);
         console.log('Message from server:', data);
 
+        // --- ADDED: Forward relevant messages to teleprompter iframe ---
+        const teleprompterFrame = document.getElementById('teleprompter-frame');
+        const characterTeleprompterWindows = {}; // Store refs if needed
+
+        // Determine if the message is for the main teleprompter or a character teleprompter
+        const teleprompterMessageTypes = [
+            'TELEPROMPTER', 
+            'ACTOR_CALLS', 
+            'CLEAR_TELEPROMPTER', 
+            'PLAY_VIDEO' // Assuming general teleprompter video
+        ];
+        const characterTeleprompterMessageTypes = [
+            'SHOT_START',
+            'TELEPROMPTER_CONTROL',
+            'SCENE_ENDED',
+            'SYSTEM_RESET',
+            'TELEPROMPTER_STATUS'
+        ];
+
+        if (teleprompterMessageTypes.includes(data.type)) {
+            if (teleprompterFrame && teleprompterFrame.contentWindow) {
+                teleprompterFrame.contentWindow.postMessage(data, '*'); // Target can be more specific than '*'
+            } else {
+                console.warn('Teleprompter frame not found or not loaded yet.');
+            }
+        } else if (characterTeleprompterMessageTypes.includes(data.type)) {
+            // Find the appropriate character teleprompter window
+            // This requires managing references to opened character windows, 
+            // maybe store them in the `characterTeleprompterWindows` object keyed by character name
+            // For now, we'll just log it
+            console.log('Received character teleprompter message, but forwarding logic needs implementation:', data);
+            // Example if you had window references:
+            // if (data.character && characterTeleprompterWindows[data.character]) {
+            //     characterTeleprompterWindows[data.character].postMessage(data, '*');
+            // }
+        }
+
+        // --- Original message handling for home.ejs ---
         switch (data.type) {
           case 'CONSOLE':
             logToConsole(data.message, data.level);
@@ -224,6 +275,40 @@
         logToConsole('Received non-JSON message or error handling update.', 'error');
       }
     };
+
+    // --- ADDED: Handler for SHOT_CAMERA_DESCRIPTIONS message ---
+    ws.addEventListener('message', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'SHOT_CAMERA_DESCRIPTIONS') {
+          console.log('Received shot camera descriptions:', data.descriptions);
+          
+          // Clear previous descriptions first (optional, good practice)
+          document.querySelectorAll('.shot-camera-description').forEach(el => el.remove());
+          
+          data.descriptions.forEach(camInfo => {
+            const cameraElement = cameraManager.cameraElements.get(camInfo.name);
+            if (cameraElement) {
+              // Find a suitable place to insert the description, e.g., after the header
+              const headerElement = cameraElement.querySelector('.camera-header');
+              if (headerElement) {
+                const descElement = document.createElement('p');
+                descElement.className = 'shot-camera-description'; // Add class for easy removal later
+                descElement.textContent = `Shot Role: ${camInfo.description}`;
+                // Insert after the header
+                headerElement.parentNode.insertBefore(descElement, headerElement.nextSibling); 
+              }
+            }
+          });
+        }
+      } catch (error) {
+        // Ignore errors if message wasn't JSON or didn't have the expected type
+        if (!(error instanceof SyntaxError)) {
+             console.error('Error handling SHOT_CAMERA_DESCRIPTIONS:', error);
+        } 
+      }
+    });
+    // --- END ADDED --- 
 
     // --- UI Update Functions ---
     function updateSessionUI(newSessionId) {
@@ -402,19 +487,24 @@
         });
     }
 
-    function initScene(directory) {
-      logToConsole(`Requesting scene init: ${decodeURIComponent(directory)}`, 'info');
-      document.getElementById("status").innerText = `Initializing ${decodeURIComponent(directory)}...`;
-      fetch("/initScene/" + encodeURIComponent(directory))
+    function initShot(sceneDirectory, shotIdentifier) {
+      const sceneDirDecoded = decodeURIComponent(sceneDirectory);
+      const shotIdDecoded = decodeURIComponent(shotIdentifier);
+      logToConsole(`Requesting shot init: Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}'`, 'info');
+      document.getElementById("status").innerText = `Initializing Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}'...`;
+      
+      const apiUrl = `/initShot/${sceneDirectory}/${shotIdentifier}`; 
+      
+      fetch(apiUrl)
         .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
         .then(info => {
           document.getElementById("status").innerText = info.message;
-          logToConsole(`Scene init request sent for ${info.directory}.`, 'success');
+          logToConsole(`Shot init request sent for Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}'.`, 'success');
         })
         .catch(err => {
-          console.error("Init Scene Error:", err);
-          document.getElementById("status").innerText = "Error initializing scene: " + err;
-          logToConsole(`Error initializing scene ${decodeURIComponent(directory)}: ${err}`, 'error');
+          console.error("Init Shot Error:", err);
+          document.getElementById("status").innerText = "Error initializing shot: " + err;
+          logToConsole(`Error initializing Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}': ${err}`, 'error');
         });
     }
 
@@ -1469,13 +1559,13 @@
     }
 
     /* Adjust scene container if needed */
-    .scene-container {
+    .shot-container {
       display: flex;
       flex-wrap: wrap;
       gap: 15px;
     }
 
-    .scene-card {
+    .shot-card {
       border: 1px solid #ccc;
       padding: 10px;
       border-radius: 4px;
@@ -1484,11 +1574,11 @@
       cursor: pointer;
     }
 
-    .scene-card:hover {
+    .shot-card:hover {
       border-color: #aaa;
     }
 
-    .scene-card img {
+    .shot-card img {
       max-width: 100%;
       height: auto;
       display: block;
@@ -1668,6 +1758,17 @@
       margin: 10px 0;
     }
     /* --- END Updated --- */
+
+    /* Add style for the shot camera description */
+    .shot-camera-description {
+        font-style: italic;
+        color: #0056b3; /* Dark blue */
+        margin: 5px 0 10px 0; /* Adjust spacing */
+        padding: 5px;
+        background-color: #e7f3ff; /* Light blue background */
+        border-left: 3px solid #0056b3;
+        font-size: 0.9em;
+    }
 
   </style>
 </body>

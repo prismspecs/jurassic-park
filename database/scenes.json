@@ -2,11 +2,52 @@
     {
         "directory": "000 - test",
         "description": "This is a test scene",
-        "takes": [
+        "shots": [
             {
+                "name": "main",
+                "number": 0,
                 "duration": "0:05",
                 "description": "This is a test description",
                 "setup": "This is a test setup",
+                "cameras": [
+                    {
+                        "name": "Camera_1",
+                        "description": "Front-facing main camera",
+                        "position": "F",
+                        "direction": "front",
+                        "movements": [
+                            {
+                                "pan": 5,
+                                "tilt": 2,
+                                "zoom": 0,
+                                "height": 1.4,
+                                "time": 0
+                            },
+                            {
+                                "pan": -3,
+                                "tilt": 0,
+                                "zoom": 100,
+                                "height": 1.2,
+                                "time": 3
+                            }
+                        ]
+                    },
+                    {
+                        "name": "Camera_2",
+                        "description": "Rear camera",
+                        "position": "B",
+                        "direction": "back",
+                        "movements": [
+                            {
+                                "pan": 0,
+                                "tilt": 0,
+                                "zoom": 0,
+                                "height": 1.4,
+                                "time": 0
+                            }
+                        ]
+                    }
+                ],
                 "ins-outs": [
                     {
                         "in": 1,
@@ -95,8 +136,9 @@
     {
         "directory": "001 - see dinosaurs",
         "description": "The cast sees dinosaurs for the first time",
-        "takes": [
+        "shots": [
             {
+                "name": "main",
                 "duration": "2:52",
                 "description": "The entire scene is done with this take",
                 "setup": "The cast is in the car, looking at the dinosaurs. Dr. Alan Grant is driving, Dr. Ellie Sattler is in the back seat, and John Hammond is in the front passenger seat.",

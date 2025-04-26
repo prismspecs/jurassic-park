@@ -5,7 +5,7 @@ const multer = require('multer');
 const fs = require('fs');
 const config = require('../config.json');
 const { buildHomeHTML } = require('../views/homeView');
-const { initScene, actorsReady, action } = require('../controllers/sceneController');
+const { initScene, actorsReady, action, initShot } = require('../controllers/sceneController');
 const { scenes } = require('../services/sceneService');
 const aiVoice = require('../services/aiVoice');
 const sessionService = require('../services/sessionService');
@@ -208,12 +208,35 @@ router.post('/setVoiceBypass', express.json(), (req, res) => {
     });
 });
 
-// Initialize a scene
+// Initialize a scene (legacy? Keep for now or deprecate?)
 router.get('/initScene/:directory', (req, res) => {
     const directory = decodeURIComponent(req.params.directory);
-    initScene(directory);
-    res.json({ success: true, message: 'Scene started', directory: directory });
+    initScene(directory); // This likely needs adjustment if initShot is the primary way
+    res.json({ success: true, message: 'Scene initialization requested (may be deprecated)', directory: directory });
 });
+
+// --- NEW: Initialize a specific shot within a scene ---
+router.get('/initShot/:sceneDir/:shotName', (req, res) => {
+    const sceneDir = decodeURIComponent(req.params.sceneDir);
+    const shotName = decodeURIComponent(req.params.shotName);
+    try {
+        // Call the controller function (which should be synchronous for now or return status)
+        const result = initShot(sceneDir, shotName); // Assuming initShot exists in sceneController
+        res.json({ 
+            success: true, 
+            message: `Shot '${shotName}' in scene '${sceneDir}' initialized.`, 
+            scene: sceneDir,
+            shot: shotName
+        });
+    } catch (error) {
+        console.error(`Error initializing shot ${shotName} in scene ${sceneDir}:`, error);
+        res.status(400).json({ // Use 400 for bad request (e.g., shot not found)
+             success: false, 
+             message: `Error initializing shot: ${error.message}` 
+        }); 
+    }
+});
+// --- END NEW ---
 
 // Handle loading new actors
 router.post('/loadActors', upload.array('files'), async (req, res) => {
