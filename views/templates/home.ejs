@@ -155,7 +155,7 @@
     </div>
   </div>
 
-  </div>
+  
   <!-- End Right Sidebar -->
 
   </div> <!-- End Page Layout -->
@@ -689,7 +689,7 @@
 
       async addCamera() {
         const cameraIndex = this.cameras.length;
-        const name = `Camera ${cameraIndex + 1}`;
+        const name = `Camera_${cameraIndex + 1}`;
 
         // Get the defaults for this camera index, or use empty defaults if none exist
         const defaults = this.cameraDefaults[cameraIndex] || {
@@ -785,7 +785,7 @@
 
         div.innerHTML = `
             <div class="camera-header">
-              <h3>${camera.name}</h3>
+              <h3>${camera.name.replace(/_/g, ' ')}</h3>
               <button onclick="cameraManager.removeCamera('${camera.name}')" class="remove-btn" title="Remove ${camera.name}">❌</button>
             </div>
             <div class="camera-preview">
@@ -798,16 +798,23 @@
                 <select class="preview-device" onchange="cameraManager.updatePreviewDevice('${camera.name}', this.value)">
                   <option value="">Select Preview Device</option>
                   ${this.availableDevices
-            .map(
-              (browserDevice) => `
-                    <option value="${browserDevice.deviceId}" ${
-                // Select based on current browser ID saved in camera config
-                browserDevice.deviceId === currentPreviewBrowserId ? "selected" : ""
+            .map((browserDevice) => {
+              // Attempt to find the corresponding server device to get the path
+              // This relies on the browser label matching the start of the server name (e.g., "Integrated Camera" matching "Integrated Camera (/dev/video0)")
+              const serverDevice = this.serverDevices.find(sd => sd.name?.startsWith(browserDevice.label));
+              const displayLabel = serverDevice 
+                ? `${browserDevice.label} (${serverDevice.id})` // Use label and server path (which is the id)
+                : (browserDevice.label || browserDevice.deviceId); // Fallback if no match found
+
+              return `
+                <option value="${browserDevice.deviceId}" ${
+                  // Select based on current browser ID saved in camera config
+                  browserDevice.deviceId === currentPreviewBrowserId ? "selected" : ""
                 }>
-                      ${browserDevice.label || browserDevice.deviceId}
-                    </option>
-                  `
-            )
+                  ${displayLabel} 
+                </option>
+              `;
+            })
             .join("")}
                 </select>
               </div>
@@ -846,7 +853,7 @@
               </div>
               <div class="ptz-controls-container"></div>
               <div class="camera-controls">
-                <button onclick="cameraManager.recordVideo('${camera.name}')">Test Record Video</button>
+                <button onclick="cameraManager.recordVideo('${camera.name}')">Test Record Video (${camera.name.replace(/_/g, ' ')})</button>
               </div>
             </div>
           `;
@@ -1003,11 +1010,11 @@
 
           const vidDiv = document.getElementById("videos");
 
-          if (vidDiv && currentSessionId) {
+          if (vidDiv && currentSessionId && result.overlayName) {
             const videoPath = `/recordings/${encodeURIComponent(currentSessionId)}/${encodeURIComponent(result.overlayName)}`;
             logToConsole(`Displaying video: ${videoPath}`, "info");
             vidDiv.innerHTML = `
-              <h3>Overlay Video (${cameraName})</h3>
+              <h3>Overlay Video (${cameraName.replace(/_/g, ' ')})</h3>
               <video controls src="${videoPath}"></video>
             `;
           } else if (!currentSessionId) {

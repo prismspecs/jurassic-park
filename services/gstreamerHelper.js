@@ -21,9 +21,10 @@ module.exports = {
             try {
                 const sessionDir = sessionService.getSessionDirectory();
                 fullOutVideoName = path.join(sessionDir, outVideoName);
-                // Ensure session dir exists
-                if (!fs.existsSync(sessionDir)) {
-                    fs.mkdirSync(sessionDir, { recursive: true });
+                // Ensure output directory exists (including potential camera sub dir)
+                const outputDir = path.dirname(fullOutVideoName);
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
                 }
             } catch (error) {
                 console.error("Error getting session directory for GStreamer capture:", error);
@@ -48,9 +49,6 @@ module.exports = {
                 }
                 pipelineElements = [
                     `${sourceElementName} device=${serverDeviceId}`,
-                    '!',
-                    // Request MJPEG at the specified resolution (Common for webcams)
-                    `image/jpeg,width=${resWidth},height=${resHeight},framerate=30/1`,
                     '!',
                     'jpegdec',
                     '!',
@@ -98,7 +96,7 @@ module.exports = {
             console.log(`(${platform}) Starting GStreamer capture for ${durationSec} sec from ${sourceElementName} (ID: ${serverDeviceId}) => ${fullOutVideoName}`);
             console.log(`(${platform}) GStreamer pipeline: ${pipelineString}`);
 
-            // Split carefully, considering potential spaces in paths/options if any were added
+            // Split carefully, considering potential spaces in paths/options if any were added (shouldn't be now)
             const gstArgs = pipelineString.split(/\s+/).filter(arg => arg.length > 0);
 
             const gst = spawn('gst-launch-1.0', ['-e', ...gstArgs]);

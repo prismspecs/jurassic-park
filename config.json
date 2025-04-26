@@ -23,8 +23,8 @@
             "resolution": "1280x720",
             "fps": 30,
             "previewDevice": "/dev/video3",
-            "recordingDevice": "/dev/video3",
-            "ptzDevice": "/dev/video5"
+            "recordingDevice": "/dev/video6",
+            "ptzDevice": "/dev/video6"
         }
     ],
     "auth": {

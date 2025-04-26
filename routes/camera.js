@@ -8,13 +8,14 @@ const poseTracker = require('../services/poseTracker');
 const config = require('../config.json'); // Read the full config
 const sessionService = require('../services/sessionService');
 const path = require('path');
+const fs = require('fs');
 
 // --- Auto-add default camera on startup ---
 async function initializeDefaultCamera() {
     try {
         const defaultCameraConfig = config.cameraDefaults && config.cameraDefaults[0];
         if (defaultCameraConfig) {
-            const defaultCameraName = 'Camera 1';
+            const defaultCameraName = 'Camera_1';
             // Check if camera already exists (e.g., due to persistence or prior init)
             if (!cameraControl.getCamera(defaultCameraName)) {
                 console.log(`Attempting to add default camera '${defaultCameraName}' on startup...`);
@@ -209,6 +210,18 @@ router.post('/:cameraName/record', async (req, res) => {
             return res.status(500).json({ success: false, message: 'Could not determine session directory.' });
         }
 
+        // --- Create Camera-Specific Subdirectory ---
+        const cameraSubDir = path.join(sessionDir, cameraName); 
+        try {
+            if (!fs.existsSync(cameraSubDir)) {
+                fs.mkdirSync(cameraSubDir, { recursive: true });
+                console.log(`[Record Route] Created camera subdirectory: ${cameraSubDir}`);
+            }
+        } catch (mkdirError) {
+            console.error(`[Record Route] Error creating camera subdirectory ${cameraSubDir}:`, mkdirError);
+            return res.status(500).json({ success: false, message: 'Could not create camera recording directory.' });
+        }
+
         // Parse resolution
         let width = 1920;
         let height = 1080;
@@ -223,31 +236,32 @@ router.post('/:cameraName/record', async (req, res) => {
 
         const recordingHelper = useFfmpeg === 'true' ? ffmpegHelper : gstreamerHelper;
 
-        // --- Define Relative Paths --- 
-        const VIDEO_ORIGINAL = config.videoOriginal;   // USE this instead
-        const RAW_DIR = config.framesRawDir;           // e.g., frames_raw
-        const OVERLAY_DIR = config.framesOverlayDir;   // e.g., frames_overlay
-        const OUT_OVER = config.videoOverlay;        // e.g., overlay.mp4
+        // --- Define Relative Paths WITHIN Session + Camera Dir --- 
+        // These paths are now relative to the session directory, but include the camera name
+        const VIDEO_ORIGINAL_REL = path.join(cameraName, config.videoOriginal);
+        const RAW_DIR_REL = path.join(cameraName, config.framesRawDir);
+        const OVERLAY_DIR_REL = path.join(cameraName, config.framesOverlayDir);
+        const OUT_OVER_REL = path.join(cameraName, config.videoOverlay);
 
-        // Pass relative paths to helpers
-        await recordingHelper.captureVideo(VIDEO_ORIGINAL, 10, devicePath, { width, height });
+        // Pass paths relative to sessionDir to helpers
+        await recordingHelper.captureVideo(VIDEO_ORIGINAL_REL, 10, devicePath, { width, height });
 
         console.log(`[Record Route] Processing recorded video for ${cameraName}`);
-        await ffmpegHelper.extractFrames(VIDEO_ORIGINAL, RAW_DIR);
+        await ffmpegHelper.extractFrames(VIDEO_ORIGINAL_REL, RAW_DIR_REL);
 
-        // Construct absolute paths for poseTracker
-        const absoluteRawDir = path.join(sessionDir, RAW_DIR);
-        const absoluteOverlayDir = path.join(sessionDir, OVERLAY_DIR);
+        // Construct absolute paths for poseTracker (using the new relative dirs)
+        const absoluteRawDir = path.join(sessionDir, RAW_DIR_REL);
+        const absoluteOverlayDir = path.join(sessionDir, OVERLAY_DIR_REL);
         await poseTracker.processFrames(absoluteRawDir, absoluteOverlayDir);
 
-        // Pass relative paths to helper
-        await ffmpegHelper.encodeVideo(OVERLAY_DIR, OUT_OVER);
+        // Pass relative path to helper
+        await ffmpegHelper.encodeVideo(OVERLAY_DIR_REL, OUT_OVER_REL);
         console.log(`[Record Route] Processing complete for ${cameraName}`);
 
         res.json({
             success: true,
             message: 'Video recorded and pose processed!',
-            overlayName: OUT_OVER // Return relative path
+            overlayName: OUT_OVER_REL // Return relative path including camera name
         });
     } catch (err) {
         console.error(`[Record Route] Error during recording for ${cameraName}:`, err);
