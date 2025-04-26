@@ -65,7 +65,6 @@ The application is built with **Node.js**, acting as the core event controller:
 - **Pose tracking models** analyze actor movement.
 - **Text-to-speech AI** for vocalizing the AI director's instructions.
 
-
 ### **Code Structure**
 
 #### **Project Structure**
@@ -98,6 +97,8 @@ The application is built with **Node.js**, acting as the core event controller:
 ├── /old                # Older or deprecated code (contents not listed)
 ├── /public             # Static assets served by Express
 │   └── favicon.ico     # Favicon for web interfaces
+│   └── /js             # Client-side JavaScript files (NEW)
+│       └── home.js       # Client-side logic for home.ejs (NEW)
 ├── /recordings         # Stored video and audio files per session
 │   └── /<session_id>   # Directory for each session (e.g., 20231027_103000)
 │       ├── original.mp4  # Original recording for a scene/shot
@@ -126,6 +127,7 @@ The application is built with **Node.js**, acting as the core event controller:
 │   ├── homeView.js       # Logic for the main/home view, fetches session data
 │   ├── teleprompterView.js # Logic for the teleprompter view
 │   ├── /styles         # CSS Stylesheets
+│   │   └── home.css      # Styles for home.ejs (NEW)
 │   └── /templates      # HTML/EJS templates (home.ejs includes session UI)
 ├── /websocket          # WebSocket handling logic
 │   ├── broadcaster.js    # Handles broadcasting messages to clients

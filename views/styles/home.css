@@ -268,3 +268,268 @@ video {
 .teleprompter-button-group button {
     margin: 4px;
 }
+
+/* Add styles for session list */
+.session-list {
+  max-height: 150px;
+  overflow-y: auto;
+  margin-top: 10px;
+  border: 1px solid #ddd;
+  padding: 5px;
+}
+
+/* Logging styles (Check if these conflict/overlap with existing #console-output styles) */
+.log-entry {
+  font-family: monospace;
+  margin-bottom: 3px;
+  white-space: pre-wrap;
+  font-size: 0.9em;
+}
+
+.log-timestamp { /* Possibly overlaps with #console-output .timestamp */
+  color: #888;
+  margin-right: 5px;
+}
+
+.log-info { /* Possibly overlaps with #console-output .info */
+  color: #333;
+}
+
+.log-warn { /* Possibly overlaps with #console-output .warn (if it exists) */
+  color: orange;
+}
+
+.log-error { /* Possibly overlaps with #console-output .error */
+  color: red;
+  font-weight: bold;
+}
+
+.log-success { /* Possibly overlaps with #console-output .success (if it exists) */
+  color: green;
+}
+
+/* Actor Loading Styles */
+.actor-loading {
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px dashed #ccc;
+}
+
+.actor-loading label {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.actor-loading input[type="file"] {
+  display: block;
+  margin-bottom: 10px;
+}
+
+#loadActorsStatus {
+  margin-top: 5px;
+  font-style: italic;
+}
+
+.status-info {
+  color: #555;
+}
+
+.status-success {
+  color: green;
+}
+
+.status-error {
+  color: red;
+}
+
+/* Layout Styles (Potentially conflict with existing body, .main-content, .sidebar) */
+.page-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-wrap: nowrap;
+}
+
+.left-sidebar {
+  flex-basis: 25%;
+  min-width: 150px;
+  padding: 15px;
+  border-right: 1px solid #ccc;
+  overflow-y: auto;
+  background-color: #f8f8f8;
+  height: 100%;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.resizer-handle {
+  width: 5px;
+  background-color: #ddd;
+  cursor: col-resize;
+  flex-shrink: 0;
+  height: 100%;
+  z-index: 10;
+  border-left: 1px solid #ccc;
+  border-right: 1px solid #ccc;
+  box-sizing: border-box;
+}
+
+.resizer-handle:hover {
+  background-color: #bbb;
+}
+
+/* Shot Container/Card Styles (Check for overlap with scene-container/scene-card) */
+.shot-container { /* Similar to .scene-container */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.shot-card { /* Similar to .scene-card */
+  border: 1px solid #ccc;
+  padding: 10px;
+  border-radius: 4px;
+  width: 200px;
+  cursor: pointer;
+}
+
+.shot-card:hover {
+  border-color: #aaa;
+}
+
+.shot-card img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin-top: 10px;
+}
+
+/* Teleprompter Iframe Styles */
+.teleprompter-container iframe {
+  width: 100%;
+  max-width: 100%;
+  height: 180px;
+  border: none;
+  display: block;
+}
+
+/* Camera Controls Styles (Check overlap with existing camera styles) */
+.camera-control {
+  margin-bottom: 20px;
+  padding: 15px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.camera-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.remove-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  text-align: center;
+  background-color: #fdd;
+  border: 1px solid #f99;
+  color: #c00;
+  cursor: pointer;
+  font-size: 1em;
+  line-height: 26px;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+
+.remove-btn:hover {
+  background-color: #fcc;
+  border-color: #f66;
+}
+
+.device-info {
+  font-size: 0.8em;
+  color: #666;
+  margin-bottom: 10px;
+}
+
+.camera-settings {
+  margin-top: 10px;
+}
+
+.setting-group {
+  margin: 10px 0;
+}
+
+.setting-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.setting-group select {
+  width: 100%;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+
+/* Updated PTZ Control Styling */
+.ptz-control-group {
+  display: flex;
+  align-items: center;
+  margin: 10px 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ptz-control-group label {
+  flex: 0 0 55px;
+  text-align: right;
+  font-weight: normal;
+  margin-right: 10px;
+}
+
+.ptz-control-group input[type="range"] {
+  flex: 1;
+  margin: 0 10px 0 0;
+  height: 20px;
+  width: 100%; /* Ensure all sliders have 100% width */
+  min-width: 0; /* Override any browser defaults */
+  box-sizing: border-box;
+}
+
+.ptz-value-display {
+  flex: 0 0 45px;
+  text-align: right;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.ptz-controls-container {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 0;
+  border-top: 1px solid #eee;
+  border-bottom: 1px solid #eee;
+  margin: 10px 0;
+}
+
+.ptz-placeholder {
+  text-align: center;
+  color: #999;
+  font-style: italic;
+  margin: 10px 0;
+}
+
+/* Shot Camera Description Style */
+.shot-camera-description {
+    font-style: italic;
+    color: #0056b3; /* Dark blue */
+    margin: 5px 0 10px 0; /* Adjust spacing */
+    padding: 5px;
+    background-color: #e7f3ff; /* Light blue background */
+    border-left: 3px solid #0056b3;
+    font-size: 0.9em;
+}
