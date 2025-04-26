@@ -90,8 +90,8 @@ router.post('/api/select-session', (req, res) => {
     }
 });
 
-// DELETE a session directory
-router.delete('/api/sessions/:sessionId', (req, res) => {
+// DELETE a session directory - Reverted to callback style
+router.delete('/api/sessions/:sessionId', (req, res) => { // Remove async
     const { sessionId } = req.params;
     const currentSession = sessionService.getCurrentSessionId();
     const recordingsBaseDir = path.join(__dirname, '..', 'recordings');
@@ -110,38 +110,45 @@ router.delete('/api/sessions/:sessionId', (req, res) => {
         return res.status(400).json({ success: false, error: `Invalid session ID format: ${sessionId}` });
     }
 
+    // Check if directory exists before attempting deletion (using synchronous methods for pre-check)
     try {
-        // Check if directory exists before attempting deletion
         if (!fs.existsSync(sessionPath) || !fs.lstatSync(sessionPath).isDirectory()) {
             return res.status(404).json({ success: false, error: `Session directory not found: ${sessionId}` });
         }
-
-        console.log(`Attempting to delete session directory: ${sessionPath}`);
-        // Use fs.rm for recursive deletion (Node.js v14.14+ required)
-        fs.rm(sessionPath, { recursive: true, force: true }, (err) => {
-            if (err) {
-                console.error(`Error deleting session directory ${sessionPath}:`, err);
-                // Provide a more specific error if possible
-                let errorMessage = 'Failed to delete session directory.';
-                if (err.code === 'ENOENT') { // Should be caught above, but as fallback
-                    errorMessage = `Session directory not found during delete: ${sessionId}`;
-                    return res.status(404).json({ success: false, error: errorMessage });
-                } else if (err.code === 'EPERM' || err.code === 'EACCES') {
-                    errorMessage = `Permission denied when deleting session directory: ${sessionId}. Check file permissions.`;
-                    return res.status(403).json({ success: false, error: errorMessage });
-                }
-                return res.status(500).json({ success: false, error: errorMessage });
-            }
-            console.log(`Successfully deleted session directory: ${sessionId}`);
-            // Maybe broadcast an update? For now, just return success.
-            res.json({ success: true, message: `Session ${sessionId} deleted successfully` });
-        });
-
-    } catch (error) {
-        // Catch errors from initial lstatSync or other unexpected issues
-        console.error("Error checking session directory before deletion:", error);
-        res.status(500).json({ success: false, error: 'An unexpected error occurred while trying to delete the session.' });
+    } catch (statError) {
+        console.error(`Error checking session directory ${sessionId} before deletion:`, statError);
+        return res.status(500).json({ success: false, error: 'Error checking session directory status.' });
     }
+
+    console.log(`Attempting to delete session directory: ${sessionPath}`);
+
+    // Use callback-based fs.rmdir with recursive option
+    fs.rmdir(sessionPath, { recursive: true }, (err) => {
+        if (err) {
+            console.error(`Error deleting session directory ${sessionPath}:`, err);
+            let errorMessage = 'Failed to delete session directory.';
+            let statusCode = 500;
+
+            if (err.code === 'ENOENT') {
+                errorMessage = `Session directory not found during delete: ${sessionId}`;
+                statusCode = 404;
+            } else if (err.code === 'EPERM' || err.code === 'EACCES') {
+                errorMessage = `Permission denied when deleting session directory: ${sessionId}. Check file permissions.`;
+                statusCode = 403;
+            } else if (err.code === 'EBUSY') {
+                errorMessage = `Cannot delete session directory ${sessionId} as it is currently in use.`;
+                statusCode = 409; // Conflict
+            } else if (err.code === 'ENOTEMPTY') {
+                 errorMessage = `Directory ${sessionId} not empty (recursive delete might have failed or is not supported).`;
+                 statusCode = 500;
+            }
+
+            return res.status(statusCode).json({ success: false, error: errorMessage });
+        }
+
+        console.log(`Successfully deleted session directory: ${sessionId}`);
+        res.json({ success: true, message: `Session ${sessionId} deleted successfully` });
+    });
 });
 
 // Test console broadcasting
