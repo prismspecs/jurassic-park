@@ -6,6 +6,7 @@ const { broadcast, broadcastConsole, broadcastTeleprompterStatus } = require('..
 const ffmpegHelper = require('../services/ffmpegHelper');
 const gstreamerHelper = require('../services/gstreamerHelper');
 const sessionService = require('../services/sessionService');
+const settingsService = require('../services/settingsService');
 const callsheetService = require('../services/callsheetService');
 const CameraControl = require('../services/cameraControl');
 const cameraControl = CameraControl.getInstance();
@@ -350,13 +351,17 @@ async function action() {
     const shotDurationSec = (durationParts.length === 2) ? (durationParts[0] * 60 + durationParts[1]) : (durationParts[0] || 5); // Default to 5s
     broadcastConsole(`Shot duration: ${shotDurationSec} seconds`);
 
+    // Get the currently selected recording pipeline from settings service
+    const useFfmpeg = settingsService.shouldUseFfmpeg();
+    const pipelineName = useFfmpeg ? 'FFmpeg' : 'GStreamer';
+    broadcastConsole(`Using recording pipeline from settings: ${pipelineName}`, 'info');
+
     const activeWorkers = [];
 
     try {
         // --- Start Recording Worker for EACH camera in the shot --- 
         if (!shot.cameras || shot.cameras.length === 0) {
             broadcastConsole(`Action warning: No cameras defined for shot '${currentShotIdentifier}' in scene '${currentScene}'. Cannot record.`, 'warn');
-            // Decide if we should still proceed with the action without recording
         } else {
             for (const shotCameraInfo of shot.cameras) {
                 const recordingCameraName = shotCameraInfo.name;
@@ -366,18 +371,17 @@ async function action() {
                 if (!camera) {
                     const errorMsg = `Skipping recording: Camera '${recordingCameraName}' (required by shot) is not currently managed.`;
                     broadcastConsole(errorMsg, 'error');
-                    continue; // Skip this camera, maybe proceed with others?
+                    continue;
                 }
 
                 const recordingDevicePath = camera.getRecordingDevice();
                 if (!recordingDevicePath && recordingDevicePath !== 0) {
                     const errorMsg = `Skipping recording: No recording device configured for camera '${recordingCameraName}'.`;
                     broadcastConsole(errorMsg, 'error');
-                    continue; // Skip this camera
+                    continue;
                 }
 
-                // FIXME: Pipeline/resolution should ideally come from shotCameraInfo or global config
-                const useFfmpeg = true; // Still hardcoded
+                // FIXME: resolution should ideally come from shotCameraInfo or global config
                 const resolution = { width: 1920, height: 1080 }; // Still hardcoded
 
                 // Ensure Camera-Specific Subdirectory Exists
@@ -390,20 +394,20 @@ async function action() {
                 } catch (mkdirError) {
                     console.error(`[Action] Error creating camera subdirectory ${cameraSubDir}:`, mkdirError);
                     broadcastConsole(`[Action] Error creating subdirectory for ${recordingCameraName}: ${mkdirError.message}`, 'error');
-                    continue; // Skip this camera
+                    continue;
                 }
 
                 const workerData = {
                     cameraName: recordingCameraName,
-                    useFfmpeg: useFfmpeg,
+                    useFfmpeg: useFfmpeg, // Use value from settingsService
                     resolution: resolution,
                     devicePath: recordingDevicePath,
                     sessionDirectory: sessionDir,
-                    durationSec: shotDurationSec // Pass the calculated shot duration
+                    durationSec: shotDurationSec
                 };
 
-                console.log(`[Action] Starting worker for ${recordingCameraName}...`);
-                broadcastConsole(`[Action] Starting worker for ${recordingCameraName}...`, 'info');
+                console.log(`[Action] Starting worker for ${recordingCameraName} using ${pipelineName}...`);
+                broadcastConsole(`[Action] Starting worker for ${recordingCameraName} using ${pipelineName}...`, 'info');
                 const worker = new Worker(path.resolve(__dirname, '../workers/recordingWorker.js'), { workerData });
 
                 worker.on('message', (message) => {
@@ -433,8 +437,8 @@ async function action() {
 
                 activeWorkers.push(worker);
                 broadcastConsole(`[Action] Worker started for ${recordingCameraName}. Total active workers: ${activeWorkers.length}`);
-            } // End loop through shot.cameras
-        } // End else (has cameras)
+            } // End loop
+        } // End else
 
         // --- Proceed with the rest of the action IMMEDIATELY --- 
         // Don't wait for workers here

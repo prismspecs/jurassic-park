@@ -363,8 +363,28 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function handlePipelineChange(pipeline) {
-    logToConsole(`Recording pipeline set to: ${pipeline}`, "info");
-    // If pipeline choice needs to be sent to server, do it here.
+    logToConsole(`Pipeline changed to: ${pipeline}`, 'info');
+    // Update the server-side setting
+    fetch('/api/settings/recording-pipeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pipeline: pipeline })
+    })
+    .then(response => {
+        if (!response.ok) {
+            response.text().then(text => { throw new Error(text || 'Failed to set pipeline') });
+        }
+        return response.json();
+    })
+    .then(data => {
+        logToConsole(`Server setting updated: ${data.message}`, 'success');
+    })
+    .catch(error => {
+        logToConsole(`Error updating server pipeline setting: ${error.message}`, 'error');
+    });
+
+    // You might want to update the CameraManager's internal state or UI if needed,
+    // but currently the pipeline is only read server-side during recording start.
   }
 
   async function recordVideo() {
