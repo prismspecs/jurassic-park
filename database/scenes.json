@@ -17,16 +17,16 @@
                         "direction": "front",
                         "movements": [
                             {
-                                "pan": 5,
-                                "tilt": 2,
+                                "pan": 50,
+                                "tilt": 20,
                                 "zoom": 0,
                                 "height": 1.4,
                                 "time": 0
                             },
                             {
-                                "pan": -3,
+                                "pan": -30,
                                 "tilt": 0,
-                                "zoom": 100,
+                                "zoom": 0,
                                 "height": 1.2,
                                 "time": 3
                             }

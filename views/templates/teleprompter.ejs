@@ -177,11 +177,11 @@
         }
       }
 
-      // Renamed from handleWebSocketMessage
-      function handleParentMessage(event) {
-        const data = event.data; // Message data is directly in event.data for postMessage
+      // Renamed from handleWebSocketMessage back to handleWebSocketMessage
+      function handleWebSocketMessage(event) {
+        const data = JSON.parse(event.data);
         // Check origin for security if necessary: if (event.origin !== 'expected_origin') return;
-        console.log("Teleprompter received from parent:", data);
+        console.log("Teleprompter received via WebSocket:", data);
 
         if (data.type === "TELEPROMPTER") {
           console.log("Adding teleprompter message:", data.text);
@@ -207,34 +207,34 @@
       }
 
       // Remove WebSocket connection logic
-      /*
+      // /*
       function connectWebSocket() {
-        ws = new WebSocket('ws://' + window.location.host);
+        ws = new WebSocket("ws://" + window.location.host);
 
         ws.onopen = function () {
-          console.log('Teleprompter WebSocket connected');
+          console.log("Teleprompter WebSocket connected");
           clearText();
-          console.log('Teleprompter cleared on new WebSocket connection.');
+          console.log("Teleprompter cleared on new WebSocket connection.");
         };
 
-        ws.onmessage = handleParentMessage; // Was originally handleWebSocketMessage
+        ws.onmessage = handleWebSocketMessage;
 
         ws.onerror = function (error) {
-          console.error('Teleprompter WebSocket error:', error);
-          // Remove reconnection logic: setTimeout(connectWebSocket, 5000);
+          console.error("Teleprompter WebSocket error:", error);
+          setTimeout(connectWebSocket, 5000);
         };
 
         ws.onclose = function () {
-          console.log('Teleprompter WebSocket closed');
-          // Remove reconnection logic: setTimeout(connectWebSocket, 5000);
+          console.log("Teleprompter WebSocket closed");
+          setTimeout(connectWebSocket, 5000);
         };
       }
 
-      // connectWebSocket(); // Remove initial connection call
-      */
+      connectWebSocket();
+      // */
 
       // Add listener for messages from parent window (home.ejs)
-      window.addEventListener("message", handleParentMessage); // Correctly call the renamed handler
+      // window.addEventListener("message", handleParentMessage); // Correctly call the renamed handler
 
       function toggleFade() {
         isFaded = !isFaded;

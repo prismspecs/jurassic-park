@@ -65,7 +65,7 @@
       }
 
       // Function to set up and play the video
-      function setupAndPlayVideo(scene) {
+      function setupAndPlayVideo(sceneDir, shotIdentifier) {
         // Ensure video container exists
         const videoContainer = document.getElementById("video-container");
         if (!videoContainer) {
@@ -82,9 +82,11 @@
         // Show video container
         videoContainer.style.display = "block";
 
-        // Set the video source and play (videoElement should still be valid)
+        // Construct the video source including the shot identifier
         const videoSrc = `/database/scenes/${encodeURIComponent(
-          scene
+          sceneDir
+        )}/${encodeURIComponent(
+          shotIdentifier
         )}/characters/${characterName}/directions.mp4`;
         videoElement.src = videoSrc;
 
@@ -142,8 +144,7 @@
 
       // ---- MESSAGE HANDLING (Previously WebSocket) ----
       // Remove WebSocket specific code
-      /*
-      let ws; 
+      let ws;
 
       function connectWebSocket() {
         ws = new WebSocket("ws://" + window.location.host);
@@ -154,52 +155,65 @@
           console.log("Character Teleprompter reset to waiting state.");
         };
 
-        // ws.onmessage is handled by handleParentMessage now
+        ws.onmessage = handleWebSocketMessage;
 
         ws.onerror = function (error) {
           console.error("WebSocket error:", error);
-          showWaitingMessage(); 
+          showWaitingMessage();
           let statusDiv = document.getElementById("status-message");
           if (statusDiv) statusDiv.textContent += " (WebSocket Error)";
-          // setTimeout(connectWebSocket, 5000); // Remove reconnect
+          setTimeout(connectWebSocket, 5000);
         };
 
         ws.onclose = function () {
           console.log("WebSocket connection closed");
-          showWaitingMessage(); 
+          showWaitingMessage();
           let statusDiv = document.getElementById("status-message");
           if (statusDiv) statusDiv.textContent += " (WebSocket Closed)";
-          // setTimeout(connectWebSocket, 5000); // Remove reconnect
+          setTimeout(connectWebSocket, 5000);
         };
-      } 
+      }
 
-      // connectWebSocket(); // Remove initial connection
-      */
+      connectWebSocket();
 
       // Function to handle messages received from the parent window (home.ejs)
-      function handleParentMessage(event) {
+      function handleWebSocketMessage(event) {
         // Add origin check for security if needed
         // if (event.origin !== 'http://your-expected-origin') return;
 
-        const data = event.data; // data comes directly from postMessage
         console.log(
-          "Character Teleprompter received message from parent:",
-          data
+          "Character Teleprompter received message via WebSocket:",
+          event.data
         );
 
         try {
+          const data = JSON.parse(event.data);
+          console.log("Parsed WebSocket data:", data);
+
           if (data.type === "SHOT_START") {
+            // Extract scene directory AND shot identifier
+            const sceneDirectory = data.scene?.directory;
+            const shotId = data.shot?.name || `shot_${data.shotIndex + 1}`; // Use name or fallback
+
+            if (!sceneDirectory || !shotId) {
+              console.error(
+                "SHOT_START message missing scene directory or shot identifier:",
+                data
+              );
+              return; // Don't proceed if data is missing
+            }
+
             console.log(
-              "SHOT_START received, playing video for scene:",
-              data.scene.directory
+              `>>> SHOT_START received! Calling setupAndPlayVideo with scene: ${sceneDirectory}, shot: ${shotId}` // Updated log
             );
-            setupAndPlayVideo(data.scene.directory);
+            // Call setupAndPlayVideo with BOTH scene and shot identifiers
+            setupAndPlayVideo(sceneDirectory, shotId);
           } else if (data.type === "TELEPROMPTER_CONTROL") {
             if (data.action === "PAUSE") {
-              console.log("Pausing video via parent message");
+              console.log("Pausing video via WebSocket message");
               videoElement.pause();
             } else if (data.action === "PLAY") {
-              console.log("Resuming video via parent message");
+              console.log("Resuming video via WebSocket message");
               videoElement.play().catch((err) => {
                 console.error("Error resuming video:", err);
               });
@@ -231,7 +245,7 @@
           // Add handling for other message types if needed
         } catch (e) {
           console.error(
-            "Error processing message from parent:",
+            "Error processing message from WebSocket:",
             e,
             "Raw data:",
             event.data
@@ -240,7 +254,7 @@
       }
 
       // Add listener for messages from the parent window
-      window.addEventListener("message", handleParentMessage);
+      // window.addEventListener("message", handleParentMessage);
     </script>
   </body>
 </html>

@@ -456,8 +456,23 @@ async function action() {
         broadcastConsole('Camera movement logic needs implementation.', 'warn');
         // --------------------------------------------
 
-        // aiSpeak the action
-        aiVoice.speak("action!");
+        // Speak action cue
+        aiVoice.speak("Action!");
+
+        // --- BROADCAST SHOT_START ---
+        try {
+            broadcast({ // Broadcast SHOT_START with scene and shot info
+                type: 'SHOT_START',
+                scene: { directory: currentScene }, // Send scene directory
+                shot: shot // Send full shot data if needed by other clients
+            });
+            // This confirmation log might only run if broadcast succeeds
+            broadcastConsole(`Broadcasted SHOT_START for Scene: ${currentScene}, Shot: ${currentShotIdentifier}`, 'success');
+        } catch (broadcastError) {
+            broadcastConsole(`!!! ERROR Broadcasting SHOT_START: ${broadcastError.message}`, 'error');
+            console.error("!!! ERROR Broadcasting SHOT_START:", broadcastError); // Log full error server-side
+        }
+        // --- END BROADCAST ---
 
         // Wait for the shot duration + a buffer
         // This wait is for the *performance* duration, not the recording process
