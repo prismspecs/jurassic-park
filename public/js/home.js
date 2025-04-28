@@ -83,6 +83,12 @@ document.addEventListener('DOMContentLoaded', () => {
           logToConsole(data.message, data.level);
           break;
         case 'SESSION_UPDATE':
+          console.log('SESSION_UPDATE received with sessionId:', data.sessionId);
+          // Add debugging to verify the data
+          if (!data.sessionId) {
+            console.error('SESSION_UPDATE message missing sessionId property');
+            return;
+          }
           updateSessionUI(data.sessionId);
           break;
         case 'ACTORS_CALLED':
@@ -150,22 +156,45 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentSessionSpan) {
       currentSessionSpan.textContent = newSessionId;
     }
+    
+    // Ensure newSessionId is trimmed of any whitespace
+    const trimmedNewSessionId = newSessionId.trim();
+    console.log('Updating session UI for:', trimmedNewSessionId);
+    
+    // First, remove the active class from all session buttons
+    document.querySelectorAll('.session-button').forEach(button => {
+      button.classList.remove('active');
+    });
+    
+    // Then, show all delete buttons
+    document.querySelectorAll('.delete-session-button').forEach(button => {
+      button.style.display = '';
+    });
+    
+    // Find the button for the new active session and update it
     document.querySelectorAll('.session-item').forEach(item => {
       const button = item.querySelector('.session-button');
       const deleteButton = item.querySelector('.delete-session-button');
-      const sessionInButton = button?.getAttribute('onclick')?.match(/selectSession\\('(.*?)'\\)/)?.[1]; // Escaped parentheses
-
-      if (button && sessionInButton) {
-        if (sessionInButton === newSessionId) {
+      
+      if (!button) return;
+      
+      // Extract session ID directly from the onclick attribute 
+      const onclickAttr = button.getAttribute('onclick') || '';
+      const match = onclickAttr.match(/selectSession\('([^']+)'\)/);
+      
+      if (match) {
+        const sessionInButton = match[1].trim();
+        
+        // Compare with the new session ID
+        if (sessionInButton === trimmedNewSessionId) {
+          console.log('Adding active class to:', sessionInButton);
           button.classList.add('active');
           if (deleteButton) deleteButton.style.display = 'none';
-        } else {
-          button.classList.remove('active');
-          if (deleteButton) deleteButton.style.display = ''; // Use default display style
         }
       }
     });
-    logToConsole(`Session updated to: ${newSessionId}`, 'info');
+    
+    logToConsole(`Session updated to: ${trimmedNewSessionId}`, 'info');
   }
 
   function updateVoiceBypassButton() {
@@ -192,18 +221,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Session Management Functions ---
   async function selectSession(sessionId) {
-    logToConsole(`Attempting to switch to session: ${sessionId}`, 'info');
+    console.log('selectSession called with ID:', sessionId);
+    
+    // Trim any potential whitespace
+    const trimmedSessionId = sessionId.trim();
+    console.log('Trimmed session ID:', trimmedSessionId);
+    
+    logToConsole(`Attempting to switch to session: ${trimmedSessionId}`, 'info');
     try {
       const response = await fetch('/api/select-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `sessionId=${encodeURIComponent(sessionId)}`
+        body: `sessionId=${encodeURIComponent(trimmedSessionId)}`
       });
       const result = await response.json();
       if (!response.ok) {
         throw new Error(result.message || result.error || `HTTP error ${response.status}`);
       }
-      logToConsole(`Successfully requested switch to session: ${sessionId}`, 'success');
+      console.log('Server response:', result);
+      logToConsole(`Successfully requested switch to session: ${trimmedSessionId}`, 'success');
       // UI update is handled by the SESSION_UPDATE broadcast message from the server
     } catch (error) {
       console.error('Error selecting session:', error);

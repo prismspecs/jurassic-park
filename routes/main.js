@@ -70,21 +70,26 @@ router.get('/api/sessions', (req, res) => {
 // POST to select an existing session
 router.post('/api/select-session', (req, res) => {
     const { sessionId } = req.body;
+    
     if (!sessionId) {
         return res.status(400).json({ error: "Session ID is required" });
     }
 
     try {
+        const trimmedSessionId = sessionId.trim();
+        
         const existingSessions = sessionService.listExistingSessions();
-        if (!existingSessions.includes(sessionId)) {
+        
+        if (!existingSessions.includes(trimmedSessionId)) {
             return res.status(404).json({ error: "Selected session not found" });
         }
 
-        sessionService.setCurrentSessionId(sessionId);
-        broadcast({ type: 'SESSION_UPDATE', sessionId: sessionId }); // Notify clients
-        // Redirect back to home page after selection, or send success
-        // res.redirect('/'); // Option 1: Redirect
-        res.json({ success: true, message: `Session changed to ${sessionId}` }); // Option 2: JSON response
+        sessionService.setCurrentSessionId(trimmedSessionId);
+        
+        broadcast({ type: 'SESSION_UPDATE', sessionId: trimmedSessionId }); // Notify clients
+        
+        // Respond with success
+        res.json({ success: true, message: `Session changed to ${trimmedSessionId}` });
 
     } catch (error) {
         console.error("Error selecting session:", error);

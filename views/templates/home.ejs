@@ -21,19 +21,21 @@
           <p><strong>Existing Sessions:</strong></p>
           <div id="existing-sessions-list" class="session-list">
             <% if (existingSessions && existingSessions.length> 0) { %> <%
-            existingSessions.forEach(session=> { %>
+            existingSessions.forEach(session=> { const trimmedCurrentSession =
+            currentSessionId.trim(); const trimmedSession = session.trim();
+            const isActive = trimmedSession === trimmedCurrentSession; %>
             <div class="session-item">
               <button
-                class="session-button <%= session === currentSessionId ? 'active' : '' %>"
-                onclick="selectSession('<%= session %>')"
+                class="session-button <%= isActive ? 'active' : '' %>"
+                onclick="selectSession('<%= trimmedSession %>')"
               >
-                <%= session %>
+                <%= trimmedSession %>
               </button>
-              <% if (session !==currentSessionId) { %>
+              <% if (!isActive) { %>
               <button
                 class="delete-session-button"
-                title="Delete session <%= session %>"
-                onclick="deleteSession('<%= session %>')"
+                title="Delete session <%= trimmedSession %>"
+                onclick="deleteSession('<%= trimmedSession %>')"
               >
                 ❌
               </button>
