@@ -56,7 +56,9 @@ const audioStorage = multer.diskStorage({
 
 const audioUpload = multer({ storage: audioStorage });
 
-// GET list of existing session IDs
+// --- NEW Session API Endpoints ---
+
+// GET list of existing session IDs (updated to use new service method)
 router.get('/api/sessions', (req, res) => {
     try {
         const sessions = sessionService.listExistingSessions();
@@ -67,42 +69,92 @@ router.get('/api/sessions', (req, res) => {
     }
 });
 
-// POST to select an existing session
+// POST to create a new session
+router.post('/api/sessions/create', (req, res) => {
+    const { name } = req.body; // Expect { "name": "user_session_name" }
+    if (!name) {
+        return res.status(400).json({ success: false, error: "Session name is required" });
+    }
+    try {
+        const newSessionId = sessionService.createNewSession(name);
+        broadcast({ type: 'SESSION_UPDATE', sessionId: newSessionId }); // Notify clients
+        broadcast({ type: 'SESSION_LIST_UPDATE', sessions: sessionService.listExistingSessions() }); // Also update list
+        res.status(201).json({ success: true, sessionId: newSessionId, message: `Session '${newSessionId}' created and selected.` });
+    } catch (error) {
+        console.error("Error creating new session:", error);
+        res.status(500).json({ success: false, error: `Failed to create session: ${error.message}` });
+    }
+});
+
+
+// POST to select an existing session (updated to use new service method)
 router.post('/api/select-session', (req, res) => {
     const { sessionId } = req.body;
     
     if (!sessionId) {
-        return res.status(400).json({ error: "Session ID is required" });
+        return res.status(400).json({ success: false, error: "Session ID is required" });
     }
 
     try {
         const trimmedSessionId = sessionId.trim();
-        
         const existingSessions = sessionService.listExistingSessions();
         
+        // Validate that the provided ID actually exists as a directory
         if (!existingSessions.includes(trimmedSessionId)) {
-            return res.status(404).json({ error: "Selected session not found" });
+            // Double-check filesystem just in case list was stale?
+            const sessionPath = path.join(__dirname, '..', 'recordings', trimmedSessionId);
+            if (!fs.existsSync(sessionPath)) {
+                 return res.status(404).json({ success: false, error: `Session directory not found: ${trimmedSessionId}` });
+            }
+            // If it exists on disk but wasn't in the list, log a warning but proceed
+            console.warn(`Session ${trimmedSessionId} exists on disk but was not in listExistingSessions result. Selecting anyway.`);
         }
 
         sessionService.setCurrentSessionId(trimmedSessionId);
-        
         broadcast({ type: 'SESSION_UPDATE', sessionId: trimmedSessionId }); // Notify clients
-        
-        // Respond with success
         res.json({ success: true, message: `Session changed to ${trimmedSessionId}` });
 
     } catch (error) {
         console.error("Error selecting session:", error);
-        res.status(500).json({ error: "Failed to select session" });
+        res.status(500).json({ success: false, error: `Failed to select session: ${error.message}` });
     }
 });
 
-// DELETE a session directory - Reverted to callback style
-router.delete('/api/sessions/:sessionId', (req, res) => { // Remove async
+// GET the currently active session ID
+router.get('/api/sessions/current', (req, res) => {
+    try {
+        const currentId = sessionService.getCurrentSessionId();
+        res.json({ sessionId: currentId }); // Will be { sessionId: null } if none is active
+    } catch (error) {
+        console.error("Error fetching current session:", error);
+        res.status(500).json({ error: "Failed to retrieve current session" });
+    }
+});
+
+// GET the latest session ID based on directory listing
+router.get('/api/sessions/latest', (req, res) => {
+    try {
+        const latestId = sessionService.getLatestSessionId();
+        res.json({ sessionId: latestId }); // Will be { sessionId: null } if none exist
+    } catch (error) {
+        console.error("Error fetching latest session:", error);
+        res.status(500).json({ error: "Failed to retrieve latest session" });
+    }
+});
+
+
+// DELETE a session directory - Updated regex and validation
+router.delete('/api/sessions/:sessionId(*)', (req, res) => { // Use (*) to allow slashes/complex names potentially
     const { sessionId } = req.params;
     const currentSession = sessionService.getCurrentSessionId();
     const recordingsBaseDir = path.join(__dirname, '..', 'recordings');
-    const sessionPath = path.join(recordingsBaseDir, sessionId);
+    // IMPORTANT: Resolve the path to prevent traversal attacks, although sanitize should help
+    const sessionPath = path.resolve(recordingsBaseDir, sessionId);
+
+    // Make sure the resolved path is still within the recordings directory
+    if (!sessionPath.startsWith(path.resolve(recordingsBaseDir))) {
+         return res.status(400).json({ success: false, error: "Invalid session ID path." });
+    }
 
     // Basic validation
     if (!sessionId) {
@@ -112,8 +164,9 @@ router.delete('/api/sessions/:sessionId', (req, res) => { // Remove async
     if (sessionId === currentSession) {
         return res.status(400).json({ success: false, error: "Cannot delete the currently active session" });
     }
-    // Validate format (using the pattern from sessionService)
-    if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(sessionId)) {
+    // Validate format (using the new pattern)
+    const sessionRegex = /^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}_.+$/;
+    if (!sessionRegex.test(sessionId)) {
         return res.status(400).json({ success: false, error: `Invalid session ID format: ${sessionId}` });
     }
 

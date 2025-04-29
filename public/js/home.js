@@ -6,6 +6,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Global Variables ---
   const ws = new WebSocket("ws://" + window.location.host);
   const consoleOutput = document.getElementById("console-output");
+  // Session UI elements
+  const currentSessionSpan = document.getElementById('current-session-id');
+  const noSessionWarningSpan = document.getElementById('no-session-warning');
+  const sessionListSelect = document.getElementById('session-list');
+  const selectSessionBtn = document.getElementById('select-session-btn');
+  const newSessionNameInput = document.getElementById('new-session-name');
+  const createSessionBtn = document.getElementById('create-session-btn');
+  const sessionErrorDiv = document.getElementById('session-error');
+  
   let voiceBypassEnabled = true;
   let lastAudioRecording = null;
 
@@ -82,14 +91,22 @@ document.addEventListener('DOMContentLoaded', () => {
         case 'CONSOLE':
           logToConsole(data.message, data.level);
           break;
-        case 'SESSION_UPDATE':
+        case 'SESSION_UPDATE': // Received when session changes (creation or selection)
           console.log('SESSION_UPDATE received with sessionId:', data.sessionId);
-          // Add debugging to verify the data
-          if (!data.sessionId) {
-            console.error('SESSION_UPDATE message missing sessionId property');
-            return;
+          updateCurrentSessionDisplay(data.sessionId);
+          // Potentially update the dropdown selection as well
+          if (sessionListSelect && data.sessionId) {
+            sessionListSelect.value = data.sessionId;
           }
-          updateSessionUI(data.sessionId);
+          break;
+        case 'SESSION_LIST_UPDATE': // Received when a session is created/deleted
+          console.log('SESSION_LIST_UPDATE received', data.sessions);
+          populateSessionList(data.sessions || []);
+          // After repopulating, re-select the current one if it exists
+          const currentId = currentSessionSpan ? currentSessionSpan.textContent : null;
+          if (sessionListSelect && currentId && currentId !== 'Loading...') {
+              sessionListSelect.value = currentId;
+          }
           break;
         case 'ACTORS_CALLED':
           document.getElementById("actorsReadyBtn").style.display = "inline-block";
@@ -219,66 +236,249 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // --- Session Management Functions ---
-  async function selectSession(sessionId) {
-    console.log('selectSession called with ID:', sessionId);
-    
-    // Trim any potential whitespace
-    const trimmedSessionId = sessionId.trim();
-    console.log('Trimmed session ID:', trimmedSessionId);
-    
-    logToConsole(`Attempting to switch to session: ${trimmedSessionId}`, 'info');
-    try {
-      const response = await fetch('/api/select-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `sessionId=${encodeURIComponent(trimmedSessionId)}`
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.message || result.error || `HTTP error ${response.status}`);
-      }
-      console.log('Server response:', result);
-      logToConsole(`Successfully requested switch to session: ${trimmedSessionId}`, 'success');
-      // UI update is handled by the SESSION_UPDATE broadcast message from the server
-    } catch (error) {
-      console.error('Error selecting session:', error);
-      logToConsole(`Error selecting session: ${error.message}`, 'error');
-    }
+  // --- Session Management Functions (NEW/UPDATED) ---
+
+  // Fetch initial session state and list
+  async function initializeSessionManagement() {
+      await fetchCurrentSession();
+      await fetchSessionList();
   }
 
-  async function deleteSession(sessionId) {
-    if (!confirm(`Are you sure you want to permanently delete session ${sessionId} and all its recordings?`)) {
-      return;
-    }
-    logToConsole(`Attempting to delete session: ${sessionId}`, 'warn');
-    try {
-      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-        method: 'DELETE'
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.message || result.error || `HTTP error ${response.status}`);
+  // Fetch and display the currently active session
+  async function fetchCurrentSession() {
+      try {
+          const response = await fetch('/api/sessions/current');
+          if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+          const data = await response.json();
+          updateCurrentSessionDisplay(data.sessionId);
+      } catch (error) {
+          console.error('Error fetching current session:', error);
+          logToConsole(`Error fetching current session: ${error.message}`, 'error');
+          updateCurrentSessionDisplay(null); // Indicate error or no session
+          showSessionError('Failed to fetch current session.');
       }
-      logToConsole(`Successfully deleted session: ${sessionId}`, 'success');
-      // Remove the session item from the UI
-      const sessionList = document.getElementById('existing-sessions-list');
-      // Adjusted selector to be more robust
-      const itemToRemove = Array.from(sessionList.querySelectorAll('.session-item')).find(item => {
-          const button = item.querySelector('.session-button');
-          return button && button.getAttribute('onclick') === `selectSession('${sessionId}')`;
-      });
-      if (itemToRemove) {
-        itemToRemove.remove();
-      }
-      if (!sessionList.querySelector('.session-item')) {
-        sessionList.innerHTML = '<p>No other sessions found.</p>';
-      }
-    } catch (error) {
-      console.error('Error deleting session:', error);
-      logToConsole(`Error deleting session ${sessionId}: ${error.message}`, 'error');
-    }
   }
+
+  // Fetch the list of sessions and populate the dropdown
+  async function fetchSessionList() {
+      try {
+          const response = await fetch('/api/sessions');
+          if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+          const sessions = await response.json();
+          populateSessionList(sessions);
+          // Try to select the current session in the dropdown after loading
+          const currentId = currentSessionSpan ? currentSessionSpan.textContent : null;
+           if (sessionListSelect && currentId && currentId !== 'Loading...' && currentId !== '(No session selected)') {
+              sessionListSelect.value = currentId;
+           }
+      } catch (error) {
+          console.error('Error fetching session list:', error);
+          logToConsole(`Error fetching session list: ${error.message}`, 'error');
+          if (sessionListSelect) {
+              sessionListSelect.innerHTML = '<option value="">Error loading sessions</option>';
+          }
+          showSessionError('Failed to load session list.');
+      }
+  }
+
+  // Update the display of the current session ID
+  function updateCurrentSessionDisplay(sessionId) {
+      if (currentSessionSpan && noSessionWarningSpan) {
+          if (sessionId) {
+              currentSessionSpan.textContent = sessionId;
+              currentSessionSpan.style.display = 'inline';
+              noSessionWarningSpan.style.display = 'none';
+          } else {
+              currentSessionSpan.textContent = ''; // Clear it
+              currentSessionSpan.style.display = 'none';
+              noSessionWarningSpan.style.display = 'inline';
+          }
+      } else {
+          console.error('Could not find session display elements');
+      }
+      // Clear any previous errors when session updates
+      clearSessionError();
+  }
+
+  // Populate the session dropdown list
+  function populateSessionList(sessions) {
+      if (!sessionListSelect) return;
+      sessionListSelect.innerHTML = ''; // Clear existing options
+      if (!sessions || sessions.length === 0) {
+          sessionListSelect.innerHTML = '<option value="">No sessions available</option>';
+          return;
+      }
+      // Add a placeholder/default option
+       sessionListSelect.innerHTML = '<option value="">-- Select a Session --</option>'; 
+      sessions.forEach(sessionId => {
+          const option = document.createElement('option');
+          option.value = sessionId;
+          option.textContent = sessionId; // Display the full ID for now
+          sessionListSelect.appendChild(option);
+      });
+  }
+
+  // Handle creating a new session
+  async function createSession() {
+      clearSessionError();
+      const name = newSessionNameInput ? newSessionNameInput.value.trim() : '';
+      if (!name) {
+          showSessionError('Please enter a name for the new session.');
+          return;
+      }
+      if (!createSessionBtn) return;
+      
+      createSessionBtn.disabled = true;
+      createSessionBtn.textContent = 'Creating...';
+      logToConsole(`Creating new session: ${name}`, 'info');
+
+      try {
+          const response = await fetch('/api/sessions/create', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: name })
+          });
+          const result = await response.json();
+          if (!response.ok) {
+              throw new Error(result.message || result.error || `HTTP error ${response.status}`);
+          }
+          logToConsole(`Successfully created session: ${result.sessionId}`, 'success');
+          if (newSessionNameInput) newSessionNameInput.value = ''; // Clear input
+          // UI update (current session, list) is handled by SESSION_UPDATE and SESSION_LIST_UPDATE broadcasts
+          
+      } catch (error) {
+          console.error('Error creating session:', error);
+          logToConsole(`Error creating session: ${error.message}`, 'error');
+          showSessionError(`Failed to create session: ${error.message}`);
+      } finally {
+          if(createSessionBtn) {
+             createSessionBtn.disabled = false;
+             createSessionBtn.textContent = 'Create & Load';
+          }
+      }
+  }
+
+  // Handle selecting an existing session
+  async function selectSession() {
+       clearSessionError();
+       const selectedId = sessionListSelect ? sessionListSelect.value : null;
+       if (!selectedId) {
+           showSessionError('Please select a session from the list.');
+           return;
+       }
+       if(!selectSessionBtn) return;
+       
+       selectSessionBtn.disabled = true;
+       selectSessionBtn.textContent = 'Loading...';
+       logToConsole(`Attempting to switch to session: ${selectedId}`, 'info');
+       
+       try {
+          const response = await fetch('/api/select-session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId: selectedId })
+          });
+          const result = await response.json();
+          if (!response.ok) {
+              throw new Error(result.message || result.error || `HTTP error ${response.status}`);
+          }
+          logToConsole(`Successfully requested switch to session: ${selectedId}`, 'success');
+          // Current session display update is handled by SESSION_UPDATE broadcast
+      } catch (error) {
+          console.error('Error selecting session:', error);
+          logToConsole(`Error selecting session: ${error.message}`, 'error');
+          showSessionError(`Failed to load session: ${error.message}`);
+      } finally {
+          if(selectSessionBtn) {
+            selectSessionBtn.disabled = false;
+            selectSessionBtn.textContent = 'Load Session';
+          }
+      }
+  }
+
+  // Show session-related error messages
+  function showSessionError(message) {
+      if (sessionErrorDiv) {
+          sessionErrorDiv.textContent = message;
+          sessionErrorDiv.style.display = 'block';
+      }
+  }
+
+  // Clear session-related error messages
+  function clearSessionError() {
+      if (sessionErrorDiv) {
+          sessionErrorDiv.textContent = '';
+          sessionErrorDiv.style.display = 'none';
+      }
+  }
+  
+  // --- Event Listeners ---
+  if (createSessionBtn && newSessionNameInput) {
+    createSessionBtn.addEventListener('click', createSession);
+    newSessionNameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            createSession();
+        }
+    });
+  }
+  
+  if (selectSessionBtn && sessionListSelect) {
+      selectSessionBtn.addEventListener('click', selectSession);
+  }
+
+  // Attach listener to the shot container for delegation
+  const shotContainer = document.querySelector('.shot-container');
+  if (shotContainer) {
+    shotContainer.addEventListener('click', (event) => {
+      // Find the closest ancestor which is a shot-card
+      const shotCard = event.target.closest('.shot-card');
+      if (shotCard) {
+        const sceneDir = shotCard.dataset.sceneDir; // Access data-* attributes
+        const shotId = shotCard.dataset.shotId;
+        if (sceneDir && shotId) {
+          initShot(sceneDir, shotId); // Call the function directly
+        }
+      }
+    });
+  }
+
+  // Attach listeners for other control buttons by ID
+  document.getElementById('actionBtn')?.addEventListener('click', action);
+  document.getElementById('actorsReadyBtn')?.addEventListener('click', actorsReady);
+  document.getElementById('testRecordBtn')?.addEventListener('click', recordVideo);
+  document.getElementById('voiceBypassBtn')?.addEventListener('click', toggleVoiceBypass);
+  document.getElementById('testConsoleBtn')?.addEventListener('click', testConsole);
+  document.getElementById('testAudioRecordBtn')?.addEventListener('click', testAudioRecord);
+  document.getElementById('playLastAudioBtn')?.addEventListener('click', playLastRecording);
+  document.getElementById('clearAudioBtn')?.addEventListener('click', clearAudio);
+  document.getElementById('openTeleprompterBtn')?.addEventListener('click', openTeleprompter);
+  document.getElementById('openAlanTeleprompterBtn')?.addEventListener('click', () => openCharacterTeleprompter('alan'));
+  document.getElementById('openEllieTeleprompterBtn')?.addEventListener('click', () => openCharacterTeleprompter('ellie'));
+  document.getElementById('testTeleprompterBtn')?.addEventListener('click', testTeleprompter);
+  // Assuming testTeleprompterVideo still needs onclick for now or needs an ID
+  document.getElementById('clearTeleprompterBtn')?.addEventListener('click', clearTeleprompter);
+  document.getElementById('pauseTeleprompterBtn')?.addEventListener('click', pauseAllTeleprompters);
+  document.getElementById('playTeleprompterBtn')?.addEventListener('click', playAllTeleprompters);
+  document.getElementById('addCameraBtn')?.addEventListener('click', () => cameraManager.addCamera());
+  // Listener for recording pipeline dropdown
+   document.getElementById('recording-pipeline')?.addEventListener('change', (e) => handlePipelineChange(e.target.value));
+  // Listener for recording resolution dropdown (already added)
+
+  // Initial load
+  initializeSessionManagement();
+
+  // --- OLD Session Functions (Keep for reference/potential reuse if needed) ---
+  /*
+  async function selectSession_OLD(sessionId) {
+    // ... old implementation ... 
+  }
+  */
+  
+  /*
+  async function deleteSession(sessionId) {
+    // ... old implementation ...
+  }
+  */
 
   // --- Control Button Functions ---
   function toggleVoiceBypass() {
@@ -1307,33 +1507,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (resolutionSelect) {
       resolutionSelect.addEventListener('change', (e) => handleResolutionChange(e.target.value));
   }
-
-  // --- Make functions globally available IF they are called by inline `onclick` handlers ---
-  // It's better to attach event listeners programmatically instead.
-  // Example: document.getElementById('someButton').addEventListener('click', someFunction);
-  window.selectSession = selectSession;
-  window.deleteSession = deleteSession;
-  window.initShot = initShot; 
-  window.toggleVoiceBypass = toggleVoiceBypass;
-  window.actorsReady = actorsReady;
-  window.recordVideo = recordVideo; // This one is tricky as it uses cameraManager instance
-  window.action = action;
-  window.testConsole = testConsole;
-  window.testAudioRecord = testAudioRecord;
-  window.playLastRecording = playLastRecording;
-  window.clearAudio = clearAudio;
-  window.openTeleprompter = openTeleprompter;
-  window.openCharacterTeleprompter = openCharacterTeleprompter;
-  window.testTeleprompter = testTeleprompter;
-  window.testTeleprompterVideo = testTeleprompterVideo;
-  window.clearTeleprompter = clearTeleprompter;
-  window.pauseAllTeleprompters = pauseAllTeleprompters;
-  window.playAllTeleprompters = playAllTeleprompters;
-  window.handlePipelineChange = handlePipelineChange;
-  // CameraManager methods called by inline handlers need the instance to be global
-  // or attached to window. We already made `cameraManager` a global const
-  // but we also need to expose the instance methods used by onclicks
-  window.cameraManager = cameraManager; 
 
   // --- Added: Function to handle resolution change ---
   function handleResolutionChange(resolution) {

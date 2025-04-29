@@ -20,14 +20,13 @@ module.exports = {
             let fullOutVideoName;
 
             try {
-                // Use provided baseSessionDir if available (from worker), otherwise use sessionService
                 const sessionDir = baseSessionDir || sessionService.getSessionDirectory();
                 fullOutVideoName = path.join(sessionDir, outVideoName);
-                
-                // Ensure output directory exists (including potential camera sub dir)
+                 // Ensure the full output directory exists (including camera sub-dir)
                 const outputDir = path.dirname(fullOutVideoName);
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
+                    console.log(`[gstreamerHelper] Created output directory: ${outputDir}`);
                 }
             } catch (error) {
                 console.error("Error determining GStreamer output path:", error);

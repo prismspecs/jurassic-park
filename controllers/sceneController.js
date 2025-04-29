@@ -405,20 +405,6 @@ async function action(req, res) {
                     continue; // Skip this camera
                 }
 
-                // Ensure Camera-Specific Subdirectory Exists within Session Directory
-                const cameraSubDir = path.join(sessionDir, recordingCameraName);
-                try {
-                    if (!fs.existsSync(cameraSubDir)) {
-                        fs.mkdirSync(cameraSubDir, { recursive: true });
-                        console.log(`[Action] Created camera subdirectory: ${cameraSubDir}`);
-                    }
-                } catch (mkdirError) {
-                    const errorMsg = `[Action] Error creating subdirectory for ${recordingCameraName}: ${mkdirError.message}`;
-                    console.error(`[Action] Error creating camera subdirectory ${cameraSubDir}:`, mkdirError);
-                    broadcastConsole(errorMsg, 'error');
-                    continue; // Skip this camera if dir creation fails
-                }
-
                 const workerData = {
                     cameraName: recordingCameraName,
                     useFfmpeg: useFfmpeg,

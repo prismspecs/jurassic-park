@@ -217,20 +217,6 @@ router.post('/:cameraName/record', (req, res) => { // Remove async, no top-level
             return res.status(500).json({ success: false, message: 'Could not determine session directory.' });
         }
 
-        // --- Ensure Camera-Specific Subdirectory Exists ---
-        // Worker will use this directory, so ensure it's created beforehand
-        const cameraSubDir = path.join(sessionDir, cameraName);
-        try {
-            if (!fs.existsSync(cameraSubDir)) {
-                fs.mkdirSync(cameraSubDir, { recursive: true });
-                console.log(`[Record Route] Created camera subdirectory: ${cameraSubDir}`);
-            }
-        } catch (mkdirError) {
-            console.error(`[Record Route] Error creating camera subdirectory ${cameraSubDir}:`, mkdirError);
-            broadcastConsole(`[Record Route] Error creating camera subdirectory: ${mkdirError.message}`, 'error');
-            return res.status(500).json({ success: false, message: 'Could not create camera recording directory.' });
-        }
-
         // Parse resolution
         let width = 1920;
         let height = 1080;

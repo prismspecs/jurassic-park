@@ -92,10 +92,19 @@ server.listen(PORT, () => {
   console.log(`AI Director System listening on port ${PORT}`);
   console.log(`http://localhost:${PORT}`);
 
-  // Initialize the session FIRST
-  const initialSessionId = sessionService.generateSessionId();
-  sessionService.setCurrentSessionId(initialSessionId);
-  console.log(`Initialized with session ID: ${initialSessionId}`);
+  // --- Initialize Session --- 
+  // Select the latest existing session on startup
+  const latestSessionId = sessionService.getLatestSessionId();
+  if (latestSessionId) {
+    sessionService.setCurrentSessionId(latestSessionId);
+    console.log(`Initialized. Automatically selected latest session: ${latestSessionId}`);
+    broadcastConsole(`Selected latest session: ${latestSessionId}`, 'info');
+  } else {
+    console.log("Initialized. No existing sessions found.");
+    broadcastConsole("No existing sessions found. Please create a new session.", 'warn');
+    // currentSessionId remains null, UI should prompt user
+  }
+  // --- End Initialize Session --- 
 
   // Clear the main teleprompter on startup
   broadcast({ type: 'CLEAR_TELEPROMPTER' });

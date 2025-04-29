@@ -38,11 +38,11 @@ module.exports = {
                 // Use provided baseSessionDir if available (from worker), otherwise use sessionService
                 const sessionDir = baseSessionDir || sessionService.getSessionDirectory();
                 fullOutVideoName = path.join(sessionDir, outVideoName);
-
-                // Ensure the *parent* directory of the output file exists
+                // Ensure the full output directory exists (including camera sub-dir)
                 const outputDir = path.dirname(fullOutVideoName);
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
+                    console.log(`[ffmpegHelper] Created output directory: ${outputDir}`);
                 }
             } catch (error) {
                 console.error("Error determining output path for video capture:", error);
@@ -217,8 +217,10 @@ module.exports = {
                 const sessionDir = baseSessionDir || sessionService.getSessionDirectory();
                 fullInVideoName = path.join(sessionDir, inVideoName);
                 fullOutDir = path.join(sessionDir, outDir);
+                // Ensure the frame extraction directory exists
                 if (!fs.existsSync(fullOutDir)) {
                     fs.mkdirSync(fullOutDir, { recursive: true });
+                    console.log(`[ffmpegHelper] Created frame output directory: ${fullOutDir}`);
                 }
             } catch (error) {
                 console.error("Error determining paths for frame extraction:", error);
@@ -273,11 +275,11 @@ module.exports = {
                 const sessionDir = baseSessionDir || sessionService.getSessionDirectory();
                 fullFramesDir = path.join(sessionDir, framesDir);
                 fullOutVideoName = path.join(sessionDir, outVideoName);
-                
-                // Ensure the *parent* directory of the output file exists
+                // Ensure the final video output directory exists
                 const outputDir = path.dirname(fullOutVideoName);
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
+                    console.log(`[ffmpegHelper] Created final video output directory: ${outputDir}`);
                 }
             } catch (error) {
                 console.error("Error determining paths for video encoding:", error);

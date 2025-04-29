@@ -13,38 +13,49 @@
       <!-- NEW Left Sidebar -->
       <div class="left-sidebar">
         <div class="controls-section card">
-          <h2>Session Management</h2>
-          <p>
-            <strong>Current Session:</strong>
-            <span id="current-session-id"> <%= currentSessionId %> </span>
-          </p>
-          <p><strong>Existing Sessions:</strong></p>
-          <div id="existing-sessions-list" class="session-list">
-            <% if (existingSessions && existingSessions.length> 0) { %> <%
-            existingSessions.forEach(session=> { const trimmedCurrentSession =
-            currentSessionId.trim(); const trimmedSession = session.trim();
-            const isActive = trimmedSession === trimmedCurrentSession; %>
-            <div class="session-item">
-              <button
-                class="session-button <%= isActive ? 'active' : '' %>"
-                onclick="selectSession('<%= trimmedSession %>')"
+          <!-- NEW Session Controls -->
+          <div class="session-controls">
+            <h2>Session Management</h2>
+
+            <!-- Display Current Session -->
+            <div class="current-session">
+              <strong>Current Session:</strong>
+              <span id="current-session-id">Loading...</span>
+              <span
+                id="no-session-warning"
+                style="color: orange; display: none"
               >
-                <%= trimmedSession %>
-              </button>
-              <% if (!isActive) { %>
-              <button
-                class="delete-session-button"
-                title="Delete session <%= trimmedSession %>"
-                onclick="deleteSession('<%= trimmedSession %>')"
+                (No session selected)</span
               >
-                ❌
-              </button>
-              <% } %>
             </div>
-            <% }); %> <% } else { %>
-            <p>No other sessions found.</p>
-            <% } %>
+
+            <!-- Select Existing Session -->
+            <div class="session-select">
+              <label for="session-list">Select Existing Session:</label>
+              <select id="session-list">
+                <option value="">Loading sessions...</option>
+              </select>
+              <button id="select-session-btn">Load Session</button>
+            </div>
+
+            <!-- Create New Session -->
+            <div class="session-create">
+              <label for="new-session-name">Create New Session:</label>
+              <input
+                type="text"
+                id="new-session-name"
+                placeholder="Enter session name"
+              />
+              <button id="create-session-btn">Create & Load</button>
+            </div>
+
+            <div
+              id="session-error"
+              class="error-message"
+              style="display: none; color: red; margin-top: 10px"
+            ></div>
           </div>
+          <!-- End NEW Session Controls -->
         </div>
 
         <!-- MOVED Teleprompter Preview Here -->
@@ -64,11 +75,7 @@
           <div id="buttons">
             <div class="recording-options">
               <label for="recording-pipeline">Recording Pipeline:</label>
-              <select
-                id="recording-pipeline"
-                class="form-control"
-                onchange="handlePipelineChange(this.value)"
-              >
+              <select id="recording-pipeline" class="form-control">
                 <option value="ffmpeg" selected>FFmpeg (Default)</option>
                 <option value="gstreamer">GStreamer</option>
               </select>
@@ -84,7 +91,6 @@
             </div>
             <button
               id="actionBtn"
-              onclick="action()"
               style="
                 display: none;
                 background-color: #e8f5e9;
@@ -96,7 +102,6 @@
             </button>
             <button
               id="actorsReadyBtn"
-              onclick="actorsReady()"
               style="
                 display: none;
                 background-color: #e8f5e9;
@@ -106,13 +111,9 @@
             >
               Actors are Ready
             </button>
-            <button onclick="recordVideo()">
-              Test Record Video & Process Pose
-            </button>
-            <button id="voiceBypassBtn" onclick="toggleVoiceBypass()">
-              Enable Voice Bypass
-            </button>
-            <button onclick="testConsole()">Test Console</button>
+            <button id="testRecordBtn">Test Record Video & Process Pose</button>
+            <button id="voiceBypassBtn">Enable Voice Bypass</button>
+            <button id="testConsoleBtn">Test Console</button>
 
             <div class="actor-loading">
               <label for="actorFiles">Load Actors:</label>
@@ -128,34 +129,34 @@
 
             <div class="audio-controls">
               <div class="group-label">Audio Controls</div>
-              <button onclick="testAudioRecord()" class="success-btn">
-                🎤 Record Audio (5s)
+              <button id="testAudioRecordBtn" class="success-btn">
+                �� Record Audio (5s)
               </button>
-              <button onclick="playLastRecording()" class="info-btn">
+              <button id="playLastAudioBtn" class="info-btn">
                 ▶️ Play Last Recording
               </button>
-              <button onclick="clearAudio()" class="warning-btn">
+              <button id="clearAudioBtn" class="warning-btn">
                 🗑️ Clear Audio
               </button>
             </div>
             <div class="teleprompter-button-group">
               <div class="group-label">Teleprompter Controls</div>
-              <button onclick="openTeleprompter()">Open Teleprompter</button>
-              <button onclick="openCharacterTeleprompter('alan')">
+              <button id="openTeleprompterBtn">Open Teleprompter</button>
+              <button id="openAlanTeleprompterBtn">
                 Open Alan's Teleprompter
               </button>
-              <button onclick="openCharacterTeleprompter('ellie')">
+              <button id="openEllieTeleprompterBtn">
                 Open Ellie's Teleprompter
               </button>
-              <button onclick="testTeleprompter()">Test Teleprompter</button>
+              <button id="testTeleprompterBtn">Test Teleprompter</button>
               <button onclick="testTeleprompterVideo()">
                 Test Teleprompter Video
               </button>
-              <button onclick="clearTeleprompter()">Clear Teleprompter</button>
-              <button onclick="pauseAllTeleprompters()" class="warning-btn">
+              <button id="clearTeleprompterBtn">Clear Teleprompter</button>
+              <button id="pauseTeleprompterBtn" class="warning-btn">
                 ⏸️ Pause All Teleprompters
               </button>
-              <button onclick="playAllTeleprompters()" class="success-btn">
+              <button id="playTeleprompterBtn" class="success-btn">
                 ▶️ Resume All Teleprompters
               </button>
             </div>
@@ -180,7 +181,8 @@
           %>
           <div
             class="shot-card"
-            onclick="initShot('<%= encodeURIComponent(scene.directory) %>', '<%= encodeURIComponent(shotIdentifier) %>')"
+            data-scene-dir="<%= encodeURIComponent(scene.directory) %>"
+            data-shot-id="<%= encodeURIComponent(shotIdentifier) %>"
           >
             <div class="shot-title">
               Scene #<%= sceneIdx + 1 %>: <%= scene.description %><br />
@@ -221,7 +223,7 @@
           <div id="cameraControls">
             <!-- Camera controls will be populated by CameraManager -->
           </div>
-          <button onclick="cameraManager.addCamera()">Add Camera</button>
+          <button id="addCameraBtn">Add Camera</button>
         </div>
       </div>
       <!-- End Right Sidebar -->
