@@ -140,40 +140,52 @@ class AudioRecorder {
         if (this.recordingProcesses.has(deviceId)) {
             const { process, filePath } = this.recordingProcesses.get(deviceId);
             console.log(`Stopping recording for device ${deviceId}...`);
+            
+            // Mark the process as being stopped so we don't double-handle cleanup
+            this.recordingProcesses.set(deviceId, { process, filePath, stopping: true });
+            
             // Send SIGTERM first for graceful shutdown
-            process.kill('SIGTERM');
+            try {
+                process.kill('SIGTERM');
+                
+                // Set a timeout to forcefully kill if it doesn't terminate
+                const killTimeout = setTimeout(() => {
+                    try {
+                        if (!process.killed) {
+                            console.warn(`Recording process for ${deviceId} did not exit gracefully, sending SIGKILL.`);
+                            process.kill('SIGKILL');
+                        }
+                    } catch (killError) {
+                        console.error(`Error sending SIGKILL to process for ${deviceId}:`, killError);
+                    }
+                    // Ensure we clean up even if there's a problem with the kill
+                    this.recordingProcesses.delete(deviceId);
+                }, 2000); // 2 seconds grace period
 
-            // Set a timeout to forcefully kill if it doesn't terminate
-            const killTimeout = setTimeout(() => {
-                if (!process.killed) {
-                    console.warn(`Recording process for ${deviceId} did not exit gracefully, sending SIGKILL.`);
-                    process.kill('SIGKILL');
-                }
-            }, 2000); // 2 seconds grace period
+                // Ensure timeout is cleared if process exits normally
+                process.once('exit', (code, signal) => {
+                    clearTimeout(killTimeout);
+                    if (code === 0 || signal === 'SIGTERM') {
+                        console.log(`Recording stopped successfully for device ${deviceId}. File saved to: ${filePath}`);
+                    } else {
+                        console.error(`Recording process for ${deviceId} exited with code ${code}, signal ${signal}. File might be incomplete: ${filePath}`);
+                    }
+                    this.recordingProcesses.delete(deviceId); // Remove from tracking
+                });
 
-            process.on('exit', (code, signal) => {
-                clearTimeout(killTimeout);
-                if (code === 0 || signal === 'SIGTERM') {
-                    console.log(`Recording stopped successfully for device ${deviceId}. File saved to: ${filePath}`);
-                } else {
-                    console.error(`Recording process for ${deviceId} exited with code ${code}, signal ${signal}. File might be incomplete: ${filePath}`);
-                    // Optionally, attempt to delete the potentially corrupt file
-                    // fs.unlink(filePath, (err) => { if (err) console.error(`Failed to delete incomplete file ${filePath}:`, err); });
-                }
-                this.recordingProcesses.delete(deviceId); // Remove from tracking
-            });
-
-             process.on('error', (err) => {
-                 clearTimeout(killTimeout);
-                 console.error(`Error in recording process for ${deviceId}:`, err);
-                 this.recordingProcesses.delete(deviceId);
-             });
-
+                process.once('error', (err) => {
+                    clearTimeout(killTimeout);
+                    console.error(`Error in recording process for ${deviceId}:`, err);
+                    this.recordingProcesses.delete(deviceId);
+                });
+            } catch (error) {
+                console.error(`Failed to stop recording for ${deviceId}:`, error);
+                this.recordingProcesses.delete(deviceId);
+            }
         } else {
             console.log(`No active recording process found for device ${deviceId} to stop.`);
         }
     }
-
 
     startRecording(sessionPath) {
         if (this.activeDevices.size === 0) {
@@ -187,70 +199,88 @@ class AudioRecorder {
             return;
         }
 
+        // Make audio files folder if it doesn't exist
+        const audioDir = path.join(sessionPath, 'audio');
+        if (!fs.existsSync(audioDir)) {
+            fs.mkdirSync(audioDir, { recursive: true });
+            console.log(`Created audio directory: ${audioDir}`);
+        }
+
         console.log(`Starting audio recording for ${this.activeDevices.size} devices in session: ${sessionPath}`);
         this.recordingCounter++; // Increment for this recording session (Action!)
 
         this.activeDevices.forEach((deviceData, deviceId) => {
-            const fileName = `Audio_${this.recordingCounter}_${deviceId.replace(/[^a-zA-Z0-9]/g, '_')}.wav`; // Create a unique name per device per recording
-            const filePath = path.join(sessionPath, fileName);
-
-            // Ensure we don't start recording on a device already recording
+            // First, ensure we stop any existing recording for this device
             if (this.recordingProcesses.has(deviceId)) {
-                console.warn(`Device ${deviceId} is already recording. Skipping.`);
-                return;
-            }
-
-            console.log(`Starting recording for ${deviceData.name} (${deviceId}) -> ${filePath}`);
-
-            let recorderProcess;
-            if (this.platform === 'linux') {
-                // Example using arecord directly. Choose format, rate, etc.
-                // arecord -D hw:0,0 -f S16_LE -r 44100 -c 1 filename.wav
-                 recorderProcess = exec(`arecord -D ${deviceId} -f cd -t wav ${filePath}`, (error, stdout, stderr) => {
-                     // This callback executes when the process *finishes* or errors *during* execution.
-                     // We rely on the 'exit' event for cleanup after explicit stopping.
-                     if (error && !recorderProcess.killed) { // Check !killed because we expect an error on SIGTERM/SIGKILL
-                         console.error(`arecord process error for ${deviceId}: ${stderr || error.message}`);
-                         this.recordingProcesses.delete(deviceId); // Clean up if startup failed
-                     }
-                 });
-
-            } else if (this.platform === 'darwin') {
-                // Example using 'sox' or 'ffmpeg'. Requires installation.
-                // ffmpeg -f avfoundation -i ":<device_index_or_uid>" -ar 44100 -ac 1 output.wav
-                // Finding the correct index/UID mapping might need more work from detectAudioInputDevices
-                 console.warn(`Recording implementation for macOS needs specific library/tool setup (e.g., ffmpeg, sox). Device ID used: ${deviceId}`);
-                 // Placeholder: Replace with actual command using ffmpeg or sox and the correct device identifier
-                 // recorderProcess = exec(`ffmpeg -f avfoundation -i ":${deviceId}" -ar 44100 -ac 1 ${filePath}`, ...);
-                 // For now, create a mock process to allow testing flow
-                 recorderProcess = exec('sleep 3600'); // Mock long-running process
-
-
+                console.warn(`Device ${deviceId} is already recording. Stopping the current recording first.`);
+                this._stopDeviceRecording(deviceId);
+                // Wait a moment to ensure cleanup
+                setTimeout(() => this._startDeviceRecording(deviceId, deviceData, audioDir), 500);
             } else {
-                 console.error(`Recording not supported on platform: ${this.platform}`);
-                 return; // Skip this device
+                this._startDeviceRecording(deviceId, deviceData, audioDir);
             }
-
-             // Store the process handle and file path
-             this.recordingProcesses.set(deviceId, { process: recorderProcess, filePath });
-
-             recorderProcess.on('error', (err) => {
-                 console.error(`Failed to start recording process for ${deviceId}:`, err);
-                 this.recordingProcesses.delete(deviceId); // Clean up on startup error
-             });
-
-             recorderProcess.on('exit', (code, signal) => {
-                // This listener is mostly for logging unexpected exits.
-                // We handle cleanup in _stopDeviceRecording based on our explicit stop action.
-                 if (this.recordingProcesses.has(deviceId)) { // Check if we haven't already cleaned up via _stopDeviceRecording
-                    console.warn(`Recording process for ${deviceId} exited unexpectedly with code ${code}, signal ${signal}.`);
-                    this.recordingProcesses.delete(deviceId);
-                 }
-             });
-
-
-            console.log(`Recording process started for ${deviceId} with PID: ${recorderProcess.pid}`);
         });
+    }
+    
+    _startDeviceRecording(deviceId, deviceData, audioDir) {
+        // Format a proper device number for the filename
+        const deviceNumber = this.activeDevices.size > 1 ? 
+            Array.from(this.activeDevices.keys()).indexOf(deviceId) + 1 : 1;
+        
+        const fileName = `Audio_${deviceNumber}.wav`;
+        const filePath = path.join(audioDir, fileName);
+
+        console.log(`Starting recording for ${deviceData.name} (${deviceId}) -> ${filePath}`);
+
+        let recorderProcess;
+        if (this.platform === 'linux') {
+            // Example using arecord directly. Choose format, rate, etc.
+            // arecord -D hw:0,0 -f S16_LE -r 44100 -c 1 filename.wav
+            recorderProcess = exec(`arecord -D ${deviceId} -f cd -t wav "${filePath}"`, (error, stdout, stderr) => {
+                // This callback executes when the process *finishes* or errors *during* execution.
+                // We rely on the 'exit' event for cleanup after explicit stopping.
+                if (error && !recorderProcess.killed) { // Check !killed because we expect an error on SIGTERM/SIGKILL
+                    console.error(`arecord process error for ${deviceId}: ${stderr || error.message}`);
+                    if (this.recordingProcesses.has(deviceId) && !this.recordingProcesses.get(deviceId).stopping) {
+                        this.recordingProcesses.delete(deviceId); // Clean up if startup failed, but only if not already stopping
+                    }
+                }
+            });
+        } else if (this.platform === 'darwin') {
+            // Example using 'sox' or 'ffmpeg'. Requires installation.
+            // ffmpeg -f avfoundation -i ":<device_index_or_uid>" -ar 44100 -ac 1 output.wav
+            // Finding the correct index/UID mapping might need more work from detectAudioInputDevices
+            console.warn(`Recording implementation for macOS needs specific library/tool setup (e.g., ffmpeg, sox). Device ID used: ${deviceId}`);
+            // Placeholder: Replace with actual command using ffmpeg or sox and the correct device identifier
+            // recorderProcess = exec(`ffmpeg -f avfoundation -i ":${deviceId}" -ar 44100 -ac 1 "${filePath}"`, ...);
+            // For now, create a mock process to allow testing flow
+            recorderProcess = exec(`sleep 3600`); // Mock long-running process
+        } else {
+            console.error(`Recording not supported on platform: ${this.platform}`);
+            return; // Skip this device
+        }
+
+        // Store the process handle and file path
+        this.recordingProcesses.set(deviceId, { process: recorderProcess, filePath, stopping: false });
+
+        // Set exit handler early to ensure we catch any unexpected exits
+        recorderProcess.on('exit', (code, signal) => {
+            // Only handle unexpected exits - _stopDeviceRecording handles normal exits
+            const recordingData = this.recordingProcesses.get(deviceId);
+            if (this.recordingProcesses.has(deviceId) && !recordingData.stopping) {
+                console.warn(`Recording process for ${deviceId} exited unexpectedly with code ${code}, signal ${signal}.`);
+                this.recordingProcesses.delete(deviceId);
+            }
+        });
+
+        recorderProcess.on('error', (err) => {
+            console.error(`Failed to start recording process for ${deviceId}:`, err);
+            if (this.recordingProcesses.has(deviceId) && !this.recordingProcesses.get(deviceId).stopping) {
+                this.recordingProcesses.delete(deviceId); // Clean up on startup error
+            }
+        });
+
+        console.log(`Recording process started for ${deviceId} with PID: ${recorderProcess.pid}`);
     }
 
     stopRecording() {

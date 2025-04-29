@@ -15,6 +15,8 @@ const path = require('path');
 const QRCode = require('qrcode');
 const { Worker } = require('worker_threads');
 const { mapPanDegreesToValue, mapTiltDegreesToValue } = require('../utils/ptzMapper'); // Import mapping functions
+const AudioRecorder = require('../services/audioRecorder');
+const audioRecorder = AudioRecorder.getInstance();
 
 // globals
 let sceneTakeIndex = 0;
@@ -359,6 +361,10 @@ async function action(req, res) {
         return;
     }
 
+    // Start recording audio with the AudioRecorder
+    broadcastConsole('Starting audio recording...', 'info');
+    audioRecorder.startRecording(sessionDir);
+
     // Determine shot duration
     const shotDurationStr = shot.duration || '0:05'; // Default if not specified
     const durationParts = shotDurationStr.split(':').map(Number);
@@ -566,6 +572,9 @@ async function action(req, res) {
         cameraMovementTimeouts.forEach(clearTimeout);
         cameraMovementTimeouts.length = 0; // Clear the array
 
+        // Stop audio recording
+        broadcastConsole('Stopping audio recording...', 'info');
+        audioRecorder.stopRecording();
 
         // --- Signal Workers to Stop (if necessary) ---
         // Currently, workers stop based on durationSec passed in workerData.
@@ -592,11 +601,18 @@ async function action(req, res) {
         // Clean up any started workers and timeouts
         activeWorkers.forEach(({ worker, name }) => {
             broadcastConsole(`Terminating worker ${name} due to error...`, 'warn');
-            worker.terminate();
+            try {
+                worker.terminate();
+            } catch (terminateError) {
+                console.error(`Error terminating worker ${name}:`, terminateError);
+            }
         });
-        activeWorkers.length = 0; // Clear array
         cameraMovementTimeouts.forEach(clearTimeout);
         cameraMovementTimeouts.length = 0;
+
+        // Stop audio recording in case of error
+        broadcastConsole('Stopping audio recording due to error...', 'warn');
+        audioRecorder.stopRecording();
 
         // Optionally send error response if called via HTTP
         if (res) return res.status(500).json({ success: false, message: errorMsg });

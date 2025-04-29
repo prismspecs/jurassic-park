@@ -54,11 +54,11 @@ export class AudioManager {
         titleContainer.style.justifyContent = 'space-between';
         titleContainer.style.alignItems = 'center';
 
-        const title = document.createElement('h2');
+        const title = document.createElement('h3');
         title.textContent = `Recording Device ${this.deviceCardCounter}`;
         
         const removeBtn = document.createElement('button');
-        removeBtn.textContent = '✖'; // Use an X like camera remove
+        removeBtn.textContent = '❌'; // Changed from '✖' to '❌' to match camera panel
         removeBtn.classList.add('remove-btn'); // Add specific class for styling/selection
         removeBtn.title = 'Remove this audio device';
         removeBtn.addEventListener('click', () => this.handleRemoveClick(cardId));
@@ -91,7 +91,7 @@ export class AudioManager {
 
         const testBtn = document.createElement('button');
         testBtn.id = `test-${cardId}`;
-        testBtn.textContent = 'Test';
+        testBtn.textContent = 'Test Record Audio'; // Changed from 'Test' to 'Test Record Audio'
         testBtn.disabled = true;
         testBtn.addEventListener('click', () => this.handleTestClick(cardId));
 
@@ -195,10 +195,10 @@ export class AudioManager {
                 throw new Error(result.error || `HTTP error ${response.status}`);
             }
             logToConsole(`Device ${deviceId} activated successfully.`, 'success');
-             if(statusSpan) statusSpan.textContent = 'Active';
+             if(statusSpan) statusSpan.textContent = ''; // Removed 'Active' text
         } catch (error) {
             logToConsole(`Error activating audio device ${deviceId}: ${error.message}`, 'error');
-             if(statusSpan) statusSpan.textContent = 'Activation Error';
+             if(statusSpan) statusSpan.textContent = ''; // Removed 'Active' text, change from 'Active' to empty string
              // Optional: Revert selection in UI?
         }
     }
@@ -253,7 +253,7 @@ export class AudioManager {
             // Optionally show result.filePath briefly
             setTimeout(() => {
                  if (statusSpan.textContent === 'Test OK') {
-                     statusSpan.textContent = 'Active'; // Revert to active status
+                     statusSpan.textContent = ''; // Removed 'Active' text, change from 'Active' to empty string
                  }
             }, 3000);
 
@@ -270,7 +270,7 @@ export class AudioManager {
             setTimeout(() => {
                  if (statusSpan.textContent === 'Test Failed') {
                     const selectElement = document.getElementById(`select-${cardId}`);
-                    statusSpan.textContent = selectElement && selectElement.value ? 'Active' : 'Activation Error'; // Or just empty?
+                    statusSpan.textContent = selectElement && selectElement.value ? '' : ''; // Changed from 'Active'/'Activation Error' to empty
                  }
             }, 5000);
         }
