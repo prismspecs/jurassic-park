@@ -33,6 +33,7 @@ function getCurrentScene() {
 /** Scene initialization */
 async function initScene(directory) {
     console.log('initScene called with directory:', directory);
+
     sceneTakeIndex = 0;
     currentScene = directory;
     currentSceneTakeIndex = 0; // Reset take index when initializing a new scene
@@ -106,8 +107,18 @@ async function initScene(directory) {
 }
 
 // --- NEW: Initialize a specific shot --- 
-function initShot(sceneDirectory, shotIdentifier) {
+async function initShot(sceneDirectory, shotIdentifier) {
     broadcastConsole(`Attempting to initialize Scene: '${sceneDirectory}', Shot: '${shotIdentifier}'`, 'info');
+
+    // Reset PTZ cameras to home position before starting the shot
+    try {
+        await cameraControl.resetPTZHome();
+    } catch (error) {
+        broadcastConsole(`Error resetting PTZ cameras before shot: ${error.message}`, 'error');
+        // Consider if this error should prevent the shot from starting
+        // throw new Error(`Failed to reset PTZ cameras: ${error.message}`); // Option to halt
+    }
+
     currentScene = sceneDirectory;
     currentShotIdentifier = shotIdentifier;
     currentSceneTakeIndex = -1; // Reset/Indicate invalid index until found

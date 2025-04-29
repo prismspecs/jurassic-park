@@ -294,6 +294,30 @@ class CameraControl {
             console.error(`Cannot set PTZ device: Camera ${cameraName} not found`);
         }
     }
+
+    /**
+     * Resets all configured PTZ cameras to their defined home position.
+     * Currently assumes home is Pan=0, Tilt=0, Zoom=0.
+     * Iterates through all managed cameras and sends the command if a PTZ device is set.
+     */
+    async resetPTZHome() {
+        console.log("Resetting all PTZ cameras to home position...");
+        for (const camera of this.cameras.values()) {
+            if (camera.getPTZDevice()) {
+                console.log(`Resetting PTZ for camera: ${camera.name}`);
+                try {
+                    // Assuming home is 0, 0, 0 for pan, tilt, zoom
+                    // Adjust if specific cameras have different home positions
+                    await this.setPTZ(camera.name, { pan: 0, tilt: 0, zoom: 0 });
+                } catch (error) {
+                    console.error(`Failed to reset PTZ for camera ${camera.name}:`, error);
+                }
+            } else {
+                console.log(`Skipping PTZ reset for camera ${camera.name}: No PTZ device configured.`);
+            }
+        }
+        console.log("Finished resetting PTZ cameras.");
+    }
 }
 
 // Export the class itself, not an instance
