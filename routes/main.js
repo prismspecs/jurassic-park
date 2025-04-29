@@ -5,7 +5,7 @@ const multer = require('multer');
 const fs = require('fs');
 const config = require('../config.json');
 const { buildHomeHTML } = require('../views/homeView');
-const { initScene, actorsReady, action, initShot } = require('../controllers/sceneController');
+const { actorsReady, action, initShot } = require('../controllers/sceneController');
 const { scenes } = require('../services/sceneService');
 const aiVoice = require('../services/aiVoice');
 const sessionService = require('../services/sessionService');
@@ -306,13 +306,6 @@ router.post('/setVoiceBypass', express.json(), (req, res) => {
         success: true,
         message: `Voice bypass ${enabled ? 'enabled' : 'disabled'}`
     });
-});
-
-// Initialize a scene (legacy? Keep for now or deprecate?)
-router.get('/initScene/:directory', (req, res) => {
-    const directory = decodeURIComponent(req.params.directory);
-    initScene(directory); // This likely needs adjustment if initShot is the primary way
-    res.json({ success: true, message: 'Scene initialization requested (may be deprecated)', directory: directory });
 });
 
 // --- NEW: Initialize a specific shot within a scene ---

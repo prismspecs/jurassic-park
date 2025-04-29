@@ -1,16 +1,12 @@
-const fs = require('fs');
 const config = require('../config.json');
 const { scenes } = require('../services/sceneService');
 const aiVoice = require('../services/aiVoice');
 const { broadcast, broadcastConsole, broadcastTeleprompterStatus } = require('../websocket/broadcaster');
-const ffmpegHelper = require('../services/ffmpegHelper');
-const gstreamerHelper = require('../services/gstreamerHelper');
 const sessionService = require('../services/sessionService');
 const settingsService = require('../services/settingsService');
 const callsheetService = require('../services/callsheetService');
 const CameraControl = require('../services/cameraControl');
 const cameraControl = CameraControl.getInstance();
-const poseTracker = require('../services/poseTracker');
 const path = require('path');
 const QRCode = require('qrcode');
 const { Worker } = require('worker_threads');
@@ -18,95 +14,19 @@ const { mapPanDegreesToValue, mapTiltDegreesToValue } = require('../utils/ptzMap
 const AudioRecorder = require('../services/audioRecorder');
 const audioRecorder = AudioRecorder.getInstance();
 
-// globals
-let sceneTakeIndex = 0;
-let currentScene = null;
-let currentSceneTakeIndex = 0; // Track takes within a scene
-let currentShotIdentifier = null; // NEW: Track the identifier (name or index) of the current shot
+// Encapsulated stage state
+const currentStageState = {
+    scene: null,
+    shotIdentifier: null,
+    shotIndex: 0
+};
 
-/** Get the current scene */
+/** Get the current scene - Minimal usage, consider removing if not used externally */
 function getCurrentScene() {
-    console.log('getCurrentScene called, currentScene:', currentScene);
-    return currentScene;
+    console.log('getCurrentScene called, currentScene:', currentStageState.scene);
+    return currentStageState.scene;
 }
 
-/** Scene initialization */
-async function initScene(directory) {
-    console.log('initScene called with directory:', directory);
-
-    sceneTakeIndex = 0;
-    currentScene = directory;
-    currentSceneTakeIndex = 0; // Reset take index when initializing a new scene
-    console.log('currentScene set to:', currentScene);
-
-    // Initialize the callsheet
-    callsheetService.initCallsheet();
-
-    const scene = scenes.find(s => s.directory === directory);
-    if (!scene) {
-        broadcastConsole(`Scene ${directory} not found`, 'error');
-        return;
-    }
-    broadcastConsole(`Initializing scene: ${scene.directory}. Description: ${scene.description}`);
-
-    // Broadcast "Initializing scene..." to the main teleprompter
-    broadcast({
-        type: 'TELEPROMPTER',
-        text: 'Initializing scene...'
-    });
-    broadcastConsole('Broadcasted TELEPROMPTER: Initializing scene...');
-
-    aiVoice.speak(`Please prepare for scene ${scene.description}`);
-
-    // wait 5 seconds before calling actors
-    setTimeout(() => {
-        callActors(scene);
-    }, config.waitTime);
-
-    // Broadcast status update to character teleprompters (keep this for character screens)
-    broadcastTeleprompterStatus('Scene Initializing...');
-    broadcastConsole(`Broadcasted TELEPROMPTER_STATUS: Scene Initializing...`);
-
-    // --- ADDED: Log camera descriptions from scene data if camera exists --- 
-    broadcastConsole("--- Checking Scene Camera Definitions ---", "info"); // Debug Header
-    
-    // Log currently managed cameras for comparison
-    const managedCameras = cameraControl.getCameras(); // Get the array of camera objects
-    const managedCameraNames = managedCameras.map(c => c.name); // Map to names
-    broadcastConsole(`Managed cameras in cameraControl: [${managedCameraNames.join(', ') || 'None'}]`, "info");
-
-    // Check if the FIRST take has a cameras array
-    const firstTake = scene.takes && scene.takes.length > 0 ? scene.takes[0] : null;
-    if (firstTake && firstTake.cameras && Array.isArray(firstTake.cameras)) {
-        broadcastConsole(`Cameras found in first take for ${directory}:`);
-        firstTake.cameras.forEach(sceneCamera => { // Iterate through cameras in the first take
-            const cameraName = sceneCamera.name;
-            const cameraDescription = sceneCamera.description || 'No description'; // Default description
-            broadcastConsole(`Checking scene camera: '${cameraName}'...`, "info"); // Log which scene camera we are checking
-            
-            // Check if this camera exists in our camera control
-            const managedCamera = cameraControl.getCamera(cameraName);
-            broadcastConsole(`Result of cameraControl.getCamera('${cameraName}'): ${managedCamera ? 'FOUND' : 'NOT FOUND'}`, "info"); // Log the result of the lookup
-            
-            if (managedCamera) {
-                // Log description from the scene file for the existing managed camera
-                broadcastConsole(`-> MATCH FOUND: Logging description for '${cameraName}': ${cameraDescription}`, 'success');
-            } else {
-                 broadcastConsole(`-> NO MATCH: Camera '${cameraName}' (from scene file) is not currently managed. Description: ${cameraDescription}`, 'warn');
-            }
-        });
-    } else {
-        broadcastConsole(`No 'cameras' array found in the first take data for ${directory}.`, 'warn');
-    }
-    broadcastConsole("--- Finished Checking Scene Camera Definitions ---", "info"); // Debug Footer
-    // --- END ADDED --- 
-
-    // Broadcast the full scene object (or necessary parts) for potential use by clients
-    broadcast({ type: 'SCENE_INIT', scene: scene });
-    broadcastConsole(`Scene ${directory} initialized. Ready for actors.`, 'success');
-}
-
-// --- NEW: Initialize a specific shot --- 
 async function initShot(sceneDirectory, shotIdentifier) {
     broadcastConsole(`Attempting to initialize Scene: '${sceneDirectory}', Shot: '${shotIdentifier}'`, 'info');
 
@@ -119,9 +39,9 @@ async function initShot(sceneDirectory, shotIdentifier) {
         // throw new Error(`Failed to reset PTZ cameras: ${error.message}`); // Option to halt
     }
 
-    currentScene = sceneDirectory;
-    currentShotIdentifier = shotIdentifier;
-    currentSceneTakeIndex = -1; // Reset/Indicate invalid index until found
+    currentStageState.scene = sceneDirectory;
+    currentStageState.shotIdentifier = shotIdentifier;
+    currentStageState.shotIndex = -1; // Reset/Indicate invalid index until found
 
     const scene = scenes.find(s => s.directory === sceneDirectory);
     if (!scene) {
@@ -145,13 +65,13 @@ async function initShot(sceneDirectory, shotIdentifier) {
         throw new Error(`Shot '${shotIdentifier}' not found in scene '${sceneDirectory}'.`);
     }
 
-    currentSceneTakeIndex = shotIndex; // Update the index (using the old variable name for now)
+    currentStageState.shotIndex = shotIndex; // Update the index
     const shotData = scene.shots[shotIndex];
 
     broadcastConsole(`Successfully initialized Scene: '${sceneDirectory}', Shot: '${shotIdentifier}' (Index: ${shotIndex})`, 'success');
     broadcastConsole(`Shot description: ${shotData.description || 'N/A'}`, 'info');
 
-    // --- Perform camera description logging and collect descriptions for UI --- 
+    // --- Perform camera description logging and collect descriptions for UI ---
     const shotCameraDescriptions = []; // Array to hold {name, description} for UI update
     if (shotData.cameras && Array.isArray(shotData.cameras)) {
         broadcastConsole(`--- Checking Shot Camera Definitions ---`, 'info');
@@ -201,9 +121,7 @@ async function initShot(sceneDirectory, shotIdentifier) {
 
     return { scene: sceneDirectory, shot: shotIdentifier, shotIndex: shotIndex }; // Return status
 }
-// --- END NEW --- 
 
-// --- REFACTOR: Modify callActors to be called per shot --- 
 async function callActorsForShot(scene, shotIndex) {
     if (!scene || !scene.shots || !scene.shots[shotIndex]) {
         broadcastConsole(`Cannot call actors: Invalid scene or shot index ${shotIndex}`, 'error');
@@ -294,31 +212,24 @@ async function callActorsForShot(scene, shotIndex) {
 }
 // --- END REFACTOR ---
 
-// Remove or refactor the old callActors function if it's no longer used
-/*
-async function callActors(scene) {
-    // ... old logic ...
-}
-*/
-
 function actorsReady() {
-    if (!currentScene || currentShotIdentifier === null) {
+    if (!currentStageState.scene || currentStageState.shotIdentifier === null) {
         broadcastConsole('No scene/shot is currently active', 'error');
         return;
     }
 
     // use currentScene to get the setup
-    const scene = scenes.find(s => s.directory === currentScene);
-    if (!scene || !scene.shots || currentSceneTakeIndex < 0 || !scene.shots[currentSceneTakeIndex]) {
-        broadcastConsole(`Scene/Shot data not found for ${currentScene} / ${currentShotIdentifier}`, 'error');
+    const scene = scenes.find(s => s.directory === currentStageState.scene);
+    if (!scene || !scene.shots || currentStageState.shotIndex < 0 || !scene.shots[currentStageState.shotIndex]) {
+        broadcastConsole(`Scene/Shot data not found for ${currentStageState.scene} / ${currentStageState.shotIdentifier}`, 'error');
         return;
     }
 
     // Get the setup from the current shot
-    const shot = scene.shots[currentSceneTakeIndex];
+    const shot = scene.shots[currentStageState.shotIndex];
     const setup = shot.setup;
     if (!setup) {
-        broadcastConsole(`No setup found for scene '${currentScene}', shot '${currentShotIdentifier}'`, 'warn');
+        broadcastConsole(`No setup found for scene '${currentStageState.scene}', shot '${currentStageState.shotIdentifier}'`, 'warn');
         // Speak anyway?
         aiVoice.speak('Actors are ready.');
     } else {
@@ -336,8 +247,8 @@ function actorsReady() {
 
 async function action(req, res) {
     broadcastConsole('Action function started.');
-    if (!currentScene || currentShotIdentifier === null || currentSceneTakeIndex < 0) {
-        const errorMsg = `Action aborted: No scene/shot active or index invalid. Scene: ${currentScene}, ShotIdentifier: ${currentShotIdentifier}, Index: ${currentSceneTakeIndex}`;
+    if (!currentStageState.scene || currentStageState.shotIdentifier === null || currentStageState.shotIndex < 0) {
+        const errorMsg = `Action aborted: No scene/shot active or index invalid. Scene: ${currentStageState.scene}, ShotIdentifier: ${currentStageState.shotIdentifier}, Index: ${currentStageState.shotIndex}`;
         console.error(errorMsg);
         broadcastConsole(errorMsg, 'error');
         // Optionally send response if called via HTTP
@@ -345,21 +256,21 @@ async function action(req, res) {
         return;
     }
 
-    const scene = scenes.find(s => s.directory === currentScene);
+    const scene = scenes.find(s => s.directory === currentStageState.scene);
     // Check if shot index is valid *before* accessing it
-    if (!scene || !scene.shots || currentSceneTakeIndex >= scene.shots.length) {
-        const errorMsg = `Action aborted: Scene/Shot data not found or index out of bounds for ${currentScene} / Shot Index: ${currentSceneTakeIndex}`;
+    if (!scene || !scene.shots || currentStageState.shotIndex >= scene.shots.length) {
+        const errorMsg = `Action aborted: Scene/Shot data not found or index out of bounds for ${currentStageState.scene} / Shot Index: ${currentStageState.shotIndex}`;
         console.error(errorMsg);
         broadcastConsole(errorMsg, 'error');
          if (res) return res.status(404).json({ success: false, message: errorMsg });
         return;
     }
-    const shot = scene.shots[currentSceneTakeIndex]; // Safe to access now
+    const shot = scene.shots[currentStageState.shotIndex]; // Safe to access now
 
     // Ensure shot has a name or number for logging/reference
-    const shotRef = shot.name || `Shot #${shot.number || currentSceneTakeIndex}`;
+    const shotRef = shot.name || `Shot #${shot.number || currentStageState.shotIndex}`;
 
-    broadcastConsole(`Initiating ACTION for Scene: '${currentScene}', Shot: '${shotRef}' (Index: ${currentSceneTakeIndex})`);
+    broadcastConsole(`Initiating ACTION for Scene: '${currentStageState.scene}', Shot: '${shotRef}' (Index: ${currentStageState.shotIndex})`);
 
     let sessionDir;
     try {
@@ -397,7 +308,7 @@ async function action(req, res) {
     try {
         // --- Start Recording Worker for EACH camera in the shot ---
         if (!shot.cameras || shot.cameras.length === 0) {
-            broadcastConsole(`Action warning: No cameras defined for shot '${shotRef}' in scene '${currentScene}'. Cannot record.`, 'warn');
+            broadcastConsole(`Action warning: No cameras defined for shot '${shotRef}' in scene '${currentStageState.scene}'. Cannot record.`, 'warn');
         } else {
             for (const shotCameraInfo of shot.cameras) {
                 const recordingCameraName = shotCameraInfo.name;
@@ -540,11 +451,11 @@ async function action(req, res) {
         try {
             broadcast({ // Broadcast SHOT_START with scene and shot info
                 type: 'SHOT_START',
-                scene: { directory: currentScene }, // Send scene directory
+                scene: { directory: currentStageState.scene }, // Send scene directory
                 // shot: shot // Send full shot data - might be large, maybe send just identifier?
                 shot: { name: shot.name, number: shot.number, duration: shotDurationSec } // Send essential info
             });
-            broadcastConsole(`Broadcasted SHOT_START for Scene: ${currentScene}, Shot: ${shotRef}`, 'success');
+            broadcastConsole(`Broadcasted SHOT_START for Scene: ${currentStageState.scene}, Shot: ${shotRef}`, 'success');
         } catch (broadcastError) {
             broadcastConsole(`!!! ERROR Broadcasting SHOT_START: ${broadcastError.message}`, 'error');
             console.error("!!! ERROR Broadcasting SHOT_START:", broadcastError); // Log full error server-side
@@ -567,10 +478,10 @@ async function action(req, res) {
         try {
              broadcast({
                 type: 'SHOT_END',
-                scene: { directory: currentScene },
+                scene: { directory: currentStageState.scene },
                 shot: { name: shot.name, number: shot.number }
             });
-            broadcastConsole(`Broadcasted SHOT_END for Scene: ${currentScene}, Shot: ${shotRef}`, 'success');
+            broadcastConsole(`Broadcasted SHOT_END for Scene: ${currentStageState.scene}, Shot: ${shotRef}`, 'success');
         } catch (broadcastError) {
             broadcastConsole(`!!! ERROR Broadcasting SHOT_END: ${broadcastError.message}`, 'error');
             console.error("!!! ERROR Broadcasting SHOT_END:", broadcastError);
@@ -631,12 +542,7 @@ async function action(req, res) {
     }
 }
 
-function getCurrentSceneState() {
-    // ... existing code ...
-}
-
 module.exports = {
-    initScene,
     initShot,
     actorsReady,
     action,
