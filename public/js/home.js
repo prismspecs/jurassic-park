@@ -1,6 +1,11 @@
 import { logToConsole } from './modules/logger.js';
 import { initializeResizers } from './modules/layout-resizer.js';
 import { CameraManager } from './modules/camera-manager.js';
+import { 
+    initializeSessionManagement, 
+    updateCurrentSessionDisplay, 
+    populateSessionList 
+} from './modules/session-manager.js';
 
 // Wrap everything in an event listener to ensure the DOM is ready,
 // especially if the script tag doesn't use 'defer'.
@@ -9,15 +14,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Global Variables ---
   const ws = new WebSocket("ws://" + window.location.host);
-  // Session UI elements
-  const currentSessionSpan = document.getElementById('current-session-id');
-  const noSessionWarningSpan = document.getElementById('no-session-warning');
-  const sessionListSelect = document.getElementById('session-list');
-  const selectSessionBtn = document.getElementById('select-session-btn');
-  const newSessionNameInput = document.getElementById('new-session-name');
-  const createSessionBtn = document.getElementById('create-session-btn');
-  const sessionErrorDiv = document.getElementById('session-error');
-  
   let voiceBypassEnabled = true;
   let lastAudioRecording = null;
 
@@ -98,18 +94,22 @@ document.addEventListener('DOMContentLoaded', () => {
           console.log('SESSION_UPDATE received with sessionId:', data.sessionId);
           updateCurrentSessionDisplay(data.sessionId);
           // Potentially update the dropdown selection as well
-          if (sessionListSelect && data.sessionId) {
-            sessionListSelect.value = data.sessionId;
-          }
+          /* 
+          if (sessionListSelect && data.sessionId) { 
+            sessionListSelect.value = data.sessionId; 
+          } 
+          */
           break;
         case 'SESSION_LIST_UPDATE': // Received when a session is created/deleted
           console.log('SESSION_LIST_UPDATE received', data.sessions);
           populateSessionList(data.sessions || []);
-          // After repopulating, re-select the current one if it exists
+          // Re-selection logic is handled within session manager now
+          /* 
           const currentId = currentSessionSpan ? currentSessionSpan.textContent : null;
           if (sessionListSelect && currentId && currentId !== 'Loading...') {
               sessionListSelect.value = currentId;
           }
+          */
           break;
         case 'ACTORS_CALLED':
           document.getElementById("actorsReadyBtn").style.display = "inline-block";
@@ -171,52 +171,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- END ADDED --- 
 
   // --- UI Update Functions ---
-  function updateSessionUI(newSessionId) {
-    const currentSessionSpan = document.getElementById('current-session-id');
-    if (currentSessionSpan) {
-      currentSessionSpan.textContent = newSessionId;
-    }
-    
-    // Ensure newSessionId is trimmed of any whitespace
-    const trimmedNewSessionId = newSessionId.trim();
-    console.log('Updating session UI for:', trimmedNewSessionId);
-    
-    // First, remove the active class from all session buttons
-    document.querySelectorAll('.session-button').forEach(button => {
-      button.classList.remove('active');
-    });
-    
-    // Then, show all delete buttons
-    document.querySelectorAll('.delete-session-button').forEach(button => {
-      button.style.display = '';
-    });
-    
-    // Find the button for the new active session and update it
-    document.querySelectorAll('.session-item').forEach(item => {
-      const button = item.querySelector('.session-button');
-      const deleteButton = item.querySelector('.delete-session-button');
-      
-      if (!button) return;
-      
-      // Extract session ID directly from the onclick attribute 
-      const onclickAttr = button.getAttribute('onclick') || '';
-      const match = onclickAttr.match(/selectSession\('([^']+)'\)/);
-      
-      if (match) {
-        const sessionInButton = match[1].trim();
-        
-        // Compare with the new session ID
-        if (sessionInButton === trimmedNewSessionId) {
-          console.log('Adding active class to:', sessionInButton);
-          button.classList.add('active');
-          if (deleteButton) deleteButton.style.display = 'none';
-        }
-      }
-    });
-    
-    logToConsole(`Session updated to: ${trimmedNewSessionId}`, 'info');
-  }
-
   function updateVoiceBypassButton() {
     const btn = document.getElementById("voiceBypassBtn");
     if (btn) {
@@ -225,196 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // --- Session Management Functions (NEW/UPDATED) ---
-
-  // Fetch initial session state and list
-  async function initializeSessionManagement() {
-      await fetchCurrentSession();
-      await fetchSessionList();
-  }
-
-  // Fetch and display the currently active session
-  async function fetchCurrentSession() {
-      try {
-          const response = await fetch('/api/sessions/current');
-          if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-          const data = await response.json();
-          updateCurrentSessionDisplay(data.sessionId);
-      } catch (error) {
-          console.error('Error fetching current session:', error);
-          logToConsole(`Error fetching current session: ${error.message}`, 'error');
-          updateCurrentSessionDisplay(null); // Indicate error or no session
-          showSessionError('Failed to fetch current session.');
-      }
-  }
-
-  // Fetch the list of sessions and populate the dropdown
-  async function fetchSessionList() {
-      try {
-          const response = await fetch('/api/sessions');
-          if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-          const sessions = await response.json();
-          populateSessionList(sessions);
-          // Try to select the current session in the dropdown after loading
-          const currentId = currentSessionSpan ? currentSessionSpan.textContent : null;
-           if (sessionListSelect && currentId && currentId !== 'Loading...' && currentId !== '(No session selected)') {
-              sessionListSelect.value = currentId;
-           }
-      } catch (error) {
-          console.error('Error fetching session list:', error);
-          logToConsole(`Error fetching session list: ${error.message}`, 'error');
-          if (sessionListSelect) {
-              sessionListSelect.innerHTML = '<option value="">Error loading sessions</option>';
-          }
-          showSessionError('Failed to load session list.');
-      }
-  }
-
-  // Update the display of the current session ID
-  function updateCurrentSessionDisplay(sessionId) {
-      if (currentSessionSpan && noSessionWarningSpan) {
-          if (sessionId) {
-              currentSessionSpan.textContent = sessionId;
-              currentSessionSpan.style.display = 'inline';
-              noSessionWarningSpan.style.display = 'none';
-          } else {
-              currentSessionSpan.textContent = ''; // Clear it
-              currentSessionSpan.style.display = 'none';
-              noSessionWarningSpan.style.display = 'inline';
-          }
-      } else {
-          console.error('Could not find session display elements');
-      }
-      // Clear any previous errors when session updates
-      clearSessionError();
-  }
-
-  // Populate the session dropdown list
-  function populateSessionList(sessions) {
-      if (!sessionListSelect) return;
-      sessionListSelect.innerHTML = ''; // Clear existing options
-      if (!sessions || sessions.length === 0) {
-          sessionListSelect.innerHTML = '<option value="">No sessions available</option>';
-          return;
-      }
-      // Add a placeholder/default option
-       sessionListSelect.innerHTML = '<option value="">-- Select a Session --</option>'; 
-      sessions.forEach(sessionId => {
-          const option = document.createElement('option');
-          option.value = sessionId;
-          option.textContent = sessionId; // Display the full ID for now
-          sessionListSelect.appendChild(option);
-      });
-  }
-
-  // Handle creating a new session
-  async function createSession() {
-      clearSessionError();
-      const name = newSessionNameInput ? newSessionNameInput.value.trim() : '';
-      if (!name) {
-          showSessionError('Please enter a name for the new session.');
-          return;
-      }
-      if (!createSessionBtn) return;
-      
-      createSessionBtn.disabled = true;
-      createSessionBtn.textContent = 'Creating...';
-      logToConsole(`Creating new session: ${name}`, 'info');
-
-      try {
-          const response = await fetch('/api/sessions/create', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: name })
-          });
-          const result = await response.json();
-          if (!response.ok) {
-              throw new Error(result.message || result.error || `HTTP error ${response.status}`);
-          }
-          logToConsole(`Successfully created session: ${result.sessionId}`, 'success');
-          if (newSessionNameInput) newSessionNameInput.value = ''; // Clear input
-          // UI update (current session, list) is handled by SESSION_UPDATE and SESSION_LIST_UPDATE broadcasts
-          
-      } catch (error) {
-          console.error('Error creating session:', error);
-          logToConsole(`Error creating session: ${error.message}`, 'error');
-          showSessionError(`Failed to create session: ${error.message}`);
-      } finally {
-          if(createSessionBtn) {
-             createSessionBtn.disabled = false;
-             createSessionBtn.textContent = 'Create & Load';
-          }
-      }
-  }
-
-  // Handle selecting an existing session
-  async function selectSession() {
-       clearSessionError();
-       const selectedId = sessionListSelect ? sessionListSelect.value : null;
-       if (!selectedId) {
-           showSessionError('Please select a session from the list.');
-           return;
-       }
-       if(!selectSessionBtn) return;
-       
-       selectSessionBtn.disabled = true;
-       selectSessionBtn.textContent = 'Loading...';
-       logToConsole(`Attempting to switch to session: ${selectedId}`, 'info');
-       
-       try {
-          const response = await fetch('/api/select-session', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sessionId: selectedId })
-          });
-          const result = await response.json();
-          if (!response.ok) {
-              throw new Error(result.message || result.error || `HTTP error ${response.status}`);
-          }
-          logToConsole(`Successfully requested switch to session: ${selectedId}`, 'success');
-          // Current session display update is handled by SESSION_UPDATE broadcast
-      } catch (error) {
-          console.error('Error selecting session:', error);
-          logToConsole(`Error selecting session: ${error.message}`, 'error');
-          showSessionError(`Failed to load session: ${error.message}`);
-      } finally {
-          if(selectSessionBtn) {
-            selectSessionBtn.disabled = false;
-            selectSessionBtn.textContent = 'Load Session';
-          }
-      }
-  }
-
-  // Show session-related error messages
-  function showSessionError(message) {
-      if (sessionErrorDiv) {
-          sessionErrorDiv.textContent = message;
-          sessionErrorDiv.style.display = 'block';
-      }
-  }
-
-  // Clear session-related error messages
-  function clearSessionError() {
-      if (sessionErrorDiv) {
-          sessionErrorDiv.textContent = '';
-          sessionErrorDiv.style.display = 'none';
-      }
-  }
-  
   // --- Event Listeners ---
-  if (createSessionBtn && newSessionNameInput) {
-    createSessionBtn.addEventListener('click', createSession);
-    newSessionNameInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            createSession();
-        }
-    });
-  }
-  
-  if (selectSessionBtn && sessionListSelect) {
-      selectSessionBtn.addEventListener('click', selectSession);
-  }
-
   // Attach listener to the shot container for delegation
   const shotContainer = document.querySelector('.shot-container');
   if (shotContainer) {
@@ -451,8 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
    document.getElementById('recording-pipeline')?.addEventListener('change', (e) => handlePipelineChange(e.target.value));
   // Listener for recording resolution dropdown (already added)
 
-  // Initial load
-  initializeSessionManagement();
+  // Initial load call for session manager is moved below
 
   // --- OLD Session Functions (Keep for reference/potential reuse if needed) ---
   /*
@@ -751,15 +515,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- Camera Manager ---
-  // Create CameraManager instance using the imported class
   const cameraManager = new CameraManager();
-  // Expose globally ONLY IF absolutely necessary (e.g., for inline onclick in HTML)
-  // window.cameraManager = cameraManager; // Avoid if possible
+  document.getElementById('addCameraBtn')?.addEventListener('click', () => cameraManager.addCamera());
 
   // --- Initialize Components ---
   logToConsole("DOM loaded. Initializing components...", "info");
   
-  // Initialize Session Management (assuming it stays here for now)
+  // Initialize Session Management by calling the imported function
   initializeSessionManagement(); 
 
   // Initialize Camera Manager
@@ -771,11 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
       logToConsole("CameraManager or initialize method not found", 'error');
   }
 
-  // Initialize Resizers (already moved)
+  // Initialize Resizers
   initializeResizers();
-
-  // --- Event Listeners for Controls (Ensure relevant ones are attached) ---
-  // (Double check listeners that might have been inside CameraManager or need the instance)
-  // e.g., The addCameraBtn listener is correctly re-added above.
 
 }); // End DOMContentLoaded 
