@@ -320,28 +320,41 @@ function actorsReady() {
     });
 }
 
-async function action() {
+async function action(req, res) {
     broadcastConsole('Action function started.');
-    if (!currentScene || currentShotIdentifier === null) {
-        broadcastConsole('Action aborted: No scene/shot active.', 'error');
+    if (!currentScene || currentShotIdentifier === null || currentSceneTakeIndex < 0) {
+        const errorMsg = `Action aborted: No scene/shot active or index invalid. Scene: ${currentScene}, ShotIdentifier: ${currentShotIdentifier}, Index: ${currentSceneTakeIndex}`;
+        console.error(errorMsg);
+        broadcastConsole(errorMsg, 'error');
+        // Optionally send response if called via HTTP
+        if (res) return res.status(400).json({ success: false, message: errorMsg });
         return;
     }
 
     const scene = scenes.find(s => s.directory === currentScene);
-    if (!scene || !scene.shots || currentSceneTakeIndex < 0 || !scene.shots[currentSceneTakeIndex]) {
-        broadcastConsole(`Action aborted: Scene/Shot data not found for ${currentScene} / ${currentShotIdentifier}`, 'error');
+    // Check if shot index is valid *before* accessing it
+    if (!scene || !scene.shots || currentSceneTakeIndex >= scene.shots.length) {
+        const errorMsg = `Action aborted: Scene/Shot data not found or index out of bounds for ${currentScene} / Shot Index: ${currentSceneTakeIndex}`;
+        console.error(errorMsg);
+        broadcastConsole(errorMsg, 'error');
+         if (res) return res.status(404).json({ success: false, message: errorMsg });
         return;
     }
-    const shot = scene.shots[currentSceneTakeIndex];
+    const shot = scene.shots[currentSceneTakeIndex]; // Safe to access now
 
-    broadcastConsole('Initiating recording for shot cameras...');
+    // Ensure shot has a name or number for logging/reference
+    const shotRef = shot.name || `Shot #${shot.number || currentSceneTakeIndex}`;
+
+    broadcastConsole(`Initiating ACTION for Scene: '${currentScene}', Shot: '${shotRef}' (Index: ${currentSceneTakeIndex})`);
 
     let sessionDir;
     try {
         sessionDir = sessionService.getSessionDirectory();
     } catch (sessionError) {
+        const errorMsg = `Action failed: Could not get session directory: ${sessionError.message}`;
         console.error("Action failed: Could not get session directory:", sessionError);
-        broadcastConsole(`Action failed: Could not get session directory: ${sessionError.message}`, 'error');
+        broadcastConsole(errorMsg, 'error');
+         if (res) return res.status(500).json({ success: false, message: errorMsg });
         return;
     }
 
@@ -361,34 +374,37 @@ async function action() {
     broadcastConsole(`Using recording resolution from settings: ${resolution.width}x${resolution.height}`, 'info');
 
     const activeWorkers = [];
+    const cameraMovementTimeouts = []; // Keep track of timeouts
 
     try {
-        // --- Start Recording Worker for EACH camera in the shot --- 
+        // --- Start Recording Worker for EACH camera in the shot ---
         if (!shot.cameras || shot.cameras.length === 0) {
-            broadcastConsole(`Action warning: No cameras defined for shot '${currentShotIdentifier}' in scene '${currentScene}'. Cannot record.`, 'warn');
+            broadcastConsole(`Action warning: No cameras defined for shot '${shotRef}' in scene '${currentScene}'. Cannot record.`, 'warn');
         } else {
             for (const shotCameraInfo of shot.cameras) {
                 const recordingCameraName = shotCameraInfo.name;
+                if (!recordingCameraName) {
+                     broadcastConsole(`Action warning: Shot camera info missing 'name'. Skipping.`, 'warn');
+                     continue;
+                }
                 broadcastConsole(`Setting up recording for camera: ${recordingCameraName}`);
 
                 const camera = cameraControl.getCamera(recordingCameraName);
                 if (!camera) {
                     const errorMsg = `Skipping recording: Camera '${recordingCameraName}' (required by shot) is not currently managed.`;
                     broadcastConsole(errorMsg, 'error');
-                    continue;
+                    continue; // Skip this camera
                 }
 
                 const recordingDevicePath = camera.getRecordingDevice();
-                if (!recordingDevicePath && recordingDevicePath !== 0) {
+                // Treat device ID 0 as valid (common for first device on Linux/macOS)
+                if (recordingDevicePath === null || recordingDevicePath === undefined || recordingDevicePath === '') {
                     const errorMsg = `Skipping recording: No recording device configured for camera '${recordingCameraName}'.`;
                     broadcastConsole(errorMsg, 'error');
-                    continue;
+                    continue; // Skip this camera
                 }
 
-                // --- Resolution is now fetched from settingsService above --- 
-                // const resolution = { width: 1920, height: 1080 }; // REMOVED HARDCODING
-
-                // Ensure Camera-Specific Subdirectory Exists
+                // Ensure Camera-Specific Subdirectory Exists within Session Directory
                 const cameraSubDir = path.join(sessionDir, recordingCameraName);
                 try {
                     if (!fs.existsSync(cameraSubDir)) {
@@ -396,9 +412,10 @@ async function action() {
                         console.log(`[Action] Created camera subdirectory: ${cameraSubDir}`);
                     }
                 } catch (mkdirError) {
+                    const errorMsg = `[Action] Error creating subdirectory for ${recordingCameraName}: ${mkdirError.message}`;
                     console.error(`[Action] Error creating camera subdirectory ${cameraSubDir}:`, mkdirError);
-                    broadcastConsole(`[Action] Error creating subdirectory for ${recordingCameraName}: ${mkdirError.message}`, 'error');
-                    continue;
+                    broadcastConsole(errorMsg, 'error');
+                    continue; // Skip this camera if dir creation fails
                 }
 
                 const workerData = {
@@ -406,7 +423,7 @@ async function action() {
                     useFfmpeg: useFfmpeg,
                     resolution: resolution, // Use resolution object from settingsService
                     devicePath: recordingDevicePath,
-                    sessionDirectory: sessionDir,
+                    sessionDirectory: sessionDir, // Pass the absolute session directory
                     durationSec: shotDurationSec
                 };
 
@@ -415,96 +432,227 @@ async function action() {
                 const worker = new Worker(path.resolve(__dirname, '../workers/recordingWorker.js'), { workerData });
 
                 worker.on('message', (message) => {
-                    console.log(`[Action Worker ${message.camera}] Message:`, message);
-                    broadcastConsole(`[Worker ${message.camera}] ${message.status}: ${message.message || ''}`, message.status === 'error' ? 'error' : 'info');
-                    // Look for 'capture_complete' now
-                    if (message.status === 'capture_complete') {
-                        broadcastConsole(`✅ [Worker ${message.camera}] Video capture complete! Output: ${message.resultPath}`, 'success');
-                        // Post-processing is no longer done by worker
-                    }
+                    // Handle messages from worker (e.g., progress, completion, errors)
+                     console.log(`[Worker ${recordingCameraName} MSG]:`, message);
+                     // Broadcast relevant status updates
+                     if(message.status === 'error') {
+                        broadcastConsole(`[Worker ${recordingCameraName} ERROR]: ${message.message}`, 'error');
+                     } else if (message.status === 'capture_complete') {
+                         broadcastConsole(`[Worker ${recordingCameraName}]: Capture complete. Result: ${message.resultPath}`, 'success');
+                     } else if (message.status) {
+                         broadcastConsole(`[Worker ${recordingCameraName}]: ${message.status} - ${message.message || ''}`, 'info');
+                     }
                 });
                 worker.on('error', (error) => {
-                    console.error(`[Action Worker ${recordingCameraName}] Error:`, error);
-                    broadcastConsole(`[Worker ${recordingCameraName}] Fatal error: ${error.message}`, 'error');
+                    console.error(`[Worker ${recordingCameraName} Error]:`, error);
+                    broadcastConsole(`[Worker ${recordingCameraName} FATAL ERROR]: ${error.message}`, 'error');
+                     // Remove worker from active list? Handle cleanup?
                 });
                 worker.on('exit', (code) => {
                     if (code !== 0) {
-                        console.error(`[Action Worker ${recordingCameraName}] Exited with code ${code}`);
-                        broadcastConsole(`[Worker ${recordingCameraName}] Worker stopped unexpectedly (code ${code})`, 'error');
+                        console.error(`[Worker ${recordingCameraName}] exited with code ${code}`);
+                        broadcastConsole(`[Worker ${recordingCameraName}] exited unexpectedly with code ${code}`, 'error');
+                    } else {
+                         console.log(`[Worker ${recordingCameraName}] exited successfully.`);
+                         broadcastConsole(`[Worker ${recordingCameraName}] finished processing.`, 'info');
                     }
-                    // Remove worker from active list or mark as complete
-                    const index = activeWorkers.indexOf(worker);
+                    // Remove worker from active list
+                    const index = activeWorkers.findIndex(w => w.worker === worker);
                     if (index > -1) activeWorkers.splice(index, 1);
-                    console.log(`[Action Worker ${recordingCameraName}] Exited after capture. Remaining workers: ${activeWorkers.length}`);
-                    // Check if all workers are done if needed later
                 });
 
-                activeWorkers.push(worker);
-                broadcastConsole(`[Action] Worker started for ${recordingCameraName}. Total active workers: ${activeWorkers.length}`);
-            } // End loop
-        } // End else
+                activeWorkers.push({ worker, name: recordingCameraName });
 
-        // --- Proceed with the rest of the action IMMEDIATELY --- 
-        // Don't wait for workers here
+                // --- NEW: Schedule PTZ Movements for this camera ---
+                if (shotCameraInfo.movements && shotCameraInfo.movements.length > 0) {
+                    broadcastConsole(`Scheduling ${shotCameraInfo.movements.length} PTZ movements for ${recordingCameraName}...`, 'info');
+                    shotCameraInfo.movements.forEach(move => {
+                        if (typeof move.time !== 'number' || move.time < 0) {
+                            broadcastConsole(`Invalid time (${move.time}) for movement in ${recordingCameraName}. Skipping.`, 'warn');
+                            return; // Skip invalid time
+                        }
+
+                        const delayMs = move.time * 1000;
+
+                        const timeoutId = setTimeout(async () => { // Make async for await inside
+                            try {
+                                const ptzPayload = {};
+                                let logMsg = `Executing PTZ for ${recordingCameraName} at ${move.time}s:`;
+
+                                if (typeof move.pan === 'number') {
+                                    ptzPayload.pan = mapPanDegreesToValue(move.pan);
+                                    logMsg += ` Pan=${move.pan}°(${ptzPayload.pan})`;
+                                }
+                                if (typeof move.tilt === 'number') {
+                                    ptzPayload.tilt = mapTiltDegreesToValue(move.tilt);
+                                    logMsg += ` Tilt=${move.tilt}°(${ptzPayload.tilt})`;
+                                }
+                                // Zoom is 0-100, passed directly
+                                if (typeof move.zoom === 'number' && move.zoom >= 0 && move.zoom <= 100) {
+                                    ptzPayload.zoom = move.zoom;
+                                    logMsg += ` Zoom=${move.zoom}%`;
+                                } else if (move.zoom !== undefined) {
+                                     broadcastConsole(`Invalid zoom value (${move.zoom}) for ${recordingCameraName} at ${move.time}s. Must be 0-100. Ignoring zoom.`, 'warn');
+                                }
+
+                                if (Object.keys(ptzPayload).length > 0) {
+                                    broadcastConsole(logMsg, 'info');
+                                    await cameraControl.setPTZ(recordingCameraName, ptzPayload);
+                                } else {
+                                     broadcastConsole(`No valid PTZ values found for ${recordingCameraName} at ${move.time}s.`, 'warn');
+                                }
+
+                            } catch (ptzError) {
+                                console.error(`Error executing PTZ for ${recordingCameraName} at time ${move.time}:`, ptzError);
+                                broadcastConsole(`Error executing PTZ for ${recordingCameraName}: ${ptzError.message}`, 'error');
+                            }
+                        }, delayMs);
+                        cameraMovementTimeouts.push(timeoutId); // Store timeout ID for potential clearing
+                    });
+                } else {
+                     broadcastConsole(`No PTZ movements defined for ${recordingCameraName} in this shot.`, 'info');
+                }
+                // --- END NEW ---
+
+            } // End for loop cameras
+        } // End else (has cameras)
+
+        // --- Proceed with the rest of the action ---
+        // Don't wait for workers here, but maybe wait for PTZ scheduling? (No, setTimeout is non-blocking)
 
         broadcastConsole('Brief pause for recording(s) to initialize...');
         await new Promise(resolve => setTimeout(resolve, 500)); // Short pause remains
+
         broadcastConsole('Proceeding with shot actions...');
 
-        // --- Perform camera movements for this shot --- 
-        // TODO: Implement camera movement logic - needs careful coordination if multiple cameras move
-        broadcastConsole('Camera movement logic needs implementation.', 'warn');
-        // --------------------------------------------
+        // --- Camera movement logic is now handled by scheduled setTimeouts above ---
+        // broadcastConsole('Camera movement logic needs implementation.', 'warn'); // REMOVED
 
         // Speak action cue
-        aiVoice.speak("Action!");
+        aiVoice.speak("Action!"); // TODO: Make this configurable or optional?
 
         // --- BROADCAST SHOT_START ---
         try {
             broadcast({ // Broadcast SHOT_START with scene and shot info
                 type: 'SHOT_START',
                 scene: { directory: currentScene }, // Send scene directory
-                shot: shot // Send full shot data if needed by other clients
+                // shot: shot // Send full shot data - might be large, maybe send just identifier?
+                shot: { name: shot.name, number: shot.number, duration: shotDurationSec } // Send essential info
             });
-            // This confirmation log might only run if broadcast succeeds
-            broadcastConsole(`Broadcasted SHOT_START for Scene: ${currentScene}, Shot: ${currentShotIdentifier}`, 'success');
+            broadcastConsole(`Broadcasted SHOT_START for Scene: ${currentScene}, Shot: ${shotRef}`, 'success');
         } catch (broadcastError) {
             broadcastConsole(`!!! ERROR Broadcasting SHOT_START: ${broadcastError.message}`, 'error');
             console.error("!!! ERROR Broadcasting SHOT_START:", broadcastError); // Log full error server-side
         }
         // --- END BROADCAST ---
 
-        // Wait for the shot duration + a buffer
-        // This wait is for the *performance* duration, not the recording process
-        const waitDuration = shotDurationSec * 1000 + 2000; // Add 2s buffer
-        broadcastConsole(`Waiting ${waitDuration / 1000} seconds for shot performance duration...`);
-        await new Promise(resolve => setTimeout(resolve, waitDuration));
+        // --- Wait for the shot duration + a buffer ---
+        // This wait is primarily for the *performance* timing, not necessarily for worker completion.
+        const waitDurationMs = shotDurationSec * 1000 + 2000; // Add 2s buffer
+        broadcastConsole(`Waiting ${waitDurationMs / 1000} seconds for shot performance duration...`);
+
+        // We also need to potentially stop the PTZ commands if the action is cancelled early
+        // or ensure they don't run past the intended shot duration if something goes wrong.
+        // For now, we let them run. Consider adding cleanup logic if needed.
+
+        await new Promise(resolve => setTimeout(resolve, waitDurationMs));
         broadcastConsole('Shot performance time elapsed.');
 
-        // --- IMPORTANT: Post-processing is now handled *within* the worker --- 
-        // The code previously here (extractFrames, processFrames, encodeVideo) is GONE.
-        // The main 'action' function is now only responsible for *starting* the workers
-        // and managing the live performance timing.
+        // --- BROADCAST SHOT_END ---
+        try {
+             broadcast({
+                type: 'SHOT_END',
+                scene: { directory: currentScene },
+                shot: { name: shot.name, number: shot.number }
+            });
+            broadcastConsole(`Broadcasted SHOT_END for Scene: ${currentScene}, Shot: ${shotRef}`, 'success');
+        } catch (broadcastError) {
+            broadcastConsole(`!!! ERROR Broadcasting SHOT_END: ${broadcastError.message}`, 'error');
+            console.error("!!! ERROR Broadcasting SHOT_END:", broadcastError);
+        }
+        // --- END BROADCAST ---
 
-        broadcastConsole(`Shot '${currentShotIdentifier}' performance concluded. Recording/processing continues in background workers.`);
 
-        // Broadcast SHOT_ENDED - maybe rename to SHOT_PERFORMANCE_ENDED?
-        // The actual video files aren't ready yet.
-        broadcast({ type: 'SHOT_PERFORMANCE_ENDED', scene: scene, shot: shot, shotIndex: currentSceneTakeIndex });
+        // --- Clean up PTZ timeouts ---
+        broadcastConsole('Clearing any pending PTZ movement timeouts.', 'info');
+        cameraMovementTimeouts.forEach(clearTimeout);
+        cameraMovementTimeouts.length = 0; // Clear the array
 
-        // TODO: Logic for advancing. Should we wait for workers to finish before advancing?
-        // For now, we advance immediately after performance time.
-        // If we need to wait, we'd need to track worker completion (e.g., using Promise.all on worker exit promises)
 
-    } catch (err) {
-        // This catches errors during the setup phase (finding cameras, starting workers)
-        broadcastConsole(`Error during action setup: ${err.message}`, 'error');
-        console.error("Action Setup Error:", err);
-        // Ensure any started workers are terminated?
-        activeWorkers.forEach(worker => worker.terminate());
+        // --- Signal Workers to Stop (if necessary) ---
+        // Currently, workers stop based on durationSec passed in workerData.
+        // If we needed manual stopping, we'd post a message here.
+        broadcastConsole('Workers will stop based on their duration. Waiting for worker completion messages...');
+
+        // Optional: Wait for workers to finish?
+        // This might block the controller for too long.
+        // The current approach lets workers finish asynchronously.
+
+        // TODO: Implement logic for when recording *actually* finishes.
+        // Workers send 'capture_complete' or 'error'. We might need to track this.
+
+        // Optionally send success response if called via HTTP
+        if (res) res.json({ success: true, message: `Action sequence initiated for shot ${shotRef}. Workers started.` });
+
+
+    } catch (error) {
+        // Catch synchronous errors during setup (e.g., worker creation issues)
+        const errorMsg = `[Action] Top-level error during action setup for shot ${shotRef}: ${error.message}`;
+        console.error(errorMsg, error); // Log full error
+        broadcastConsole(errorMsg, 'error');
+
+        // Clean up any started workers and timeouts
+        activeWorkers.forEach(({ worker, name }) => {
+            broadcastConsole(`Terminating worker ${name} due to error...`, 'warn');
+            worker.terminate();
+        });
+        activeWorkers.length = 0; // Clear array
+        cameraMovementTimeouts.forEach(clearTimeout);
+        cameraMovementTimeouts.length = 0;
+
+        // Optionally send error response if called via HTTP
+        if (res) return res.status(500).json({ success: false, message: errorMsg });
     }
-    broadcastConsole('Action function finished dispatching tasks.');
 }
+
+function getCurrentSceneState() {
+    // ... existing code ...
+}
+
+// --- NEW: PTZ Mapping Functions ---
+/**
+ * Maps a value from one range to another.
+ */
+function mapRange(value, inMin, inMax, outMin, outMax) {
+  // Clamp value to input range
+  const clampedValue = Math.max(inMin, Math.min(value, inMax));
+  return outMin + ((clampedValue - inMin) * (outMax - outMin)) / (inMax - inMin);
+}
+
+/**
+ * Maps pan degrees (-140 to +140) to camera software value (-468000 to 468000).
+ */
+function mapPanDegreesToValue(degrees) {
+    const PAN_DEG_MIN = -140;
+    const PAN_DEG_MAX = 140;
+    const PAN_VAL_MIN = -468000;
+    const PAN_VAL_MAX = 468000;
+    return Math.round(mapRange(degrees, PAN_DEG_MIN, PAN_DEG_MAX, PAN_VAL_MIN, PAN_VAL_MAX));
+}
+
+/**
+ * Maps tilt degrees (-70 to +30) to camera software value (-324000 to 324000).
+ */
+function mapTiltDegreesToValue(degrees) {
+    const TILT_DEG_MIN = -70; // Downward
+    const TILT_DEG_MAX = 30;  // Upward
+    const TILT_VAL_MIN = -324000; // Corresponds to -70 deg
+    const TILT_VAL_MAX = 324000; // Corresponds to +30 deg
+    // IMPORTANT: The mapping might be inverted depending on camera hardware/v4l2 interpretation.
+    // Assuming -70 deg maps to min value and +30 deg maps to max value. Adjust if needed.
+    return Math.round(mapRange(degrees, TILT_DEG_MIN, TILT_DEG_MAX, TILT_VAL_MIN, TILT_VAL_MAX));
+}
+// --- END NEW ---
 
 module.exports = {
     initScene,

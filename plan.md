@@ -57,6 +57,8 @@ The application is built with **Node.js**, acting as the core event controller:
 - **Plays AI audio voice cues** via text-to-speech APIs (this will not be in use for the first run of the project, which uses a human comedian).
 - **Coordinates main and mobile teleprompter displays** through a local web interface and WebSocket communication. The main teleprompter shows initialization status and actor assignments with headshots and QR codes. Character teleprompters show specific lines and cues.
 
+* **Timed PTZ Control**: During scene recording ("Action!"), reads camera movement sequences (pan, tilt, zoom timings in degrees/percent) from `database/scenes.json`. Maps degrees to camera-specific software values and schedules `setPTZ` commands via `setTimeout` to execute movements at designated times within the shot.
+
 #### **Hardware & Camera Control**
 
 - **PTZ cameras** track and record actor performances.
