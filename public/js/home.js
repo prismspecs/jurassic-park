@@ -7,6 +7,22 @@ import {
     populateSessionList 
 } from './modules/session-manager.js';
 import { initializeWebSocket, sendWebSocketMessage } from './modules/websocket-handler.js';
+import {
+    toggleVoiceBypass,
+    openTeleprompter,
+    openCharacterTeleprompter,
+    testTeleprompter,
+    testTeleprompterVideo,
+    clearTeleprompter,
+    initShot,
+    actorsReady,
+    action,
+    testConsole,
+    pauseAllTeleprompters,
+    playAllTeleprompters,
+    handlePipelineChange,
+    handleResolutionChange
+} from './modules/control-actions.js';
 
 // Wrap everything in an event listener to ensure the DOM is ready,
 // especially if the script tag doesn't use 'defer'.
@@ -37,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const sceneDir = shotCard.dataset.sceneDir; // Access data-* attributes
         const shotId = shotCard.dataset.shotId;
         if (sceneDir && shotId) {
-          initShot(sceneDir, shotId); // Call the function directly
+          initShot(sceneDir, shotId); // Use imported function
         }
       }
     });
@@ -46,21 +62,24 @@ document.addEventListener('DOMContentLoaded', () => {
   // Attach listeners for other control buttons by ID
   document.getElementById('actionBtn')?.addEventListener('click', action);
   document.getElementById('actorsReadyBtn')?.addEventListener('click', actorsReady);
-  document.getElementById('testRecordBtn')?.addEventListener('click', testAudioRecord);
-  document.getElementById('voiceBypassBtn')?.addEventListener('click', toggleVoiceBypass);
-  document.getElementById('testAudioRecordBtn')?.addEventListener('click', testAudioRecord);
-  document.getElementById('playLastAudioBtn')?.addEventListener('click', playLastRecording);
-  document.getElementById('clearAudioBtn')?.addEventListener('click', clearAudio);
+  document.getElementById('voiceBypassBtn')?.addEventListener('click', async () => { 
+      // Update state based on the returned value from the async function
+      voiceBypassEnabled = await toggleVoiceBypass(voiceBypassEnabled); 
+      updateVoiceBypassButton(); // Update UI after state change
+  });
+  document.getElementById('testConsoleBtn')?.addEventListener('click', testConsole);
   document.getElementById('openTeleprompterBtn')?.addEventListener('click', openTeleprompter);
   document.getElementById('openAlanTeleprompterBtn')?.addEventListener('click', () => openCharacterTeleprompter('alan'));
   document.getElementById('openEllieTeleprompterBtn')?.addEventListener('click', () => openCharacterTeleprompter('ellie'));
   document.getElementById('testTeleprompterBtn')?.addEventListener('click', testTeleprompter);
+  document.getElementById('testTeleprompterVideoBtn')?.addEventListener('click', testTeleprompterVideo);
   document.getElementById('clearTeleprompterBtn')?.addEventListener('click', clearTeleprompter);
   document.getElementById('pauseTeleprompterBtn')?.addEventListener('click', pauseAllTeleprompters);
   document.getElementById('playTeleprompterBtn')?.addEventListener('click', playAllTeleprompters);
   // Listener for recording pipeline dropdown
    document.getElementById('recording-pipeline')?.addEventListener('change', (e) => handlePipelineChange(e.target.value));
-  // Listener for recording resolution dropdown (already added)
+  // Listener for recording resolution dropdown
+  document.getElementById('recording-resolution')?.addEventListener('change', (e) => handleResolutionChange(e.target.value));
 
   // --- OLD Session Functions (Keep for reference/potential reuse if needed) ---
   /*
@@ -76,184 +95,27 @@ document.addEventListener('DOMContentLoaded', () => {
   */
 
   // --- Control Button Functions ---
-  function toggleVoiceBypass() {
-    const newState = !voiceBypassEnabled;
-    fetch("/setVoiceBypass", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: newState }),
-    })
-      .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
-      .then(info => {
-        voiceBypassEnabled = newState; // Update state only on success
-        updateVoiceBypassButton();
-        document.getElementById("status").innerText = info.message;
-        logToConsole(`Voice Bypass ${newState ? 'enabled' : 'disabled'}.`, 'info');
-      })
-      .catch(err => {
-        console.error("Set Bypass Error:", err);
-        document.getElementById("status").innerText = "Error setting bypass: " + err;
-        logToConsole(`Error setting bypass: ${err}`, 'error');
-        // Don't change UI state if request failed
-      });
-  }
+  // REMOVE ALL FUNCTION DEFINITIONS FROM HERE...
+  /*
+  function toggleVoiceBypass() { ... }
+  function openTeleprompter() { ... }
+  function openCharacterTeleprompter(character) { ... }
+  function testTeleprompter() { ... }
+  function testTeleprompterVideo() { ... }
+  function clearTeleprompter() { ... }
+  function initShot(sceneDirectory, shotIdentifier) { ... }
+  function actorsReady() { ... }
+  function action() { ... }
+  function testConsole() { ... }
+  function pauseAllTeleprompters() { ... }
+  function playAllTeleprompters() { ... }
+  function handlePipelineChange(pipeline) { ... }
+  function handleResolutionChange(resolution) { ... }
+  */
+  // ... TO HERE
 
-  function openTeleprompter() {
-    window.open("/teleprompter", "teleprompter", "width=800,height=600");
-  }
-
-  function openCharacterTeleprompter(character) {
-    window.open(`/teleprompter/${character}`, `teleprompter-${character}`, "width=800,height=600");
-  }
-
-  function testTeleprompter() {
-    logToConsole("Testing teleprompter message...", 'info');
-    // Example actor ID - replace if needed
-    const exampleActorId = "Alan-Grant-A1B2C3";
-    const headshotPath = `/database/actors/${exampleActorId}/headshot.jpg`;
-    fetch("/teleprompter/updateTeleprompter", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: "Test message with image", image: headshotPath }),
-    })
-      .then(res => { if (!res.ok) logToConsole(`Test Teleprompter Error (1): ${res.statusText}`, 'error'); })
-      .catch(err => logToConsole(`Test Teleprompter Error (1): ${err}`, 'error'));
-    setTimeout(() => {
-      fetch("/teleprompter/updateTeleprompter", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: "Test message without image" }),
-      })
-        .then(res => { if (!res.ok) logToConsole(`Test Teleprompter Error (2): ${res.statusText}`, 'error'); })
-        .catch(err => logToConsole(`Test Teleprompter Error (2): ${err}`, 'error'));
-    }, 3000);
-  }
-
-  function testTeleprompterVideo() {
-    logToConsole("Testing teleprompter video...", 'info');
-    const exampleVideoPath = "/database/test_content/freefall.mp4"; // Check path
-    fetch("/teleprompter/playTeleprompterVideo", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ videoPath: exampleVideoPath }),
-    })
-      .then(res => { if (!res.ok) logToConsole(`Test Teleprompter Video Error: ${res.statusText}`, 'error'); })
-      .catch(err => logToConsole(`Test Teleprompter Video Error: ${err}`, 'error'));
-  }
-
-  function clearTeleprompter() {
-    logToConsole("Clearing teleprompter...", 'info');
-    fetch("/teleprompter/clearTeleprompter", { method: "POST" })
-      .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
-      .then(info => {
-        document.getElementById("status").innerText = info.message;
-        logToConsole("Teleprompter cleared.", 'info');
-      })
-      .catch(err => {
-        console.error("Clear Teleprompter Error:", err);
-        document.getElementById("status").innerText = "Error clearing teleprompter: " + err;
-        logToConsole(`Error clearing teleprompter: ${err}`, 'error');
-      });
-  }
-
-  function initShot(sceneDirectory, shotIdentifier) {
-    const sceneDirDecoded = decodeURIComponent(sceneDirectory);
-    const shotIdDecoded = decodeURIComponent(shotIdentifier);
-    logToConsole(`Requesting shot init: Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}'`, 'info');
-    document.getElementById("status").innerText = `Initializing Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}'...`;
-    
-    const apiUrl = `/initShot/${sceneDirectory}/${shotIdentifier}`; 
-    
-    fetch(apiUrl)
-      .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
-      .then(info => {
-        document.getElementById("status").innerText = info.message;
-        logToConsole(`Shot init request sent for Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}'.`, 'success');
-      })
-      .catch(err => {
-        console.error("Init Shot Error:", err);
-        document.getElementById("status").innerText = "Error initializing shot: " + err;
-        logToConsole(`Error initializing Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}': ${err}`, 'error');
-      });
-  }
-
-  function actorsReady() {
-    logToConsole("Sending Actors Ready signal...", 'info');
-    document.getElementById("status").innerText = "Notifying system: actors ready...";
-    fetch("/actorsReady", { method: "POST" })
-      .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
-      .then(info => {
-        document.getElementById("status").innerText = info.message;
-        logToConsole("Actors Ready signal sent.", 'success');
-      })
-      .catch(err => {
-        console.error("Actors Ready Error:", err);
-        document.getElementById("status").innerText = "Error sending Actors Ready: " + err;
-        logToConsole(`Error sending Actors Ready: ${err}`, 'error');
-      });
-  }
-
-  function action() {
-    logToConsole("Sending Action signal...", 'info');
-    document.getElementById("status").innerText = "Starting action...";
-    fetch("/action", { method: "POST" })
-      .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
-      .then(info => {
-        document.getElementById("status").innerText = info.message;
-        logToConsole("Action signal sent.", 'success');
-      })
-      .catch(err => {
-        console.error("Action Error:", err);
-        document.getElementById("status").innerText = "Error sending Action: " + err;
-        logToConsole(`Error sending Action: ${err}`, 'error');
-      });
-  }
-
-  function testConsole() {
-    fetch("/testConsole", { method: "POST" })
-      .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
-      .then(info => { document.getElementById("status").innerText = info.message; })
-      .catch(err => {
-        console.error("Test Console Error:", err);
-        document.getElementById("status").innerText = "Error testing console: " + err;
-      });
-  }
-
-  function pauseAllTeleprompters() {
-    sendWebSocketMessage({ type: "TELEPROMPTER_CONTROL", action: "PAUSE" });
-    logToConsole("Paused all teleprompters", "info");
-  }
-
-  function playAllTeleprompters() {
-    sendWebSocketMessage({ type: "TELEPROMPTER_CONTROL", action: "PLAY" });
-    logToConsole("Resumed all teleprompters", "info");
-  }
-
-  function handlePipelineChange(pipeline) {
-    logToConsole(`Pipeline changed to: ${pipeline}`, 'info');
-    // Update the server-side setting
-    fetch('/api/settings/recording-pipeline', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pipeline: pipeline })
-    })
-    .then(response => {
-        if (!response.ok) {
-            response.text().then(text => { throw new Error(text || 'Failed to set pipeline') });
-        }
-        return response.json();
-    })
-    .then(data => {
-        logToConsole(`Server setting updated: ${data.message}`, 'success');
-    })
-    .catch(error => {
-        logToConsole(`Error updating server pipeline setting: ${error.message}`, 'error');
-    });
-
-    // You might want to update the CameraManager's internal state or UI if needed,
-    // but currently the pipeline is only read server-side during recording start.
-  }
-
+  // --- Audio Functions --- 
+  // Keep these for now, might move to audio-handler.js later
   function testAudioRecord() {
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then((stream) => {
@@ -263,7 +125,6 @@ document.addEventListener('DOMContentLoaded', () => {
         mediaRecorder.onstop = async () => {
           const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
           const formData = new FormData();
-          // Use a timestamp in the filename for uniqueness in temp dir
           formData.append("audio", audioBlob, `rec_${Date.now()}.webm`);
           logToConsole("Sending audio data to server...", 'info');
           try {
@@ -273,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
               throw new Error(data.message || `HTTP error ${response.status}`);
             }
             logToConsole(`Audio recorded: ${data.filename}`, "info");
-            lastAudioRecording = data.filename; // Store relative filename from session dir
+            lastAudioRecording = data.filename; 
           } catch (err) {
             logToConsole(`Error recording audio: ${err.message}`, "error");
           }
@@ -285,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (mediaRecorder.state === "recording") {
               mediaRecorder.stop();
             }
-            stream.getTracks().forEach((track) => track.stop()); // Stop microphone access
+            stream.getTracks().forEach((track) => track.stop()); 
           } catch (e) { console.error("Error stopping recorder/stream:", e); }
         }, 5000);
       })
@@ -302,8 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
       logToConsole("Cannot determine current session ID to play audio.", "error");
       return;
     }
-    // Assumes Express serves /recordings static path
-    const audioUrl = `/recordings/${currentSessionId.trim()}/${lastAudioRecording}`; // Added trim()
+    const audioUrl = `/recordings/${currentSessionId.trim()}/${lastAudioRecording}`;
     logToConsole(`Attempting to play: ${audioUrl}`, 'info');
     const audio = new Audio(audioUrl);
     audio.onerror = (e) => {
@@ -320,8 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
       logToConsole("No audio recording available to clear", "warn");
       return;
     }
-    logToConsole("Clear Audio button needs server-side endpoint (e.g., DELETE /api/sessions/:id/audio/:filename).", "warn");
-    // Example client-side removal (doesn't delete server file):
+    logToConsole("Clear Audio button needs server-side endpoint.", "warn");
     // lastAudioRecording = null;
     // logToConsole("Cleared last audio recording reference (client-side only).", "info");
   }
@@ -333,7 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (loadActorsBtn && actorFilesInput && loadActorsStatus) {
     loadActorsBtn.addEventListener('click', async () => {
       const files = actorFilesInput.files;
-      if (!files || files.length === 0) { // Check if files is null or empty
+      if (!files || files.length === 0) { 
         loadActorsStatus.textContent = 'Please select files to load.';
         loadActorsStatus.className = 'status-error'; return;
       }
@@ -371,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .then((res) => res.json())
         .then((data) => {
           voiceBypassEnabled = data.enabled;
-          updateVoiceBypassButton(); // Call the function defined in this scope
+          updateVoiceBypassButton(); 
         })
         .catch((err) => {
           console.error("Error fetching voice bypass state:", err);
