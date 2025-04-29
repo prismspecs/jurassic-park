@@ -289,16 +289,10 @@ async function action(req, res) {
     const shotDurationSec = (durationParts.length === 2) ? (durationParts[0] * 60 + durationParts[1]) : (durationParts[0] || 5); // Default to 5s
     broadcastConsole(`Shot duration: ${shotDurationSec} seconds`);
 
-    // Start recording audio with the AudioRecorder
-    broadcastConsole('Starting audio recording...', 'info');
-    audioRecorder.startRecording(sessionDir, shotDurationSec); // Pass duration
-
-    // Get the currently selected recording pipeline from settings service
+    // --- Get Recording Settings ---
     const useFfmpeg = settingsService.shouldUseFfmpeg();
     const pipelineName = useFfmpeg ? 'FFmpeg' : 'GStreamer';
     broadcastConsole(`Using recording pipeline from settings: ${pipelineName}`, 'info');
-
-    // Get the currently selected recording resolution from settings service
     const resolution = settingsService.getRecordingResolution(); // Returns {width, height}
     broadcastConsole(`Using recording resolution from settings: ${resolution.width}x${resolution.height}`, 'info');
 
@@ -453,11 +447,13 @@ async function action(req, res) {
             } // End for loop cameras
         } // End else (has cameras)
 
-        // --- Proceed with the rest of the action ---
-        // Don't wait for workers here, but maybe wait for PTZ scheduling? (No, setTimeout is non-blocking)
+        // --- Start Audio Recording (AFTER starting video workers) ---
+        broadcastConsole('Starting audio recording...', 'info');
+        audioRecorder.startRecording(sessionDir, shotDurationSec); // Pass duration
 
-        broadcastConsole('Brief pause for recording(s) to initialize...');
-        await new Promise(resolve => setTimeout(resolve, 500)); // Short pause remains
+        // --- Proceed with the rest of the action ---
+        // broadcastConsole('Brief pause for recording(s) to initialize...'); // Maybe remove or shorten this pause?
+        // await new Promise(resolve => setTimeout(resolve, 100)); // Shortened pause
 
         broadcastConsole('Proceeding with shot actions...');
 
@@ -539,34 +535,19 @@ async function action(req, res) {
         cameraMovementTimeouts.forEach(clearTimeout);
         cameraMovementTimeouts.length = 0; // Clear the array
 
-        // Stop audio recording
-        broadcastConsole('Stopping audio recording...', 'info');
-        audioRecorder.stopRecording();
+        // Stop audio recording (Allowing duration to handle it, but stop explicitly as fallback?)
+        // Let's REMOVE the explicit stop and rely on duration passed to startRecording
+        // broadcastConsole('Stopping audio recording explicitly...', 'info'); // Keep commented out for now
+        // audioRecorder.stopRecording();
 
-        // --- Signal Workers to Stop (if necessary) ---
-        // Audio recording is stopped above explicitly or via duration.
-        // Video workers stop based on durationSec passed in workerData.
-        // If we needed manual stopping for video, we'd post a message here.
-        // broadcastConsole('Video workers will stop based on their duration. Waiting for worker completion messages...'); // Moved earlier
+        // Video workers should stop based on their durationSec.
+        // Wait for all workers to signal completion (or error/exit)
 
-        // Optional: Wait for workers to finish?
-        // This might block the controller for too long.
-        // The current approach lets workers finish asynchronously.
+        // Force stop audio recording if it might still be running
+        broadcastConsole('Force stopping audio recording (on error)...', 'warn');
+        audioRecorder.stopRecording(); // Use explicit stop here
 
-        // TODO: Implement logic for when recording *actually* finishes.
-        // Workers send 'capture_complete' or 'error'. We might need to track this.
-
-        // Optionally send success response if called via HTTP
-        if (res) res.json({ success: true, message: `Action sequence initiated for shot ${shotRef}. Workers started.` });
-
-
-    } catch (error) { // Ensure catch block correctly closes the try block
-        // Catch synchronous errors during setup (e.g., worker creation issues)
-        const errorMsg = `[Action] Top-level error during action setup for shot ${shotRef}: ${error.message}`;
-        console.error(errorMsg, error); // Log full error
-        broadcastConsole(errorMsg, 'error');
-
-        // Clean up any started workers and timeouts
+        // Signal workers to terminate immediately (if possible)
         activeWorkers.forEach(({ worker, name }) => {
             broadcastConsole(`Terminating worker ${name} due to error...`, 'warn');
             try {
@@ -575,15 +556,50 @@ async function action(req, res) {
                 console.error(`Error terminating worker ${name}:`, terminateError);
             }
         });
-        cameraMovementTimeouts.forEach(clearTimeout);
+
+        // Optionally send success response if called via HTTP
+        if (res) res.json({ success: true, message: `Action sequence initiated for shot ${shotRef}. Workers started.` });
+
+
+    } catch (error) { // Catch block for the main try
+        console.error("Error during action execution:", error);
+        broadcastConsole(`Action failed: ${error.message}`, 'error');
+
+        // --- Emergency Stop/Cleanup on Error ---
+        broadcastConsole('Attempting emergency cleanup...', 'warn');
+        cameraMovementTimeouts.forEach(clearTimeout); // Clear any pending movements
         cameraMovementTimeouts.length = 0;
 
-        // Stop audio recording in case of error
-        broadcastConsole('Stopping audio recording due to error...', 'warn');
-        audioRecorder.stopRecording();
+        // Force stop audio recording if it might still be running
+        broadcastConsole('Force stopping audio recording (on error)...', 'warn');
+        audioRecorder.stopRecording(); // Use explicit stop here
 
-        // Optionally send error response if called via HTTP
-        if (res) return res.status(500).json({ success: false, message: errorMsg });
+        // Signal workers to terminate immediately (if possible)
+        broadcastConsole('Attempting to terminate active video workers (on error)...', 'warn');
+        activeWorkers.forEach(({ worker, name }) => {
+            try {
+                broadcastConsole(`Terminating worker for ${name}...`, 'warn');
+                worker.terminate().then(() => {
+                    broadcastConsole(`Worker for ${name} terminated.`, 'info');
+                }).catch(termErr => {
+                    console.error(`Error terminating worker ${name}:`, termErr);
+                    broadcastConsole(`Error terminating worker ${name}: ${termErr.message}`, 'error');
+                });
+            } catch (termErr) {
+                 console.error(`Exception terminating worker ${name}:`, termErr);
+                 broadcastConsole(`Exception terminating worker ${name}: ${termErr.message}`, 'error');
+            }
+        });
+        activeWorkers.length = 0; // Clear the array
+
+        // TODO: Add any other necessary cleanup steps
+
+        if (res) return res.status(500).json({ success: false, message: `Action failed: ${error.message}` });
+
+    } finally {
+        // Code here runs whether try succeeded or failed
+        // Might be useful for final state updates
+        console.log("Action function finally block reached.");
     }
 }
 
