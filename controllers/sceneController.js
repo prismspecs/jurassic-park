@@ -361,15 +361,15 @@ async function action(req, res) {
         return;
     }
 
-    // Start recording audio with the AudioRecorder
-    broadcastConsole('Starting audio recording...', 'info');
-    audioRecorder.startRecording(sessionDir);
-
-    // Determine shot duration
+    // Determine shot duration FIRST
     const shotDurationStr = shot.duration || '0:05'; // Default if not specified
     const durationParts = shotDurationStr.split(':').map(Number);
     const shotDurationSec = (durationParts.length === 2) ? (durationParts[0] * 60 + durationParts[1]) : (durationParts[0] || 5); // Default to 5s
     broadcastConsole(`Shot duration: ${shotDurationSec} seconds`);
+
+    // Start recording audio with the AudioRecorder
+    broadcastConsole('Starting audio recording...', 'info');
+    audioRecorder.startRecording(sessionDir, shotDurationSec); // Pass duration
 
     // Get the currently selected recording pipeline from settings service
     const useFfmpeg = settingsService.shouldUseFfmpeg();
@@ -577,9 +577,10 @@ async function action(req, res) {
         audioRecorder.stopRecording();
 
         // --- Signal Workers to Stop (if necessary) ---
-        // Currently, workers stop based on durationSec passed in workerData.
-        // If we needed manual stopping, we'd post a message here.
-        broadcastConsole('Workers will stop based on their duration. Waiting for worker completion messages...');
+        // Audio recording is stopped above explicitly or via duration.
+        // Video workers stop based on durationSec passed in workerData.
+        // If we needed manual stopping for video, we'd post a message here.
+        broadcastConsole('Video workers will stop based on their duration. Waiting for worker completion messages...');
 
         // Optional: Wait for workers to finish?
         // This might block the controller for too long.

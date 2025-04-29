@@ -187,7 +187,7 @@ class AudioRecorder {
         }
     }
 
-    startRecording(sessionPath) {
+    startRecording(sessionPath, durationSec = null) {
         if (this.activeDevices.size === 0) {
             console.log("No active audio devices selected for recording.");
             return;
@@ -199,13 +199,6 @@ class AudioRecorder {
             return;
         }
 
-        // Make audio files folder if it doesn't exist
-        const audioDir = path.join(sessionPath, 'audio');
-        if (!fs.existsSync(audioDir)) {
-            fs.mkdirSync(audioDir, { recursive: true });
-            console.log(`Created audio directory: ${audioDir}`);
-        }
-
         console.log(`Starting audio recording for ${this.activeDevices.size} devices in session: ${sessionPath}`);
         this.recordingCounter++; // Increment for this recording session (Action!)
 
@@ -214,29 +207,46 @@ class AudioRecorder {
             if (this.recordingProcesses.has(deviceId)) {
                 console.warn(`Device ${deviceId} is already recording. Stopping the current recording first.`);
                 this._stopDeviceRecording(deviceId);
-                // Wait a moment to ensure cleanup
-                setTimeout(() => this._startDeviceRecording(deviceId, deviceData, audioDir), 500);
+                // Wait a moment to ensure cleanup and pass duration, use sessionPath directly
+                setTimeout(() => this._startDeviceRecording(deviceId, deviceData, sessionPath, durationSec), 500);
             } else {
-                this._startDeviceRecording(deviceId, deviceData, audioDir);
+                // Pass duration, use sessionPath directly
+                this._startDeviceRecording(deviceId, deviceData, sessionPath, durationSec);
             }
         });
     }
     
-    _startDeviceRecording(deviceId, deviceData, audioDir) {
+    _startDeviceRecording(deviceId, deviceData, sessionPath, durationSec = null) {
         // Format a proper device number for the filename
         const deviceNumber = this.activeDevices.size > 1 ? 
             Array.from(this.activeDevices.keys()).indexOf(deviceId) + 1 : 1;
         
-        const fileName = `Audio_${deviceNumber}.wav`;
-        const filePath = path.join(audioDir, fileName);
+        // Create device-specific directory directly under sessionPath
+        const deviceAudioDir = path.join(sessionPath, `Audio_${deviceNumber}`);
+        if (!fs.existsSync(deviceAudioDir)) {
+            fs.mkdirSync(deviceAudioDir, { recursive: true });
+            console.log(`Created device audio directory: ${deviceAudioDir}`);
+        }
+        
+        const fileName = `original.wav`; // Set fixed filename
+        const filePath = path.join(deviceAudioDir, fileName);
 
         console.log(`Starting recording for ${deviceData.name} (${deviceId}) -> ${filePath}`);
 
         let recorderProcess;
+        // Build arecord command with optional duration
+        let command = `arecord -D ${deviceId} -f cd -t wav`;
+        if (durationSec && durationSec > 0) {
+            command += ` -d ${Math.ceil(durationSec)}`; // Use ceil to ensure full duration
+            console.log(`Recording duration set to ${Math.ceil(durationSec)} seconds.`);
+        } else {
+             console.warn(`No duration specified for recording ${filePath}. It may run indefinitely until manually stopped.`);
+        }
+        command += ` "${filePath}"`; // Add file path at the end, quoted
+        
         if (this.platform === 'linux') {
-            // Example using arecord directly. Choose format, rate, etc.
-            // arecord -D hw:0,0 -f S16_LE -r 44100 -c 1 filename.wav
-            recorderProcess = exec(`arecord -D ${deviceId} -f cd -t wav "${filePath}"`, (error, stdout, stderr) => {
+            console.log(`Executing: ${command}`);
+            recorderProcess = exec(command, (error, stdout, stderr) => {
                 // This callback executes when the process *finishes* or errors *during* execution.
                 // We rely on the 'exit' event for cleanup after explicit stopping.
                 if (error && !recorderProcess.killed) { // Check !killed because we expect an error on SIGTERM/SIGKILL
@@ -252,7 +262,16 @@ class AudioRecorder {
             // Finding the correct index/UID mapping might need more work from detectAudioInputDevices
             console.warn(`Recording implementation for macOS needs specific library/tool setup (e.g., ffmpeg, sox). Device ID used: ${deviceId}`);
             // Placeholder: Replace with actual command using ffmpeg or sox and the correct device identifier
-            // recorderProcess = exec(`ffmpeg -f avfoundation -i ":${deviceId}" -ar 44100 -ac 1 "${filePath}"`, ...);
+            let macCommand = `ffmpeg -f avfoundation -i ":${deviceId}" -ar 44100 -ac 1`;
+            if (durationSec && durationSec > 0) {
+                macCommand += ` -t ${Math.ceil(durationSec)}`;
+                console.log(`Recording duration set to ${Math.ceil(durationSec)} seconds.`);
+            } else {
+                 console.warn(`No duration specified for recording ${filePath}. It may run indefinitely until manually stopped.`);
+            }
+            macCommand += ` "${filePath}"`;
+            console.log(`Executing (Placeholder for macOS): ${macCommand}`);
+            // recorderProcess = exec(macCommand, ...);
             // For now, create a mock process to allow testing flow
             recorderProcess = exec(`sleep 3600`); // Mock long-running process
         } else {
