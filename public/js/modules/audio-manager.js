@@ -44,38 +44,67 @@ export class AudioManager {
         this.deviceCardCounter++;
         const cardId = `audio-card-${this.deviceCardCounter}`;
         const cardDiv = document.createElement('div');
-        cardDiv.classList.add('audio-device-card', 'device-card'); // Add generic class?
+        // Use similar class structure to camera card for potential style reuse
+        cardDiv.classList.add('audio-device-card', 'camera-control'); 
         cardDiv.id = cardId;
 
-        // Dropdown
+        // --- Title and Remove Button (similar to camera card) ---
+        const titleContainer = document.createElement('div');
+        titleContainer.style.display = 'flex';
+        titleContainer.style.justifyContent = 'space-between';
+        titleContainer.style.alignItems = 'center';
+
+        const title = document.createElement('h2');
+        title.textContent = `Recording Device ${this.deviceCardCounter}`;
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = '✖'; // Use an X like camera remove
+        removeBtn.classList.add('remove-btn'); // Add specific class for styling/selection
+        removeBtn.title = 'Remove this audio device';
+        removeBtn.addEventListener('click', () => this.handleRemoveClick(cardId));
+
+        titleContainer.appendChild(title);
+        titleContainer.appendChild(removeBtn);
+        cardDiv.appendChild(titleContainer);
+
+        // --- Dropdown Selection --- 
+        const selectionDiv = document.createElement('div');
+        selectionDiv.classList.add('control-group'); // Class for styling label/select pairs
+
+        const selectLabel = document.createElement('label');
+        selectLabel.setAttribute('for', `select-${cardId}`);
+        selectLabel.textContent = 'Audio Device:';
+
         const select = document.createElement('select');
         select.id = `select-${cardId}`;
         select.innerHTML = '<option value="">-- Select Audio Device --</option>';
-        this.populateDropdown(select);
+        this.populateDropdown(select); // Populate before adding listener
         select.addEventListener('change', (event) => this.handleSelectionChange(event, cardId));
 
-        // Test Button
+        selectionDiv.appendChild(selectLabel);
+        selectionDiv.appendChild(select);
+        cardDiv.appendChild(selectionDiv);
+
+        // --- Test Button and Status --- 
+        const controlsDiv = document.createElement('div');
+        controlsDiv.classList.add('audio-controls'); // Class for styling test/status
+
         const testBtn = document.createElement('button');
         testBtn.id = `test-${cardId}`;
         testBtn.textContent = 'Test';
         testBtn.disabled = true;
         testBtn.addEventListener('click', () => this.handleTestClick(cardId));
 
-        // Remove Button
-        const removeBtn = document.createElement('button');
-        removeBtn.textContent = 'Remove';
-        removeBtn.classList.add('remove-btn');
-        removeBtn.addEventListener('click', () => this.handleRemoveClick(cardId));
-
-        // Status Span
         const statusSpan = document.createElement('span');
         statusSpan.id = `status-${cardId}`;
         statusSpan.classList.add('status-indicator');
+        statusSpan.style.marginLeft = '10px'; // Add some space
 
-        cardDiv.appendChild(select);
-        cardDiv.appendChild(testBtn);
-        cardDiv.appendChild(statusSpan);
-        cardDiv.appendChild(removeBtn);
+        controlsDiv.appendChild(testBtn);
+        controlsDiv.appendChild(statusSpan);
+        cardDiv.appendChild(controlsDiv);
+
+        // Append the fully constructed card to the main container
         this.container.appendChild(cardDiv);
 
         // Initialize state for this card

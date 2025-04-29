@@ -15,6 +15,19 @@ dist/
 recordings/*
 *.mp4
 *.webm
+*.wav
+*.m4a
+*.mov
+*.avi
+*.mkv
+*.flv
+*.wmv
+*.m4v
+*.mp3
+*.m4a
+*.aac
+*.ogg
+*.oga
 
 # Sensitive Data
 auth.json
