@@ -6,6 +6,7 @@ import {
     updateCurrentSessionDisplay, 
     populateSessionList 
 } from './modules/session-manager.js';
+import { initializeWebSocket, sendWebSocketMessage } from './modules/websocket-handler.js';
 
 // Wrap everything in an event listener to ensure the DOM is ready,
 // especially if the script tag doesn't use 'defer'.
@@ -13,162 +14,8 @@ import {
 document.addEventListener('DOMContentLoaded', () => {
 
   // --- Global Variables ---
-  const ws = new WebSocket("ws://" + window.location.host);
   let voiceBypassEnabled = true;
   let lastAudioRecording = null;
-
-  // --- WebSocket Handlers ---
-  ws.onopen = function () {
-    console.log("WebSocket connection established");
-    logToConsole("WebSocket connected", "info");
-    fetch("/getVoiceBypass")
-      .then((res) => res.json())
-      .then((data) => {
-        voiceBypassEnabled = data.enabled;
-        updateVoiceBypassButton();
-      })
-      .catch((err) => {
-        console.error("Error fetching voice bypass state:", err);
-        logToConsole("Error fetching voice bypass state", "error");
-      });
-  };
-
-  ws.onerror = function (error) {
-    console.error("WebSocket error:", error);
-    logToConsole("WebSocket error: " + (error.message || "Unknown error"), "error");
-  };
-
-  ws.onclose = function () {
-    console.log("WebSocket connection closed");
-    logToConsole("WebSocket connection closed", "warn");
-  };
-
-  ws.onmessage = function (event) {
-    try {
-      const data = JSON.parse(event.data);
-      console.log('Message from server:', data);
-
-      // --- ADDED: Forward relevant messages to teleprompter iframe ---
-      const teleprompterFrame = document.getElementById('teleprompter-frame');
-      const characterTeleprompterWindows = {}; // Store refs if needed
-
-      // Determine if the message is for the main teleprompter or a character teleprompter
-      const teleprompterMessageTypes = [
-          'TELEPROMPTER', 
-          'ACTOR_CALLS', 
-          'CLEAR_TELEPROMPTER', 
-          'PLAY_VIDEO' // Assuming general teleprompter video
-      ];
-      const characterTeleprompterMessageTypes = [
-          'SHOT_START',
-          'TELEPROMPTER_CONTROL',
-          'SCENE_ENDED',
-          'SYSTEM_RESET',
-          'TELEPROMPTER_STATUS'
-      ];
-
-      if (teleprompterMessageTypes.includes(data.type)) {
-          if (teleprompterFrame && teleprompterFrame.contentWindow) {
-              teleprompterFrame.contentWindow.postMessage(data, '*'); // Target can be more specific than '*'
-          } else {
-              console.warn('Teleprompter frame not found or not loaded yet.');
-          }
-      } else if (characterTeleprompterMessageTypes.includes(data.type)) {
-          // Find the appropriate character teleprompter window
-          // This requires managing references to opened character windows, 
-          // maybe store them in the `characterTeleprompterWindows` object keyed by character name
-          // For now, we'll just log it
-          console.log('Received character teleprompter message, but forwarding logic needs implementation:', data);
-          // Example if you had window references:
-          // if (data.character && characterTeleprompterWindows[data.character]) {
-          //     characterTeleprompterWindows[data.character].postMessage(data, '*');
-          // }
-      }
-
-      // --- Original message handling for home.ejs ---
-      switch (data.type) {
-        case 'CONSOLE':
-          logToConsole(data.message, data.level);
-          break;
-        case 'SESSION_UPDATE': // Received when session changes (creation or selection)
-          console.log('SESSION_UPDATE received with sessionId:', data.sessionId);
-          updateCurrentSessionDisplay(data.sessionId);
-          // Potentially update the dropdown selection as well
-          /* 
-          if (sessionListSelect && data.sessionId) { 
-            sessionListSelect.value = data.sessionId; 
-          } 
-          */
-          break;
-        case 'SESSION_LIST_UPDATE': // Received when a session is created/deleted
-          console.log('SESSION_LIST_UPDATE received', data.sessions);
-          populateSessionList(data.sessions || []);
-          // Re-selection logic is handled within session manager now
-          /* 
-          const currentId = currentSessionSpan ? currentSessionSpan.textContent : null;
-          if (sessionListSelect && currentId && currentId !== 'Loading...') {
-              sessionListSelect.value = currentId;
-          }
-          */
-          break;
-        case 'ACTORS_CALLED':
-          document.getElementById("actorsReadyBtn").style.display = "inline-block";
-          document.getElementById("actionBtn").style.display = "none"; // Hide action btn
-          document.getElementById("status").innerText = "Waiting for actors to be ready...";
-          break;
-        case 'ACTORS_READY':
-          document.getElementById("actorsReadyBtn").style.display = "none";
-          document.getElementById("actionBtn").style.display = "inline-block";
-          document.getElementById("status").innerText = "Actors are ready to perform!";
-          break;
-        // Add other message types handled by the server if needed
-        default:
-          console.log("Received unhandled message type:", data.type);
-      }
-    } catch (error) {
-      console.error('Error parsing message or handling update:', error);
-      logToConsole('Received non-JSON message or error handling update.', 'error');
-    }
-  };
-
-  // --- ADDED: Handler for SHOT_CAMERA_DESCRIPTIONS message ---
-  ws.addEventListener('message', (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (data.type === 'SHOT_CAMERA_DESCRIPTIONS') {
-        console.log('Received shot camera descriptions:', data.descriptions);
-        
-        // Clear previous descriptions first (optional, good practice)
-        document.querySelectorAll('.shot-camera-description').forEach(el => el.remove());
-        
-        data.descriptions.forEach(camInfo => {
-          // Ensure cameraManager and its elements are ready
-          if (window.cameraManager && window.cameraManager.cameraElements) { 
-            const cameraElement = window.cameraManager.cameraElements.get(camInfo.name);
-            if (cameraElement) {
-              // Find a suitable place to insert the description, e.g., after the header
-              const headerElement = cameraElement.querySelector('.camera-header');
-              if (headerElement) {
-                const descElement = document.createElement('p');
-                descElement.className = 'shot-camera-description'; // Add class for easy removal later
-                descElement.textContent = `Shot Role: ${camInfo.description}`;
-                // Insert after the header
-                headerElement.parentNode.insertBefore(descElement, headerElement.nextSibling); 
-              }
-            }
-          } else {
-            console.warn('CameraManager not ready when SHOT_CAMERA_DESCRIPTIONS received.');
-          }
-        });
-      }
-    } catch (error) {
-      // Ignore errors if message wasn't JSON or didn't have the expected type
-      if (!(error instanceof SyntaxError)) {
-           console.error('Error handling SHOT_CAMERA_DESCRIPTIONS:', error);
-      } 
-    }
-  });
-  // --- END ADDED --- 
 
   // --- UI Update Functions ---
   function updateVoiceBypassButton() {
@@ -208,15 +55,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('openAlanTeleprompterBtn')?.addEventListener('click', () => openCharacterTeleprompter('alan'));
   document.getElementById('openEllieTeleprompterBtn')?.addEventListener('click', () => openCharacterTeleprompter('ellie'));
   document.getElementById('testTeleprompterBtn')?.addEventListener('click', testTeleprompter);
-  // Assuming testTeleprompterVideo still needs onclick for now or needs an ID
   document.getElementById('clearTeleprompterBtn')?.addEventListener('click', clearTeleprompter);
   document.getElementById('pauseTeleprompterBtn')?.addEventListener('click', pauseAllTeleprompters);
   document.getElementById('playTeleprompterBtn')?.addEventListener('click', playAllTeleprompters);
   // Listener for recording pipeline dropdown
    document.getElementById('recording-pipeline')?.addEventListener('change', (e) => handlePipelineChange(e.target.value));
   // Listener for recording resolution dropdown (already added)
-
-  // Initial load call for session manager is moved below
 
   // --- OLD Session Functions (Keep for reference/potential reuse if needed) ---
   /*
@@ -376,12 +220,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function pauseAllTeleprompters() {
-    ws.send(JSON.stringify({ type: "TELEPROMPTER_CONTROL", action: "PAUSE" }));
+    sendWebSocketMessage({ type: "TELEPROMPTER_CONTROL", action: "PAUSE" });
     logToConsole("Paused all teleprompters", "info");
   }
 
   function playAllTeleprompters() {
-    ws.send(JSON.stringify({ type: "TELEPROMPTER_CONTROL", action: "PLAY" }));
+    sendWebSocketMessage({ type: "TELEPROMPTER_CONTROL", action: "PLAY" });
     logToConsole("Resumed all teleprompters", "info");
   }
 
@@ -521,7 +365,24 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Initialize Components ---
   logToConsole("DOM loaded. Initializing components...", "info");
   
-  // Initialize Session Management by calling the imported function
+  // Define the callback for WebSocket open
+  const handleWebSocketOpen = () => {
+      fetch("/getVoiceBypass")
+        .then((res) => res.json())
+        .then((data) => {
+          voiceBypassEnabled = data.enabled;
+          updateVoiceBypassButton(); // Call the function defined in this scope
+        })
+        .catch((err) => {
+          console.error("Error fetching voice bypass state:", err);
+          logToConsole("Error fetching voice bypass state", "error");
+        });
+  };
+
+  // Initialize WebSocket and get instance (though we primarily use sendWebSocketMessage now)
+  const ws = initializeWebSocket(cameraManager, handleWebSocketOpen);
+
+  // Initialize Session Management 
   initializeSessionManagement(); 
 
   // Initialize Camera Manager
