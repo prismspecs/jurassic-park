@@ -284,12 +284,20 @@ class AudioRecorder {
 
         // Set exit handler early to ensure we catch any unexpected exits
         recorderProcess.on('exit', (code, signal) => {
-            // Only handle unexpected exits - _stopDeviceRecording handles normal exits
             const recordingData = this.recordingProcesses.get(deviceId);
-            if (this.recordingProcesses.has(deviceId) && !recordingData.stopping) {
-                console.warn(`Recording process for ${deviceId} exited unexpectedly with code ${code}, signal ${signal}.`);
+            // Only handle exits if the process is still tracked and wasn't manually stopped
+            if (recordingData && !recordingData.stopping) {
+                if (code === 0) {
+                    // Process likely finished due to duration - this is expected, not an error
+                    console.log(`Recording process for ${deviceId} finished cleanly (duration reached?). Code: ${code}, Signal: ${signal}`);
+                } else {
+                    // Non-zero exit code indicates a potential problem
+                    console.warn(`Recording process for ${deviceId} exited unexpectedly with code ${code}, signal ${signal}.`);
+                }
+                // Clean up since it exited on its own
                 this.recordingProcesses.delete(deviceId);
             }
+            // If recordingData.stopping is true, the exit is handled by _stopDeviceRecording
         });
 
         recorderProcess.on('error', (err) => {
