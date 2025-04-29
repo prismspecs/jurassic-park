@@ -1,3 +1,6 @@
+import { logToConsole } from './modules/logger.js';
+import { initializeResizers } from './modules/layout-resizer.js';
+
 // Wrap everything in an event listener to ensure the DOM is ready,
 // especially if the script tag doesn't use 'defer'.
 // Using 'defer' is generally better.
@@ -5,7 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Global Variables ---
   const ws = new WebSocket("ws://" + window.location.host);
-  const consoleOutput = document.getElementById("console-output");
   // Session UI elements
   const currentSessionSpan = document.getElementById('current-session-id');
   const noSessionWarningSpan = document.getElementById('no-session-warning');
@@ -219,20 +221,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btn) {
       btn.textContent = voiceBypassEnabled ? "Disable Voice Bypass" : "Enable Voice Bypass";
       btn.style.backgroundColor = voiceBypassEnabled ? "#ff4444" : "#4CAF50";
-    }
-  }
-
-  // --- Logging Function ---
-  function logToConsole(message, level = 'info') {
-    const entry = document.createElement('div');
-    const timestamp = new Date().toLocaleTimeString();
-    entry.className = `log-entry log-${level}`;
-    entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
-    if (consoleOutput) {
-      consoleOutput.appendChild(entry);
-      consoleOutput.scrollTop = consoleOutput.scrollHeight;
-    } else {
-      console.error("Console output element (#console-output) not found!");
     }
   }
 
@@ -975,29 +963,68 @@ document.addEventListener('DOMContentLoaded', () => {
       const div = document.createElement("div");
       div.className = "camera-control";
 
-      // --- Determine Preview Display Label & Initial ID --- 
+      // --- NEW: Associative Lookup for Preview Device ---
+      const configuredPreviewPath = camera.previewDevice; // e.g., "/dev/video2"
+      let targetBrowserDeviceId = null;
       let currentPreviewDisplayLabel = "No device selected";
-      const currentPreviewBrowserId = camera.previewDevice;
       let initialPreviewCallNeeded = false;
 
-      if (currentPreviewBrowserId) {
-        const browserDevice = this.availableDevices.find(d => d.deviceId === currentPreviewBrowserId);
-        if (browserDevice) {
-          currentPreviewDisplayLabel = browserDevice.label || currentPreviewBrowserId;
-          initialPreviewCallNeeded = true; // We have a valid browser ID to init with
-        } else {
-          currentPreviewDisplayLabel = `Saved ID not found: ${currentPreviewBrowserId}`;
-        }
-      }
+      if (configuredPreviewPath) {
+        // 1. Find server device info using the configured path
+        const matchedServerDevice = this.serverDevices.find(sd => sd.id === configuredPreviewPath);
+        
+        if (matchedServerDevice?.name) {
+          // 2. Use server device name to find matching browser device (heuristic)
+          //    We might need to adjust the matching logic (e.g., startsWith, includes) depending on name formats
+          // --- ADDED BROWSER DEVICE LABEL LOGGING ---
+          console.log(`[Camera: ${camera.name}] Searching for match for server name '${matchedServerDevice.name}' within these browser devices:`);
+          this.availableDevices.forEach((bd, index) => {
+            console.log(`  Browser Device ${index}: label='${bd.label}', deviceId='${bd.deviceId}', kind='${bd.kind}', groupId='${bd.groupId}'`);
+          });
+          // --- END LOGGING ---
+          const matchedBrowserDevice = this.availableDevices.find(bd => 
+              bd.label && matchedServerDevice.name && 
+              bd.label.startsWith(matchedServerDevice.name.split(' (')[0])
+          );
 
+          if (matchedBrowserDevice) {
+            // 3. Get the actual browser device ID (hex string)
+            targetBrowserDeviceId = matchedBrowserDevice.deviceId;
+            currentPreviewDisplayLabel = matchedBrowserDevice.label || targetBrowserDeviceId;
+            initialPreviewCallNeeded = true;
+            console.log(`[Camera: ${camera.name}] Associated config path '${configuredPreviewPath}' to browser deviceId '${targetBrowserDeviceId}' via name '${matchedServerDevice.name}' / label '${matchedBrowserDevice.label}'`);
+          } else {
+            console.warn(`[Camera: ${camera.name}] Could not find matching browser device for server device named '${matchedServerDevice.name}' (path: ${configuredPreviewPath})`);
+            currentPreviewDisplayLabel = `Browser device not found for ${configuredPreviewPath}`;
+          }
+        } else {
+          console.warn(`[Camera: ${camera.name}] Could not find server device info for configured path: ${configuredPreviewPath}`);
+          currentPreviewDisplayLabel = `Server device info not found for ${configuredPreviewPath}`;
+        }
+      } else {
+        console.log(`[Camera: ${camera.name}] No previewDevice path configured.`);
+      }
+      // --- End Associative Lookup ---
+      
       // Dynamically build the options for preview devices
       let previewOptionsHtml = '<option value="">Select Preview Device</option>';
       this.availableDevices.forEach(browserDevice => {
-          const serverDevice = this.serverDevices.find(sd => sd.name?.startsWith(browserDevice.label));
-          const displayLabel = serverDevice 
-              ? `${browserDevice.label} (${serverDevice.id})` 
-              : (browserDevice.label || browserDevice.deviceId);
-          const selected = browserDevice.deviceId === currentPreviewBrowserId ? "selected" : "";
+          // --- Refined Label Logic (using existing serverDevices list) ---
+          const serverDevice = this.serverDevices.find(sd => 
+              browserDevice.label && sd.name?.startsWith(browserDevice.label)
+          );
+          let displayLabel = browserDevice.label || `Device ID: ${browserDevice.deviceId.substring(0, 8)}...`;
+          if (serverDevice) {
+            displayLabel += ` (${serverDevice.id})`; // Append server path if found
+          }
+          // --- End Refined Label Logic ---
+
+          // --- Use the LOOKED UP targetBrowserDeviceId for selection ---
+          const selected = browserDevice.deviceId === targetBrowserDeviceId ? "selected" : "";
+          if (selected) {
+            console.log(`[Camera: ${camera.name}] MATCH FOUND for selected preview option! Target Device:`, browserDevice);
+          }
+          // --- End Selection Logic ---
           previewOptionsHtml += `<option value="${browserDevice.deviceId}" ${selected}>${displayLabel}</option>`;
       });
       
@@ -1010,9 +1037,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Dynamically build the options for PTZ devices
       let ptzOptionsHtml = '<option value="">Select PTZ Device</option>';
+      // --- DEBUG LOGGING START ---
+      console.log(`[Camera: ${camera.name}] Building PTZ options. Saved PTZ Device:`, camera.ptzDevice);
+      console.log(`[Camera: ${camera.name}] Available PTZ Devices:`, this.ptzDevices);
+      // --- DEBUG LOGGING END ---
       this.ptzDevices.forEach(device => {
           const value = device.id || device.path;
           const selected = value === camera.ptzDevice ? "selected" : "";
+          // --- MORE DEBUG LOGGING ---
+          if (selected) {
+            console.log(`[Camera: ${camera.name}] MATCH FOUND! Setting selected for PTZ device:`, device);
+          }
+          // --- END MORE DEBUG LOGGING ---
           ptzOptionsHtml += `<option value="${value}" ${selected}>${device.name || value}</option>`;
       });
 
@@ -1065,74 +1101,82 @@ document.addEventListener('DOMContentLoaded', () => {
       div.querySelector('.test-record-btn').addEventListener('click', () => this.recordVideo(camera.name));
 
 
-      // Initialize preview if we have a valid browser ID from config
-      if (initialPreviewCallNeeded) {
-        logToConsole(`Initializing preview for ${camera.name} using browserId: ${currentPreviewBrowserId}`, "info");
-        // Use setTimeout to ensure the element is fully in the DOM and getUserMedia doesn't block
-        setTimeout(() => {
-          this.updatePreviewDevice(camera.name, currentPreviewBrowserId);
-        }, 100);
+      // Initialize preview if a browser device was successfully associated
+      if (initialPreviewCallNeeded && targetBrowserDeviceId) {
+         logToConsole(`Initializing preview for ${camera.name} using associated browserId: ${targetBrowserDeviceId}`, "info");
+         console.log(`[Camera: ${camera.name}] Calling updatePreviewDevice with associated browserDeviceId:`, targetBrowserDeviceId);
+         // Use setTimeout to ensure the element is fully in the DOM and getUserMedia doesn't block
+         setTimeout(() => {
+           // --- Pass the LOOKED UP targetBrowserDeviceId ---
+           this.updatePreviewDevice(camera.name, targetBrowserDeviceId);
+         }, 100);
+      } else {
+          console.log(`[Camera: ${camera.name}] Skipping initial preview call. initialPreviewCallNeeded=${initialPreviewCallNeeded}, targetBrowserDeviceId=${targetBrowserDeviceId}`);
       }
 
       return div;
     }
 
     async updatePreviewDevice(cameraName, browserDeviceId) {
-      logToConsole(`Updating preview device for ${cameraName} with browser device ID: ${browserDeviceId}`, "info");
-      try {
-        // Update server - send browserDeviceId 
-        await fetch("/camera/preview-device", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cameraName, deviceId: browserDeviceId }),
-        });
+       logToConsole(`Updating preview device for ${cameraName} with browser device ID: ${browserDeviceId}`, "info");
+       console.log(`[Camera: ${cameraName}] Entered updatePreviewDevice with browserDeviceId:`, browserDeviceId); // DEBUG
+       try {
+         // Update server - send browserDeviceId 
+         await fetch("/camera/preview-device", {
+           method: "POST",
+           headers: { "Content-Type": "application/json" },
+           body: JSON.stringify({ cameraName, deviceId: browserDeviceId }),
+         });
 
-        const videoElement = document.getElementById(`preview-${cameraName}`);
-        if (!videoElement) {
-          logToConsole(`Video element for ${cameraName} not found`, "error");
-          return;
-        }
+         const videoElement = document.getElementById(`preview-${cameraName}`);
+         if (!videoElement) {
+           logToConsole(`Video element for ${cameraName} not found`, "error");
+           return;
+         }
 
-        // Stop any existing stream
-        if (videoElement.srcObject) {
-          const tracks = videoElement.srcObject.getTracks();
-          tracks.forEach(track => track.stop());
-          videoElement.srcObject = null;
-        }
+         // Stop any existing stream
+         if (videoElement.srcObject) {
+           const tracks = videoElement.srcObject.getTracks();
+           tracks.forEach(track => track.stop());
+           videoElement.srcObject = null;
+         }
 
-        // Use browserDeviceId directly for getUserMedia
-        if (browserDeviceId) {
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-              video: { deviceId: { exact: browserDeviceId } }
-            });
-            videoElement.srcObject = stream;
+         // Use browserDeviceId directly for getUserMedia
+         if (browserDeviceId) {
+           try {
+             console.log(`[Camera: ${cameraName}] Attempting getUserMedia with deviceId:`, browserDeviceId); // DEBUG
+             const stream = await navigator.mediaDevices.getUserMedia({
+               video: { deviceId: { exact: browserDeviceId } }
+             });
+             console.log(`[Camera: ${cameraName}] getUserMedia SUCCESSFUL. Stream:`, stream); // DEBUG
+             videoElement.srcObject = stream;
 
-            const browserDevice = this.availableDevices.find(d => d.deviceId === browserDeviceId);
-            const displayLabel = browserDevice ? (browserDevice.label || browserDeviceId) : 'Unknown';
-            const deviceInfoElement = videoElement.nextElementSibling;
-            if (deviceInfoElement && deviceInfoElement.classList.contains('device-info')) { // Check class
-              deviceInfoElement.textContent = `Using: ${displayLabel}`;
-            }
-            logToConsole(`Preview for ${cameraName} started with device: ${displayLabel}`, "success");
-          } catch (err) {
-            logToConsole(`Error starting camera preview: ${err.message}`, "error");
-            // Clear label if getUserMedia fails
+             const browserDevice = this.availableDevices.find(d => d.deviceId === browserDeviceId);
+             const displayLabel = browserDevice ? (browserDevice.label || browserDeviceId) : 'Unknown';
              const deviceInfoElement = videoElement.nextElementSibling;
-             if (deviceInfoElement && deviceInfoElement.classList.contains('device-info')) {
-                 deviceInfoElement.textContent = `Error: ${err.message}`;
+             if (deviceInfoElement && deviceInfoElement.classList.contains('device-info')) { // Check class
+               deviceInfoElement.textContent = `Using: ${displayLabel}`;
              }
-          }
-        } else {
-          // No device selected, just update the info text
-          const deviceInfoElement = videoElement.nextElementSibling;
-          if (deviceInfoElement && deviceInfoElement.classList.contains('device-info')) {
-            deviceInfoElement.textContent = "No device selected";
-          }
-        }
-      } catch (err) {
-        logToConsole(`Error updating preview device: ${err.message}`, "error");
-      }
+             logToConsole(`Preview for ${cameraName} started with device: ${displayLabel}`, "success");
+           } catch (err) {
+             logToConsole(`Error starting camera preview: ${err.message}`, "error");
+             console.error(`[Camera: ${cameraName}] getUserMedia FAILED:`, err); // DEBUG
+             // Clear label if getUserMedia fails
+              const deviceInfoElement = videoElement.nextElementSibling;
+              if (deviceInfoElement && deviceInfoElement.classList.contains('device-info')) {
+                  deviceInfoElement.textContent = `Error: ${err.message}`;
+              }
+           }
+         } else {
+           // No device selected, just update the info text
+           const deviceInfoElement = videoElement.nextElementSibling;
+           if (deviceInfoElement && deviceInfoElement.classList.contains('device-info')) {
+             deviceInfoElement.textContent = "No device selected";
+           }
+         }
+       } catch (err) {
+         logToConsole(`Error updating preview device: ${err.message}`, "error");
+       }
     }
 
     async updateRecordingDevice(cameraName, serverDeviceId) {
@@ -1352,146 +1396,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   } else {
       logToConsole("CameraManager or initialize method not found", 'error');
-  }
-
-
-  // --- Resizer Logic ---
-  function initializeResizers() {
-    const leftSidebar = document.querySelector('.left-sidebar');
-    const mainContent = document.querySelector('.main-content');
-    const rightSidebar = document.querySelector('.sidebar');
-    const resizerLeftMain = document.getElementById('resizer-left-main');
-    const resizerMainRight = document.getElementById('resizer-main-right');
-
-    // Check if all elements exist before proceeding
-    if (!leftSidebar || !mainContent || !rightSidebar || !resizerLeftMain || !resizerMainRight) {
-        console.error("One or more layout elements or resizers not found. Resizing disabled.");
-        logToConsole("Layout resizing setup failed: Elements missing.", "error");
-        return; 
-    }
-
-    let isResizing = false;
-    let startX, initialLeftBasis, initialRightBasis;
-    let currentResizer = null;
-    let initialMainContentWidth = 0; // Store main content width for right handle
-
-    // Helper to get computed basis or width
-    const getBasis = (el) => {
-      const basis = getComputedStyle(el).flexBasis;
-      if (basis === 'auto' || basis === 'content' || !basis.endsWith('px')) {
-        // console.warn('getBasis falling back to offsetWidth for element:', el, 'Computed flex-basis was:', basis);
-        return el.offsetWidth;
-      }
-      return parseInt(basis, 10);
-    };
-
-    const startResize = (e, resizer) => {
-      // Prevent text selection during drag
-      e.preventDefault(); 
-      console.log('Resizer mousedown detected on:', resizer.id);
-      
-      isResizing = true;
-      currentResizer = resizer;
-      startX = e.clientX;
-
-      // Get initial basis values
-      initialLeftBasis = getBasis(leftSidebar);
-      initialRightBasis = getBasis(rightSidebar);
-      initialMainContentWidth = mainContent.offsetWidth; // Get main content width
-
-      document.body.style.userSelect = 'none';
-      document.body.style.cursor = 'col-resize'; // Indicate resizing globally
-      // document.body.style.pointerEvents = 'none'; // Might interfere with mouseup? Test.
-
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', stopResize, { once: true }); // Use {once: true} for cleanup
-    };
-
-    const handleMouseMove = (e) => {
-      if (!isResizing) return;
-
-      // Use requestAnimationFrame for smoother resizing (optional but good practice)
-      window.requestAnimationFrame(() => {
-          const currentX = e.clientX;
-          const dx = currentX - startX;
-
-          const minLeftWidth = parseInt(getComputedStyle(leftSidebar).minWidth, 10) || 50; // Fallback min width
-          const minRightWidth = parseInt(getComputedStyle(rightSidebar).minWidth, 10) || 50;
-          const minMainWidth = parseInt(getComputedStyle(mainContent).minWidth, 10) || 100;
-          const totalWidth = document.querySelector('.page-layout').offsetWidth; // Use page-layout width
-
-          if (currentResizer === resizerLeftMain) {
-              let newLeftBasis = initialLeftBasis + dx;
-              let newMainWidth = initialMainContentWidth - dx; // Main adjusts oppositely
-
-              // Ensure minimums are respected
-              if (newLeftBasis < minLeftWidth) {
-                  newLeftBasis = minLeftWidth;
-                  newMainWidth = totalWidth - newLeftBasis - initialRightBasis - (resizerLeftMain.offsetWidth + resizerMainRight.offsetWidth); // Recalculate main width
-              } 
-              // Check if main content is too small
-              if (newMainWidth < minMainWidth) {
-                  newMainWidth = minMainWidth;
-                  newLeftBasis = totalWidth - newMainWidth - initialRightBasis - (resizerLeftMain.offsetWidth + resizerMainRight.offsetWidth); // Recalculate left width
-              }
-
-              leftSidebar.style.flexBasis = `${newLeftBasis}px`;
-              mainContent.style.flexBasis = `${newMainWidth}px`; // Adjust main explicitly
-              mainContent.style.flexGrow = '0'; // Prevent flex grow during drag
-
-          } else if (currentResizer === resizerMainRight) {
-              // Adjust main content width based on initial width and mouse delta
-              let newMainWidth = initialMainContentWidth + dx; 
-
-              // Calculate how much space WOULD BE left for the right sidebar
-              const potentialRightWidth = totalWidth - initialLeftBasis - newMainWidth - (resizerLeftMain.offsetWidth + resizerMainRight.offsetWidth);
-
-              // Clamp newMainWidth if it violates min widths
-              // 1. If main content gets too small
-              if (newMainWidth < minMainWidth) {
-                  newMainWidth = minMainWidth;
-              }
-              // 2. If main content gets so large that right sidebar becomes too small
-              else if (potentialRightWidth < minRightWidth) {
-                  // Limit main width to leave minimum space for right sidebar
-                  newMainWidth = totalWidth - initialLeftBasis - minRightWidth - (resizerLeftMain.offsetWidth + resizerMainRight.offsetWidth);
-              }
-              
-              // Calculate and set right sidebar width explicitly
-              const newRightWidth = totalWidth - initialLeftBasis - newMainWidth - (resizerLeftMain.offsetWidth + resizerMainRight.offsetWidth);
-              rightSidebar.style.flexBasis = `${newRightWidth}px`;
-              rightSidebar.style.flexGrow = '0';
-              
-              // Apply the clamped width to main content
-              mainContent.style.flexBasis = `${newMainWidth}px`;
-              mainContent.style.flexGrow = '0';
-              // DO NOT explicitly set rightSidebar.style.flexBasis - let flexbox handle it
-          }
-      });
-    };
-
-    const stopResize = () => {
-      if (isResizing) {
-        isResizing = false;
-        
-        document.removeEventListener('mousemove', handleMouseMove);
-        // 'mouseup' listener removed by {once: true}
-
-        // Restore user interaction styles
-        document.body.style.userSelect = '';
-        document.body.style.cursor = '';
-        // document.body.style.pointerEvents = '';
-
-        // IMPORTANT: We DO NOT reset flex-basis for ANY element to maintain the dragged layout
-        // Only restore flex-grow to 1 for the main content so it can expand with window resizing
-        mainContent.style.flexGrow = '1';
-        
-        currentResizer = null; // Clear the current resizer
-      }
-    };
-
-    resizerLeftMain.addEventListener('mousedown', (e) => startResize(e, resizerLeftMain));
-    resizerMainRight.addEventListener('mousedown', (e) => startResize(e, resizerMainRight));
   }
 
   // Initialize resizers after DOM is ready
