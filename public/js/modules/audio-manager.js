@@ -15,9 +15,53 @@ export class AudioManager {
     async initialize() {
         logToConsole('Initializing AudioManager...', 'info');
         if (!this.container) return; // Don't proceed if container missing
+        
+        // Fetch available devices first
         await this.fetchAvailableDevices();
-        // Optionally, fetch currently active devices if needed to pre-populate cards?
-        // For now, assume we start fresh or the backend handles persistence.
+        
+        // Then fetch defaults
+        let audioDefaults = [];
+        try {
+            const defaultsResponse = await fetch('/api/audio/defaults');
+            if (defaultsResponse.ok) {
+                audioDefaults = await defaultsResponse.json();
+                logToConsole(`Fetched ${audioDefaults.length} audio defaults.`, 'info');
+            } else {
+                logToConsole(`Failed to fetch audio defaults: ${defaultsResponse.status}`, 'warn');
+            }
+        } catch (error) {
+            logToConsole(`Error fetching audio defaults: ${error.message}`, 'error');
+        }
+
+        // Attempt to add default devices
+        if (this.availableDevices.length > 0 && audioDefaults.length > 0) {
+            audioDefaults.forEach((defaultConfig, index) => {
+                if (defaultConfig && defaultConfig.device) {
+                    const defaultNameLower = defaultConfig.device.toLowerCase();
+                    // Find the best partial match (case-insensitive)
+                    const matchedDevice = this.availableDevices.find(availDevice => 
+                        availDevice.name && availDevice.name.toLowerCase().includes(defaultNameLower)
+                    );
+
+                    if (matchedDevice) {
+                        logToConsole(`Found match for default audio device ${index} ('${defaultConfig.device}'): ${matchedDevice.name} (${matchedDevice.id})`, 'info');
+                        // Check if a card for this index already exists (e.g., manually added)
+                        // This check assumes we might add more robust card management later.
+                        // For now, we just add based on the default index.
+                        const existingCardForIndex = document.getElementById(`audio-card-${index + 1}`);
+                        if (!existingCardForIndex) {
+                           logToConsole(`Adding default audio device card for index ${index}...`, 'info');
+                           this.addDeviceCard(matchedDevice.id, matchedDevice.name);
+                        } else {
+                           logToConsole(`Card for default audio index ${index} already exists. Skipping auto-add.`, 'info');
+                        }
+                    } else {
+                        logToConsole(`Could not find a matching available device for default audio: '${defaultConfig.device}'`, 'warn');
+                    }
+                }
+            });
+        }
+
         logToConsole('AudioManager initialized.', 'info');
     }
 
@@ -38,7 +82,7 @@ export class AudioManager {
         }
     }
 
-    addDeviceCard() {
+    addDeviceCard(defaultDeviceId = null, defaultDeviceName = null) {
         if (!this.container) return;
 
         this.deviceCardCounter++;
@@ -109,6 +153,14 @@ export class AudioManager {
 
         // Initialize state for this card
         this.selectedDevices[cardId] = { deviceId: '', name: '' };
+
+        // If a default device was provided, select it
+        if (defaultDeviceId) {
+            logToConsole(`Pre-selecting default device ${defaultDeviceName} (${defaultDeviceId}) for card ${cardId}`, 'info');
+            select.value = defaultDeviceId; // Set dropdown value
+            // Trigger the change handler logic to activate the device and update state
+            this.handleSelectionChange({ target: select }, cardId);
+        }
     }
 
     populateDropdown(selectElement) {
@@ -133,8 +185,13 @@ export class AudioManager {
             selectElement.appendChild(option);
         });
 
-        // Restore selection if it's still valid
-        if (options.some(d => d.id === currentlySelectedInThisDropdown)) {
+        // Restore selection if it's still valid OR if it was passed as a default
+        const defaultValue = selectElement.value; // Check if a value was pre-set (by default)
+        if (defaultValue && options.some(d => d.id === defaultValue)) {
+            // Keep the pre-set default value
+            selectElement.value = defaultValue;
+        } else if (options.some(d => d.id === currentlySelectedInThisDropdown)) {
+            // Restore previous selection if still valid and no default was set
             selectElement.value = currentlySelectedInThisDropdown;
         } else {
             // If previous selection is now invalid (taken by another card), reset

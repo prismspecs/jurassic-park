@@ -27,6 +27,11 @@
             "ptzDevice": "/dev/video6"
         }
     ],
+    "audioDefaults": [
+        {
+            "device": "C920"
+        }
+    ],
     "auth": {
         "enabled": true,
         "username": "admin",

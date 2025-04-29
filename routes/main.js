@@ -551,6 +551,17 @@ router.get('/api/audio/devices', async (req, res) => {
     }
 });
 
+// GET audio default devices from config
+router.get('/api/audio/defaults', (req, res) => {
+    try {
+        const defaults = config.audioDefaults || [];
+        res.json(defaults);
+    } catch (error) {
+        console.error("Error reading audio defaults from config:", error);
+        res.status(500).json({ error: "Failed to read audio defaults" });
+    }
+});
+
 // GET currently active audio devices for recording
 router.get('/api/audio/active-devices', (req, res) => {
     try {
