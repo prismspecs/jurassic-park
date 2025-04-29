@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Jurassic Park Intro Video</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #videoContainer {
+            position: relative;
+            width: 640px;
+            height: 360px;
+            border: 1px solid black;
+            margin-bottom: 10px;
+        }
+
+        #videoPlayer {
+            width: 100%;
+            height: 100%;
+        }
+
+        #faceOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #faceCanvas {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        #webcamContainer {
+            width: 320px;
+            /* Adjust size as needed */
+            height: 240px;
+            border: 1px solid blue;
+            margin-top: 10px;
+        }
+
+        #webcamVideo {
+            /* display: none; */
+            /* Removed to make it visible */
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+            /* Mirror the webcam feed */
+        }
+
+        #controls button {
+            padding: 10px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="videoContainer">
+        <video id="videoPlayer" src="movie.mp4" controls></video>
+        <div id="faceOverlay">
+            <canvas id="faceCanvas"></canvas>
+        </div>
+        <!-- Removed webcamVideo from here -->
+    </div>
+
+    <!-- New container for the webcam feed -->
+    <div id="webcamContainer">
+        <video id="webcamVideo" autoplay muted playsinline></video> <!-- Moved here and made visible -->
+    </div>
+
+    <div id="controls">
+        <button id="startButton">Start Video</button>
+    </div>
+
+    <!-- Include Socket.IO client library -->
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- Include face-api.js -->
+    <script src="/face-api/face-api.min.js"></script> <!-- Corrected path -->
+    <!-- Client-side script -->
+    <script src="client.js"></script>
+</body>
+
+</html>

@@ -1,6 +1,14 @@
 ## to do
 
-- there is a discrepancy between the duration of the audio and video files. The audio file tends to be a second longer, for example. I think we need to either somehow log the "real time" code or otherwise incorporate it into the files, or try to make these processes start at the same time.
+- The ability to simply play a video on the main teleprompter
+
+- Add costume to the character/actor/QR display
+
+- 3,2,1 count down before recording, after Action (this will be a video played on all teleprompters)
+
+- The third time the scene is run, the audience hums along
+
+- Dinosaur position accuracy: how well can they take up the shape/outline of the dinosaur while they are acting as one?
 
 - capture video from actor phones
 
@@ -23,6 +31,9 @@
 
 - "live" view from AI Brain including skeletal tracking
 
+- right now I can run this command to combine the audio and video
+  ffmpeg -i Camera*1/*.mp4 -i Audio*1/*.wav -c:v copy -map 0:v:0 -map 1:a:0 -shortest combined.mp4
+
 ## Editor
 
 The editor should intake the video and audio from the Scene Recording. It should then use the scenes.json data ins and outs to cut the footage.
@@ -36,3 +47,11 @@ This should also have the ability to use a camera source with facial recognition
 ## Onboarding App
 
 Add the response stuff
+https://docs.google.com/document/d/1Kx4YZ3arvCnaE2Umt2WNsGctx1xCvtSGD1VTiV_tzBQ/edit?tab=t.0
+
+Personality test...?
+
+## Post-onboarding
+
+Flash all the participants on the screen with their names. The AI voice actor will voice this over.
+I guess this means I will need to create a way to create "batches" of participants
