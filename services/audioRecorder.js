@@ -28,47 +28,45 @@ class AudioRecorder {
     async detectAudioInputDevices() {
         return new Promise((resolve, reject) => {
             if (this.platform === 'linux') {
-                // Example using arecord -l. Might need refinement based on output format.
-                // Consider alternatives like pactl list sources for PulseAudio.
+                // Use arecord -l to list capture devices
                 exec('arecord -l', (error, stdout, stderr) => {
                     if (error) {
                         console.error('Error detecting audio devices on Linux (arecord -l):', stderr || error.message);
-                        // Fallback or alternative method could be tried here
                         return reject(new Error(`Failed to list audio devices: ${stderr || error.message}`));
                     }
-                    // Extremely basic parsing, needs improvement for robustness
+
                     const devices = [];
-                    const lines = stdout.split('\\n');
-                    let currentCard = null;
-                    let currentDevice = null;
-                    const deviceRegex = /^card\\s+(\\d+):.*?\\((.*?)\\), device\\s+(\\d+): (.*?)\\s+\\[.*\\]$/;
-                    const subdeviceRegex = /^\\s+Subdevice #(\\d+): (subdevice #\\d+)$/;
+                    // Split lines safely, handling potential Windows/Unix line endings
+                    const lines = stdout.split(/\r?\n/);
+
+                    // Regex to capture relevant info from lines like:
+                    // card 1: C920 [HD Pro Webcam C920], device 0: USB Audio [USB Audio]
+                    const deviceLineRegex = /^card\s+(\d+):\s+([^\[]+)\s+\[.*?],\s+device\s+(\d+):\s+([^\[]+)\s+\[.*?]/;
 
                     lines.forEach(line => {
-                         const cardMatch = line.match(/^card (\d+): (.*?) \[(.*?)\]/);
-                        const deviceMatch = line.match(/^\s*device (\d+): (.*?) \[(.*?)\]/);
+                         const match = line.match(deviceLineRegex);
+                         if (match) {
+                             const cardNum = match[1];
+                             const cardName = match[2].trim();
+                             const deviceNum = match[3];
+                             const deviceName = match[4].trim();
+                             // Construct the standard ALSA device ID (e.g., hw:1,0)
+                             const deviceId = `hw:${cardNum},${deviceNum}`;
 
-                        if (cardMatch) {
-                            currentCard = { id: `hw:${cardMatch[1]}`, name: cardMatch[2].trim(), driver: cardMatch[3].trim() };
-                        } else if (deviceMatch && currentCard) {
-                             // Filter for capture devices explicitly if possible, or assume all listed might be inputs
-                            // The naming convention 'hw:card,device' is typical for ALSA.
-                             const deviceId = `hw:${currentCard.id.split(':')[1]},${deviceMatch[1]}`;
-                             const deviceName = deviceMatch[2].trim();
-                             // Basic filtering: Avoid devices with 'Playback' or known output names
+                             // Basic filtering to exclude likely output devices
                              if (!deviceName.toLowerCase().includes('playback') && !deviceName.toLowerCase().includes('hdmi')) {
                                  devices.push({
-                                    id: deviceId, // e.g., hw:0,0
-                                    name: `${currentCard.name} - ${deviceName}` // e.g., HDA Intel PCH - ALC295 Analog
+                                    id: deviceId,
+                                    // Combine card and device name for a more descriptive label
+                                    name: `${cardName} - ${deviceName}`
                                  });
                              }
-                        }
+                         }
                     });
 
-
                     if (devices.length === 0) {
-                         console.warn("arecord -l parsing yielded no devices. Output was:", stdout);
-                         // Consider trying pactl list sources if pactl is likely available
+                         // Log the raw output only if parsing fails, to aid debugging
+                         console.warn("arecord -l parsing yielded no devices. Full output was:\n", stdout);
                     }
 
                     console.log('Linux - Found audio input devices:', devices);

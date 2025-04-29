@@ -14,10 +14,11 @@
     - there is also a final separate take for each dinosaur
 
 - it should launch a separate thread on Action! to record sound
+  This will involve a similar process to recording video in that the devices must be discovered, the ability to Add Recording Device should work like adding a camera, and that the recording should happen in a seperate thread. It should also place recorded audio files into recordings/ with a naming convention like Audio_1 (to match how Camera_1 naming works). Audio recording should begin with Action! just like video recording, and should last the duration of the scene. It should record to medium high quality .wav files.
 
 - reset PTZ controls for camera when it loads so that the camera is centered
 
-- introduce Microphone Controls which works like Camera controls where I can add an audio source...
+- refactor the endpoints. some use /api/ prefix. /camera/ does not, for example. I should update everything to use /api/
 
 - remove unncessary things
 

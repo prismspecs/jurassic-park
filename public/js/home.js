@@ -23,6 +23,7 @@ import {
     handlePipelineChange,
     handleResolutionChange
 } from './modules/control-actions.js';
+import { AudioManager } from './modules/audio-manager.js';
 
 // Wrap everything in an event listener to ensure the DOM is ready,
 // especially if the script tag doesn't use 'defer'.
@@ -149,6 +150,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const cameraManager = new CameraManager();
   document.getElementById('addCameraBtn')?.addEventListener('click', () => cameraManager.addCamera());
 
+  // --- Audio Manager ---
+  const audioManager = new AudioManager();
+  document.getElementById('addAudioDeviceBtn')?.addEventListener('click', () => audioManager.addDeviceCard());
+
   // --- Initialize Components ---
   logToConsole("DOM loaded. Initializing components...", "info");
   
@@ -179,6 +184,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   } else {
       logToConsole("CameraManager or initialize method not found", 'error');
+  }
+
+  // Initialize Audio Manager
+  if (audioManager.initialize) {
+      audioManager.initialize().catch(err => {
+          logToConsole(`AudioManager initialization failed: ${err}`, 'error');
+      });
+  } else {
+      logToConsole("AudioManager or initialize method not found", 'warn');
   }
 
   // Initialize Resizers

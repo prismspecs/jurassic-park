@@ -14,6 +14,8 @@ const { broadcastConsole, broadcast } = require('../websocket/broadcaster');
 const teleprompterRouter = require('./teleprompter');
 const cameraRouter = require('./camera');
 const authMiddleware = require('../middleware/auth');
+const AudioRecorder = require('../services/audioRecorder');
+const audioRecorder = AudioRecorder.getInstance();
 
 // Middleware for parsing application/x-www-form-urlencoded
 router.use(express.urlencoded({ extended: true }));
@@ -484,93 +486,6 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
     }
 });
 
-// Handle audio recording
-router.post('/recordAudio', audioUpload.single('audio'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                message: 'No audio file received'
-            });
-        }
-
-        const inputPath = req.file.path; // Path in temp/
-        let sessionDir, outputFilename, outputPath;
-
-        try {
-            sessionDir = sessionService.getSessionDirectory();
-            outputFilename = path.basename(inputPath).replace('.webm', '.wav');
-            outputPath = path.join(sessionDir, outputFilename);
-            // Ensure session dir exists
-            if (!fs.existsSync(sessionDir)) {
-                fs.mkdirSync(sessionDir, { recursive: true });
-            }
-        } catch (error) {
-            console.error("Error getting session directory for audio recording:", error);
-            // Attempt to clean up temporary input file
-            if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-            return res.status(500).json({ success: false, message: 'Could not get session directory' });
-        }
-
-        // Use ffmpeg to convert webm to wav and save to session directory
-        const { spawn } = require('child_process');
-        const ffmpeg = spawn('ffmpeg', [
-            '-i', inputPath,
-            '-acodec', 'pcm_s16le',
-            '-ar', '44100',
-            '-ac', '2',
-            outputPath // Use the new output path
-        ]);
-
-        ffmpeg.stderr.on('data', (data) => {
-            console.log(`ffmpeg audio conversion: ${data}`);
-        });
-
-        ffmpeg.on('close', (code) => {
-            // Always delete the temporary input webm file
-            if (fs.existsSync(inputPath)) {
-                fs.unlinkSync(inputPath);
-                console.log(`Deleted temporary audio file: ${inputPath}`);
-            }
-
-            if (code === 0) {
-                console.log(`✅ Audio converted and saved to session: ${outputPath}`);
-                res.json({
-                    success: true,
-                    message: 'Audio recording completed and saved to session',
-                    filename: outputFilename // Return just the filename
-                });
-            } else {
-                console.error(`FFmpeg audio conversion failed with code ${code} for output: ${outputPath}`);
-                res.status(500).json({
-                    success: false,
-                    message: `FFmpeg conversion failed with code ${code}`
-                });
-            }
-        });
-
-        ffmpeg.on('error', (err) => {
-            console.error('FFmpeg spawn error during audio conversion:', err);
-            // Attempt to clean up temporary input file
-            if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-            res.status(500).json({
-                success: false,
-                message: 'Error starting audio conversion process'
-            });
-        });
-    } catch (error) {
-        console.error('Error processing audio recording request:', error);
-        // Ensure temp file is cleaned up if possible
-        if (req.file && req.file.path && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-        }
-        res.status(500).json({
-            success: false,
-            message: 'Error processing audio recording request'
-        });
-    }
-});
-
 // Handle clearing audio files
 router.post('/clearAudio', express.json(), (req, res) => {
     // This might need adjustment depending on how audio is cleared now.
@@ -622,5 +537,70 @@ router.post('/clearAudio', express.json(), (req, res) => {
 router.get('/config', (req, res) => {
     res.json(config);
 });
+
+// --- NEW Audio Device API Endpoints ---
+
+// GET available audio input devices
+router.get('/api/audio/devices', async (req, res) => {
+    try {
+        const devices = await audioRecorder.detectAudioInputDevices();
+        res.json(devices);
+    } catch (error) {
+        console.error("Error detecting audio devices:", error);
+        res.status(500).json({ error: "Failed to detect audio devices" });
+    }
+});
+
+// GET currently active audio devices for recording
+router.get('/api/audio/active-devices', (req, res) => {
+    try {
+        const devices = audioRecorder.getActiveDevices();
+        res.json(devices);
+    } catch (error) {
+        console.error("Error getting active audio devices:", error);
+        res.status(500).json({ error: "Failed to get active audio devices" });
+    }
+});
+
+// POST to add an active audio device
+router.post('/api/audio/active-devices', (req, res) => {
+    const { deviceId, name } = req.body; // Expect { deviceId: "hw:0,0", name: "Microphone (Built-in)" }
+    if (!deviceId || !name) {
+        return res.status(400).json({ success: false, error: "deviceId and name are required" });
+    }
+    try {
+        const added = audioRecorder.addActiveDevice(deviceId, name);
+        if (added) {
+            res.status(201).json({ success: true, message: `Device ${name} added to active list.` });
+        } else {
+            // Device already existed
+            res.status(200).json({ success: true, message: `Device ${name} was already active.` });
+        }
+    } catch (error) {
+        console.error("Error adding active audio device:", error);
+        res.status(500).json({ success: false, error: `Failed to add active device: ${error.message}` });
+    }
+});
+
+// DELETE an active audio device
+router.delete('/api/audio/active-devices/:deviceId(*)', (req, res) => {
+    const { deviceId } = req.params;
+    if (!deviceId) {
+        return res.status(400).json({ success: false, error: "Device ID parameter is required" });
+    }
+    try {
+        const removed = audioRecorder.removeActiveDevice(deviceId);
+        if (removed) {
+            res.json({ success: true, message: `Device ${deviceId} removed from active list.` });
+        } else {
+            res.status(404).json({ success: false, error: `Device ${deviceId} not found in active list.` });
+        }
+    } catch (error) {
+        console.error("Error removing active audio device:", error);
+        res.status(500).json({ success: false, error: `Failed to remove active device: ${error.message}` });
+    }
+});
+
+// --- END Audio Device API Endpoints ---
 
 module.exports = router; 
