@@ -14,6 +14,7 @@ const poseTracker = require('../services/poseTracker');
 const path = require('path');
 const QRCode = require('qrcode');
 const { Worker } = require('worker_threads');
+const { mapPanDegreesToValue, mapTiltDegreesToValue } = require('../utils/ptzMapper'); // Import mapping functions
 
 // globals
 let sceneTakeIndex = 0;
@@ -463,7 +464,7 @@ async function action(req, res) {
 
                 activeWorkers.push({ worker, name: recordingCameraName });
 
-                // --- NEW: Schedule PTZ Movements for this camera ---
+                // --- Schedule PTZ Movements for this camera --- 
                 if (shotCameraInfo.movements && shotCameraInfo.movements.length > 0) {
                     broadcastConsole(`Scheduling ${shotCameraInfo.movements.length} PTZ movements for ${recordingCameraName}...`, 'info');
                     shotCameraInfo.movements.forEach(move => {
@@ -480,10 +481,12 @@ async function action(req, res) {
                                 let logMsg = `Executing PTZ for ${recordingCameraName} at ${move.time}s:`;
 
                                 if (typeof move.pan === 'number') {
+                                    // Use imported mapping function
                                     ptzPayload.pan = mapPanDegreesToValue(move.pan);
                                     logMsg += ` Pan=${move.pan}°(${ptzPayload.pan})`;
                                 }
                                 if (typeof move.tilt === 'number') {
+                                     // Use imported mapping function
                                     ptzPayload.tilt = mapTiltDegreesToValue(move.tilt);
                                     logMsg += ` Tilt=${move.tilt}°(${ptzPayload.tilt})`;
                                 }
@@ -512,7 +515,7 @@ async function action(req, res) {
                 } else {
                      broadcastConsole(`No PTZ movements defined for ${recordingCameraName} in this shot.`, 'info');
                 }
-                // --- END NEW ---
+                // --- END Scheduling PTZ Movements ---
 
             } // End for loop cameras
         } // End else (has cameras)
@@ -525,8 +528,7 @@ async function action(req, res) {
 
         broadcastConsole('Proceeding with shot actions...');
 
-        // --- Camera movement logic is now handled by scheduled setTimeouts above ---
-        // broadcastConsole('Camera movement logic needs implementation.', 'warn'); // REMOVED
+        // --- Camera movement logic is now handled by scheduled setTimeouts above --- 
 
         // Speak action cue
         aiVoice.speak("Action!"); // TODO: Make this configurable or optional?
@@ -618,41 +620,6 @@ async function action(req, res) {
 function getCurrentSceneState() {
     // ... existing code ...
 }
-
-// --- NEW: PTZ Mapping Functions ---
-/**
- * Maps a value from one range to another.
- */
-function mapRange(value, inMin, inMax, outMin, outMax) {
-  // Clamp value to input range
-  const clampedValue = Math.max(inMin, Math.min(value, inMax));
-  return outMin + ((clampedValue - inMin) * (outMax - outMin)) / (inMax - inMin);
-}
-
-/**
- * Maps pan degrees (-140 to +140) to camera software value (-468000 to 468000).
- */
-function mapPanDegreesToValue(degrees) {
-    const PAN_DEG_MIN = -140;
-    const PAN_DEG_MAX = 140;
-    const PAN_VAL_MIN = -468000;
-    const PAN_VAL_MAX = 468000;
-    return Math.round(mapRange(degrees, PAN_DEG_MIN, PAN_DEG_MAX, PAN_VAL_MIN, PAN_VAL_MAX));
-}
-
-/**
- * Maps tilt degrees (-70 to +30) to camera software value (-324000 to 324000).
- */
-function mapTiltDegreesToValue(degrees) {
-    const TILT_DEG_MIN = -70; // Downward
-    const TILT_DEG_MAX = 30;  // Upward
-    const TILT_VAL_MIN = -324000; // Corresponds to -70 deg
-    const TILT_VAL_MAX = 324000; // Corresponds to +30 deg
-    // IMPORTANT: The mapping might be inverted depending on camera hardware/v4l2 interpretation.
-    // Assuming -70 deg maps to min value and +30 deg maps to max value. Adjust if needed.
-    return Math.round(mapRange(degrees, TILT_DEG_MIN, TILT_DEG_MAX, TILT_VAL_MIN, TILT_VAL_MAX));
-}
-// --- END NEW ---
 
 module.exports = {
     initScene,
