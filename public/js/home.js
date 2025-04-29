@@ -31,7 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Global Variables ---
   let voiceBypassEnabled = true;
-  let lastAudioRecording = null;
 
   // --- UI Update Functions ---
   function updateVoiceBypassButton() {
@@ -113,77 +112,6 @@ document.addEventListener('DOMContentLoaded', () => {
   function handleResolutionChange(resolution) { ... }
   */
   // ... TO HERE
-
-  // --- Audio Functions --- 
-  // Keep these for now, might move to audio-handler.js later
-  function testAudioRecord() {
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then((stream) => {
-        const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-        const audioChunks = [];
-        mediaRecorder.ondataavailable = (e) => { audioChunks.push(e.data); };
-        mediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-          const formData = new FormData();
-          formData.append("audio", audioBlob, `rec_${Date.now()}.webm`);
-          logToConsole("Sending audio data to server...", 'info');
-          try {
-            const response = await fetch("/recordAudio", { method: "POST", body: formData });
-            const data = await response.json();
-            if (!response.ok) {
-              throw new Error(data.message || `HTTP error ${response.status}`);
-            }
-            logToConsole(`Audio recorded: ${data.filename}`, "info");
-            lastAudioRecording = data.filename; 
-          } catch (err) {
-            logToConsole(`Error recording audio: ${err.message}`, "error");
-          }
-        };
-        mediaRecorder.start();
-        logToConsole("Recording audio for 5 seconds...", "info");
-        setTimeout(() => {
-          try {
-            if (mediaRecorder.state === "recording") {
-              mediaRecorder.stop();
-            }
-            stream.getTracks().forEach((track) => track.stop()); 
-          } catch (e) { console.error("Error stopping recorder/stream:", e); }
-        }, 5000);
-      })
-      .catch((err) => logToConsole(`Error accessing microphone: ${err.message}`, "error"));
-  }
-
-  function playLastRecording() {
-    if (!lastAudioRecording) {
-      logToConsole("No audio recording available to play", "warn");
-      return;
-    }
-    const currentSessionId = document.getElementById('current-session-id')?.textContent;
-    if (!currentSessionId) {
-      logToConsole("Cannot determine current session ID to play audio.", "error");
-      return;
-    }
-    const audioUrl = `/recordings/${currentSessionId.trim()}/${lastAudioRecording}`;
-    logToConsole(`Attempting to play: ${audioUrl}`, 'info');
-    const audio = new Audio(audioUrl);
-    audio.onerror = (e) => {
-      console.error("Audio playback error:", e);
-      logToConsole(`Error playing audio from ${audioUrl}. Check server serves /recordings or if file exists.`, "error");
-    };
-    audio.play()
-      .then(() => logToConsole(`Playing ${lastAudioRecording}...`, "info"))
-      .catch((err) => logToConsole(`Error initiating audio playback: ${err.message}`, "error"));
-  }
-
-  function clearAudio() {
-    if (!lastAudioRecording) {
-      logToConsole("No audio recording available to clear", "warn");
-      return;
-    }
-    logToConsole("Clear Audio button needs server-side endpoint.", "warn");
-    // lastAudioRecording = null;
-    // logToConsole("Cleared last audio recording reference (client-side only).", "info");
-  }
 
   // --- Actor Loading Logic ---
   const loadActorsBtn = document.getElementById('loadActorsBtn');
