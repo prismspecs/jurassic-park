@@ -13,32 +13,13 @@
     - with Above and Underneath these are shot as a separate take
     - there is also a final separate take for each dinosaur
 
-- it should launch a separate thread on Action! to record sound
-  This will involve a similar process to recording video in that the devices must be discovered, the ability to Add Recording Device should work like adding a camera, and that the recording should happen in a seperate thread. It should also place recorded audio files into recordings/ with a naming convention like Audio_1 (to match how Camera_1 naming works). Audio recording should begin with Action! just like video recording, and should last the duration of the scene. It should record to medium high quality .wav files.
-
-- reset PTZ controls for camera when it loads so that the camera is centered
-
 - refactor the endpoints. some use /api/ prefix. /camera/ does not, for example. I should update everything to use /api/
 
 - remove unncessary things
 
 - sometimes I get the FF message that the tab is causing my computer to slow down with the STOP button
 
-## Scene Recording
-
-play the scene
-
-some sort of 3 - 2 - 1 action moment (this should be computerized so that it is synced rather than the actor)
-
-actors get their teleprompter stuff
-
-recording begins
-
-camera uses the scene.json file to zoom, move, etc. (?)
-
-recording ends
-
-video files are sent to the editing module (to be developed)
+- "live" view from AI Brain including skeletal tracking
 
 ## Editor
 

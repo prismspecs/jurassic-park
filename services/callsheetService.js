@@ -31,11 +31,9 @@ function initCallsheet() {
 // Get actors for a scene based on number of characters needed
 function getActorsForScene(numActorsNeeded) {
     console.log('Getting actors for scene. Needed:', numActorsNeeded);
-    console.log('Current callsheet:', callsheet);
 
     // Filter available actors
     const availableActors = callsheet.filter(actor => actor.available);
-    console.log('Available actors:', availableActors);
 
     if (availableActors.length < numActorsNeeded) {
         broadcastConsole(`Not enough available actors. Needed: ${numActorsNeeded}, Available: ${availableActors.length}`, 'error');
@@ -44,11 +42,9 @@ function getActorsForScene(numActorsNeeded) {
 
     // Sort the available actors by sceneCount
     const sortedActors = [...availableActors].sort((a, b) => a.sceneCount - b.sceneCount);
-    console.log('Sorted actors:', sortedActors);
 
     // Get the top actorsNeeded actors
     const selectedActors = sortedActors.slice(0, numActorsNeeded);
-    console.log('Selected actors:', selectedActors);
     return selectedActors;
 }
 
@@ -70,7 +66,6 @@ function saveCallsheet() {
     try {
         const callsheetPath = path.join(__dirname, '..', config.callsheet);
         console.log('Saving callsheet to:', callsheetPath);
-        console.log('Callsheet data:', callsheet);
 
         fs.writeFileSync(callsheetPath, JSON.stringify(callsheet, null, 2));
         broadcastConsole('Updated callsheet saved');
