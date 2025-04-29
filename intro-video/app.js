@@ -18,6 +18,11 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Add route for the screen display
+app.get('/screen', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'screen.html'));
+});
+
 // Socket communication for browser control
 io.on('connection', (socket) => {
   console.log('a user connected');
@@ -27,10 +32,14 @@ io.on('connection', (socket) => {
 
   // Add event listeners for controlling video playback etc. later
   socket.on('startVideo', () => {
-    console.log('Start video request received');
-    // Logic to start video playback will go here
-    // For now, just broadcast back (can be used to sync clients if needed)
-    io.emit('videoStarted');
+    console.log('Received startVideo command from control panel');
+    io.emit('playVideoOnScreen');
+  });
+
+  // Add listener for toggle command
+  socket.on('toggleFaceOverlay', () => {
+    console.log('Received toggleFaceOverlay command from control panel');
+    io.emit('toggleFaceOverlay');
   });
 });
 

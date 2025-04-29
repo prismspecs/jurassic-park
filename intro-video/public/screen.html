@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Jurassic Park Intro - Screen</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin: 0;
+        /* Remove default margin */
+        background-color: black;
+        /* Black background for fullscreen feel */
+        overflow: hidden;
+        /* Hide scrollbars */
+      }
+
+      #videoContainer {
+        position: relative;
+        width: 100vw;
+        /* Full viewport width */
+        height: 100vh;
+        /* Full viewport height */
+        border: none;
+        /* Remove border */
+        margin-bottom: 0;
+      }
+
+      #videoPlayer {
+        width: 100%;
+        height: 100%;
+      }
+
+      #faceOverlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        display: none;
+        justify-content: center;
+        align-items: center;
+      }
+
+      #faceCanvas {
+        max-width: 100%;
+        max-height: 100%;
+      }
+
+      #webcamVideo {
+        /* display: none; */ /* Removed to make it visible */
+        /* Hidden video element for webcam stream processing */
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 160px; /* Smaller size */
+        height: 120px;
+        border: 1px solid red;
+        z-index: 10; /* Ensure it's above the main video */
+        transform: scaleX(-1); /* Mirror the feed for natural view */
+        background-color: black;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="videoContainer">
+      <video id="videoPlayer" src="movie.mp4"></video>
+      <!-- Remove controls attribute -->
+      <div id="faceOverlay">
+        <canvas id="faceCanvas"></canvas>
+      </div>
+      <!-- Keep hidden webcam video for processing -->
+      <video id="webcamVideo" autoplay muted playsinline></video>
+    </div>
+
+    <!-- Remove debug button -->
+    <!-- <div style=\"position: absolute; top: 10px; left: 10px; z-index: 10;\">
+        <button id=\"toggleFaceOverlayButton\" style=\"padding: 5px; background: rgba(255,255,255,0.8); border: 1px solid black;\">Toggle Face Overlay</button>
+    </div> -->
+
+    <!-- Remove webcamContainer -->
+    <!-- <div id=\"webcamContainer\"> ... </div> -->
+
+    <!-- Remove controls -->
+    <!-- <div id="controls"> ... </div> -->
+
+    <!-- Include Socket.IO client library -->
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- Include face-api.js -->
+    <script src="/face-api/face-api.min.js"></script>
+    <!-- Client-side script for screen -->
+    <script src="screen.js"></script>
+  </body>
+</html>
