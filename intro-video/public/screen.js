@@ -20,6 +20,9 @@ let showFaceIntervals = [
 let currentFaceInterval = null;
 let isOverlayForcedVisible = false; // Flag to track manual toggle state
 let isSettingUpWebcam = false; // Flag to prevent concurrent setup calls
+let debugInfo = document.getElementById('debugInfo');
+let detectFaceButton = document.getElementById('detectFaceButton');
+let toggleDebugButton = document.getElementById('toggleDebugButton');
 
 // --- Face Detection Setup ---
 async function loadModels() {
@@ -82,19 +85,39 @@ async function startFaceDetection() {
     console.log("Starting face detection interval.");
 
     faceDetectionInterval = setInterval(async () => {
-        // Ensure models are loaded before trying to use them
-        if (webcamVideo.paused || webcamVideo.ended) {
-            // console.log("Detection check: Webcam paused or ended.");
-            return;
-        }
-        if (!faceapi.nets.tinyFaceDetector.params) {
-            console.log("Detection check: Models not ready yet.");
-            return;
-        }
+        detectFaces();
+    }, 100);
+}
 
-        console.log("Attempting face detection...");
-        const detections = await faceapi.detectAllFaces(webcamVideo, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 }));
+// Separate function for the actual face detection to allow manual triggering
+async function detectFaces() {
+    // Ensure models are loaded before trying to use them
+    if (webcamVideo.paused || webcamVideo.ended) {
+        // console.log("Detection check: Webcam paused or ended.");
+        return;
+    }
+    if (!faceapi.nets.tinyFaceDetector.params) {
+        console.log("Detection check: Models not ready yet.");
+        return;
+    }
+
+    console.log("Attempting face detection..."); // Uncomment this line
+    
+    try {
+        const detectionOptions = new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.1 }); // Even lower threshold
+        const detections = await faceapi.detectAllFaces(webcamVideo, detectionOptions);
         console.log(`Detected ${detections.length} faces.`);
+        
+        // Update debug info
+        if (debugInfo.style.display !== 'none') {
+            debugInfo.innerHTML = `
+                <div>Timestamp: ${new Date().toLocaleTimeString()}</div>
+                <div>Detected Faces: ${detections.length}</div>
+                <div>Options: ${JSON.stringify(detectionOptions)}</div>
+                <div>Webcam: ${webcamVideo.videoWidth}x${webcamVideo.videoHeight}</div>
+                <div>Raw data: ${JSON.stringify(detections)}</div>
+            `;
+        }
 
         if (detections.length > 0 && currentFaceInterval) {
             console.log(`Face detected within interval [${currentFaceInterval.start}-${currentFaceInterval.end}]. Drawing overlay.`);
@@ -133,9 +156,13 @@ async function startFaceDetection() {
                 faceOverlay.style.display = 'none';
             }
         }
-    }, 100);
+    } catch (err) {
+        console.error("Face detection error:", err);
+        if (debugInfo.style.display !== 'none') {
+            debugInfo.innerHTML += `<div style="color:red">Error: ${err.message}</div>`;
+        }
+    }
 }
-
 
 // --- Video Playback Logic (Keep as is) ---
 function checkFaceOverlayTime() {
@@ -247,6 +274,20 @@ socket.on('toggleFaceOverlay', () => {
         isOverlayForcedVisible = false;
         // Re-run time check in case it should be on due to video time
         checkFaceOverlayTime(); 
+    }
+});
+
+// Add button event listeners
+detectFaceButton.addEventListener('click', () => {
+    console.log("Manual face detection triggered");
+    detectFaces();
+});
+
+toggleDebugButton.addEventListener('click', () => {
+    if (debugInfo.style.display === 'none') {
+        debugInfo.style.display = 'block';
+    } else {
+        debugInfo.style.display = 'none';
     }
 });
 
