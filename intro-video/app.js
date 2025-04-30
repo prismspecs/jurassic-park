@@ -8,6 +8,9 @@ const io = require('socket.io')(http);
 
 const PORT = process.env.PORT || 3000;
 
+// Server-side state
+let isControlPanelReady = false; // Track if control panel webcam is ready
+
 // Serve static files (HTML, CSS, client-side JS, models, etc.)
 app.use(express.static(path.join(__dirname, 'public')));
 // Remove the specific routes for node_modules as they are incorrect
@@ -25,9 +28,21 @@ app.get('/screen', (req, res) => {
 
 // Socket communication for browser control
 io.on('connection', (socket) => {
-  console.log('a user connected');
+  console.log('a user connected', socket.id);
+
+  // Send current webcam status to newly connected client
+  socket.emit('webcamStatus', isControlPanelReady);
+
+  // Add handler for getWebcamStatus request
+  socket.on('getWebcamStatus', () => {
+    console.log('Received webcam status request from screen');
+    socket.emit('webcamStatus', isControlPanelReady);
+  });
+
   socket.on('disconnect', () => {
-    console.log('user disconnected');
+    console.log('user disconnected', socket.id);
+    // Optional: Add logic here if you need to know if the *control panel* specifically disconnected
+    // For now, we assume it stays connected or the state doesn't reset on disconnect.
   });
 
   // Add event listeners for controlling video playback etc. later
@@ -48,10 +63,21 @@ io.on('connection', (socket) => {
     io.emit('togglePreview', data);
   });
 
+  // Add listener for face padding updates
+  socket.on('setFacePadding', (paddingValue) => {
+    console.log(`Received face padding update from control panel: ${paddingValue}%`);
+    io.emit('setFacePadding', paddingValue);
+  });
+
   // Add listener for webcamReady command
   socket.on('webcamReady', () => {
     console.log('Received webcamReady notification from control panel');
-    io.emit('webcamReady'); // Broadcast to all clients (specifically the screen)
+    if (!isControlPanelReady) {
+      console.log('Setting control panel status to READY.');
+      isControlPanelReady = true;
+    }
+    // Still broadcast to all clients in case they are already connected and waiting
+    io.emit('webcamReady');
   });
 
   // Add listener for webcam frames (don't log each frame to avoid console spam)
@@ -59,6 +85,15 @@ io.on('connection', (socket) => {
     // Relay frame to all other clients without logging
     socket.broadcast.emit('webcamFrame', frameData); // Use broadcast to avoid sending back to sender
   });
+
+  // Relay face padding setting - REMOVED redundant and incorrect handler
+  // socket.on('setFacePadding', (paddingValue) => {
+  //   console.log(`Received face padding value: ${paddingValue}%`);
+  //   // Broadcast to screen only
+  //   if (screenSocket) {
+  //     screenSocket.emit('setFacePadding', paddingValue);
+  //   }
+  // });
 });
 
 // Server listen
