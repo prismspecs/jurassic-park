@@ -21,7 +21,9 @@
     "sanitize-filename": "^1.6.3",
     "socket.io": "^4.7.5",
     "uuid": "^9.0.1",
-    "ws": "^8.16.0"
+    "ws": "^8.16.0",
+    "@tensorflow/tfjs-core": "^4.10.0",
+    "@tensorflow/tfjs-backend-webgl": "^4.10.0"
   },
   "optionalDependencies": {
     "@tensorflow/tfjs-node-gpu": "^4.22.0"
