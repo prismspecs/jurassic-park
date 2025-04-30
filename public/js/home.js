@@ -1,27 +1,27 @@
 import { logToConsole } from './modules/logger.js';
 import { initializeResizers } from './modules/layout-resizer.js';
 import { CameraManager } from './modules/camera-manager.js';
-import { 
-    initializeSessionManagement, 
-    updateCurrentSessionDisplay, 
-    populateSessionList 
+import {
+  initializeSessionManagement,
+  updateCurrentSessionDisplay,
+  populateSessionList
 } from './modules/session-manager.js';
 import { initializeWebSocket, sendWebSocketMessage } from './modules/websocket-handler.js';
 import {
-    toggleVoiceBypass,
-    openTeleprompter,
-    openCharacterTeleprompter,
-    testTeleprompter,
-    testTeleprompterVideo,
-    clearTeleprompter,
-    initShot,
-    actorsReady,
-    action,
-    testConsole,
-    pauseAllTeleprompters,
-    playAllTeleprompters,
-    handlePipelineChange,
-    handleResolutionChange
+  toggleVoiceBypass,
+  openTeleprompter,
+  openCharacterTeleprompter,
+  testTeleprompter,
+  testTeleprompterVideo,
+  clearTeleprompter,
+  initShot,
+  actorsReady,
+  action,
+  testConsole,
+  pauseAllTeleprompters,
+  playAllTeleprompters,
+  handlePipelineChange,
+  handleResolutionChange
 } from './modules/control-actions.js';
 import { AudioManager } from './modules/audio-manager.js';
 
@@ -62,10 +62,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Attach listeners for other control buttons by ID
   document.getElementById('actionBtn')?.addEventListener('click', action);
   document.getElementById('actorsReadyBtn')?.addEventListener('click', actorsReady);
-  document.getElementById('voiceBypassBtn')?.addEventListener('click', async () => { 
-      // Update state based on the returned value from the async function
-      voiceBypassEnabled = await toggleVoiceBypass(voiceBypassEnabled); 
-      updateVoiceBypassButton(); // Update UI after state change
+  document.getElementById('voiceBypassBtn')?.addEventListener('click', async () => {
+    // Update state based on the returned value from the async function
+    voiceBypassEnabled = await toggleVoiceBypass(voiceBypassEnabled);
+    updateVoiceBypassButton(); // Update UI after state change
   });
   document.getElementById('testConsoleBtn')?.addEventListener('click', testConsole);
   document.getElementById('openTeleprompterBtn')?.addEventListener('click', openTeleprompter);
@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('pauseTeleprompterBtn')?.addEventListener('click', pauseAllTeleprompters);
   document.getElementById('playTeleprompterBtn')?.addEventListener('click', playAllTeleprompters);
   // Listener for recording pipeline dropdown
-   document.getElementById('recording-pipeline')?.addEventListener('change', (e) => handlePipelineChange(e.target.value));
+  document.getElementById('recording-pipeline')?.addEventListener('change', (e) => handlePipelineChange(e.target.value));
   // Listener for recording resolution dropdown
   document.getElementById('recording-resolution')?.addEventListener('change', (e) => handleResolutionChange(e.target.value));
 
@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ... old implementation ... 
   }
   */
-  
+
   /*
   async function deleteSession(sessionId) {
     // ... old implementation ...
@@ -121,7 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (loadActorsBtn && actorFilesInput && loadActorsStatus) {
     loadActorsBtn.addEventListener('click', async () => {
       const files = actorFilesInput.files;
-      if (!files || files.length === 0) { 
+      if (!files || files.length === 0) {
         loadActorsStatus.textContent = 'Please select files to load.';
         loadActorsStatus.className = 'status-error'; return;
       }
@@ -156,43 +156,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Initialize Components ---
   logToConsole("DOM loaded. Initializing components...", "info");
-  
+
   // Define the callback for WebSocket open
   const handleWebSocketOpen = () => {
-      fetch("/getVoiceBypass")
-        .then((res) => res.json())
-        .then((data) => {
-          voiceBypassEnabled = data.enabled;
-          updateVoiceBypassButton(); 
-        })
-        .catch((err) => {
-          console.error("Error fetching voice bypass state:", err);
-          logToConsole("Error fetching voice bypass state", "error");
-        });
+    fetch("/getVoiceBypass")
+      .then((res) => res.json())
+      .then((data) => {
+        voiceBypassEnabled = data.enabled;
+        updateVoiceBypassButton();
+      })
+      .catch((err) => {
+        console.error("Error fetching voice bypass state:", err);
+        logToConsole("Error fetching voice bypass state", "error");
+      });
   };
 
   // Initialize WebSocket and get instance (though we primarily use sendWebSocketMessage now)
   const ws = initializeWebSocket(cameraManager, handleWebSocketOpen);
 
   // Initialize Session Management 
-  initializeSessionManagement(); 
+  initializeSessionManagement();
 
   // Initialize Camera Manager
   if (cameraManager.initialize) {
     cameraManager.initialize().catch(err => {
-        logToConsole(`CameraManager initialization failed: ${err}`, 'error');
+      logToConsole(`CameraManager initialization failed: ${err}`, 'error');
     });
   } else {
-      logToConsole("CameraManager or initialize method not found", 'error');
+    logToConsole("CameraManager or initialize method not found", 'error');
   }
 
   // Initialize Audio Manager
   if (audioManager.initialize) {
-      audioManager.initialize().catch(err => {
-          logToConsole(`AudioManager initialization failed: ${err}`, 'error');
-      });
+    audioManager.initialize().catch(err => {
+      logToConsole(`AudioManager initialization failed: ${err}`, 'error');
+    });
   } else {
-      logToConsole("AudioManager or initialize method not found", 'warn');
+    logToConsole("AudioManager or initialize method not found", 'warn');
   }
 
   // Initialize Resizers
@@ -200,6 +200,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize Collapsible Sections
   initializeCollapsibleSections();
+
+  // Initialize Fullscreen Toggles
+  initializeFullscreenToggles();
 
 }); // End DOMContentLoaded 
 
@@ -220,13 +223,49 @@ function initializeCollapsibleSections() {
     // Initialize state (optional: start collapsed)
     const section = header.closest('.collapsible-section');
     const content = section.querySelector('.collapsible-content');
-     if (section.classList.contains('start-collapsed')) { // Check for a specific class to start collapsed
-        section.classList.add('collapsed');
-        header.innerHTML = header.innerHTML.replace(/&#9662;$/, ' &#9656;');
-        if (content) content.style.display = 'none';
-     } else if (content) {
-         content.style.display = ''; // Ensure it's visible if not starting collapsed
-     }
+    if (section.classList.contains('start-collapsed')) { // Check for a specific class to start collapsed
+      section.classList.add('collapsed');
+      header.innerHTML = header.innerHTML.replace(/&#9662;$/, ' &#9656;');
+      if (content) content.style.display = 'none';
+    } else if (content) {
+      content.style.display = ''; // Ensure it's visible if not starting collapsed
+    }
 
   });
-} 
+}
+
+// --- Initialize Fullscreen Toggles ---
+function initializeFullscreenToggles() {
+  document.querySelectorAll('.fullscreen-toggle-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      const targetId = button.dataset.target;
+      const targetPanel = document.getElementById(targetId);
+      const pageLayout = targetPanel.closest('.page-layout');
+
+      if (!targetPanel || !pageLayout) return;
+
+      const isCurrentlyFullscreen = targetPanel.classList.contains('fullscreen');
+
+      // Get all direct children of page-layout (panels and resizers)
+      const children = Array.from(pageLayout.children);
+
+      if (isCurrentlyFullscreen) {
+        // Exit fullscreen
+        targetPanel.classList.remove('fullscreen');
+        children.forEach(child => {
+          if (child !== targetPanel) {
+            child.classList.remove('panel-hidden');
+          }
+        });
+      } else {
+        // Enter fullscreen
+        targetPanel.classList.add('fullscreen');
+        children.forEach(child => {
+          if (child !== targetPanel) {
+            child.classList.add('panel-hidden');
+          }
+        });
+      }
+    });
+  });
+}

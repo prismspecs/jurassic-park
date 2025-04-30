@@ -28,10 +28,9 @@ The **AI director** orchestrates the performance and ensures that each shot clos
 #### **Performance Recording & File Organization**
 
 - Each shot is saved in a **directory structure matching the shot database**.
-- **Video files** are recorded concurrently for all cameras specified in a shot using **Node.js Worker Threads**. Each worker handles the full pipeline (capture, frame extraction, pose tracking, overlay encoding) for a single camera, preventing the main thread from blocking.
-- The recording process uses either **FFmpeg** or **GStreamer**, initiated by helper services (`ffmpegHelper.js`, `gstreamerHelper.js`).
-- Pose tracking is performed on the extracted frames, and the resulting overlay video is stored with metadata (e.g., pose accuracy score, shot number) in a camera-specific subdirectory within the session directory (e.g., `recordings/<session_id>/<camera_name>/`).
-- **Skeletor** is a node module I have created which takes a video as input and uses the skeletal data from anyone detected to "cut them out" and place them on a transparent background in a new output video file.
+- **Video files** are recorded concurrently for all cameras specified in a shot using **Node.js Worker Threads** (`workers/recordingWorker.js`). Each worker handles video capture using **FFmpeg** or **GStreamer**, initiated by helper services (`ffmpegHelper.js`, `gstreamerHelper.js`), saving the raw video to a camera-specific subdirectory within the session directory (e.g., `recordings/<session_id>/<camera_name>/original.mp4`).
+- **Live Pose Tracking & Overlay**: Pose tracking is performed *client-side* in the browser directly on the live camera preview streams using **TensorFlow.js (MoveNet)**. The skeleton is drawn onto an overlay canvas in the UI (`public/js/modules/camera-manager.js`). This provides immediate visual feedback but is *not* part of the recorded video file.
+- **Skeletor** is a separate Node.js module designed to take a *recorded* video file as input and use skeletal data (potentially generated offline or via a different process) to create a new video with the subject isolated on a transparent background. Its integration with the live recording process needs clarification.
 - **Actor dialogue and audience sound effects** are stored separately for post-processing.
 - A **final scene compilation** is created based on the best takes.
 
@@ -49,15 +48,14 @@ The **AI director** orchestrates the performance and ensures that each shot clos
 
 The application is built with **Node.js**, acting as the core event controller:
 
-- **Session Management**: Users manually create named sessions via the UI. The system generates a session ID using the format `YYYY-MM-DD_HH-MM_<sanitized_user_name>` and immediately creates the corresponding _base session directory_ (e.g., `recordings/YYYY-MM-DD_HH-MM_MySession/`) within `recordings/`. The application automatically selects the most chronologically recent session on startup. Users can switch between existing sessions using the UI. The _camera-specific subdirectories_ (e.g., `recordings/<session_id>/<camera_name>/`) and any further subdirectories needed for processing (e.g., `frames_raw/`) are created on-demand by the recording/processing helper functions (`ffmpegHelper.js`, `gstreamerHelper.js`, `poseTracker.js` if applicable) just before they need to write files into them. Session state (current session ID, list of sessions) is managed by `sessionService.js` and exposed via API endpoints in `routes/main.js`. The frontend UI in `home.ejs` and `public/js/home.js` handles displaying the current session, listing available sessions, and provides controls for creating new sessions and selecting existing ones.
+- **Session Management**: Users manually create named sessions via the UI. The system generates a session ID using the format `YYYY-MM-DD_HH-MM_<sanitized_user_name>` and immediately creates the corresponding _base session directory_ (e.g., `recordings/YYYY-MM-DD_HH-MM_MySession/`) within `recordings/`. The application automatically selects the most chronologically recent session on startup. Users can switch between existing sessions using the UI. The _camera-specific subdirectories_ (e.g., `recordings/<session_id>/<camera_name>/`) are created on-demand by the recording worker just before it needs to write files into them. Session state (current session ID, list of sessions) is managed by `sessionService.js` and exposed via API endpoints in `routes/main.js`. The frontend UI in `home.ejs` and `public/js/home.js` handles displaying the current session, listing available sessions, and provides controls for creating new sessions and selecting existing ones.
 - **WebSocket-based real-time communication** between AI components and the frontend UI for status updates, including session changes (`SESSION_UPDATE`, `SESSION_LIST_UPDATE`).
-- **Concurrent Recording**: Uses Node.js **Worker Threads** (`workers/recordingWorker.js`) to handle the computationally intensive recording and processing pipeline for each camera simultaneously, ensuring non-blocking operation during shots.
-- **Integrates pose tracking models** (e.g., TensorFlow.js, MediaPipe) for movement analysis, executed within the recording worker threads.
+- **Concurrent Recording**: Uses Node.js **Worker Threads** (`workers/recordingWorker.js`) to handle video capture for each camera simultaneously, ensuring non-blocking operation during shots.
+- **Client-Side Pose Tracking**: The frontend JavaScript (`public/js/modules/camera-manager.js`) uses **TensorFlow.js** loaded via CDN to perform real-time pose detection (MoveNet) on the camera preview streams displayed in the browser and draws skeleton overlays.
 - **Manages file storage**, shot metadata, and retrieval within session directories.
 - **Plays AI audio voice cues** via text-to-speech APIs (this will not be in use for the first run of the project, which uses a human comedian).
 - **Coordinates main and mobile teleprompter displays** through a local web interface and WebSocket communication. The main teleprompter shows initialization status and actor assignments with headshots and QR codes. Character teleprompters show specific lines and cues.
-
-* **Timed PTZ Control**: During scene recording ("Action!"), reads camera movement sequences (pan, tilt, zoom timings in degrees/percent) from `database/scenes.json`. Maps degrees to camera-specific software values and schedules `setPTZ` commands via `setTimeout` to execute movements at designated times within the shot.
+- **Timed PTZ Control**: During scene recording ("Action!"), reads camera movement sequences (pan, tilt, zoom timings in degrees/percent) from `database/scenes.json`. Maps degrees to camera-specific software values and schedules `setPTZ` commands via `setTimeout` to execute movements at designated times within the shot.
 
 #### **Hardware & Camera Control**
 
@@ -102,15 +100,15 @@ The application is built with **Node.js**, acting as the core event controller:
 ├── /old                # Older or deprecated code (contents not listed)
 ├── /public             # Static assets served by Express
 │   └── favicon.ico     # Favicon for web interfaces
-│   └── /js             # Client-side JavaScript files (NEW)
-│       └── home.js       # Client-side logic for home.ejs (NEW)
+│   └── /js             # Client-side JavaScript files
+│       └── home.js       # Main client-side logic for home.ejs
+│       └── /modules    # Reusable JS modules (logger, camera-manager, etc.)
+│           └── camera-manager.js # Handles camera previews, controls, and CLIENT-SIDE POSE DETECTION
 ├── /recordings         # Stored video and audio files per session
 │   └── /<session_id>   # Directory for each session (e.g., 20231027_103000)
-│       ├── original.mp4  # Original recording for a scene/shot
-│       ├── overlay.mp4   # Processed video with overlay
-│       ├── frames_raw/   # Extracted raw frames
-│       └── frames_overlay/ # Frames with pose overlay
-│       └── *.wav         # Converted audio recordings
+│       └── /<camera_name> # Directory for each camera's recordings
+│           └── original.mp4 # Raw video captured by the worker
+│       └── *.wav         # Converted audio recordings (dialogue, sfx)
 ├── /routes             # API and web routes definition
 │   ├── camera.js         # Camera control routes, uses sessionService
 │   ├── main.js           # Main application routes, includes session API endpoints (/api/sessions, /api/select-session)
@@ -120,9 +118,9 @@ The application is built with **Node.js**, acting as the core event controller:
 │   ├── callsheetService.js # Manages callsheet/actor assignment logic
 │   ├── camera.js         # Camera class definition
 │   ├── cameraControl.js  # PTZ camera control & device management logic
-│   ├── ffmpegHelper.js   # Helper for FFmpeg operations (capture, frames, encode)
+│   ├── ffmpegHelper.js   # Helper for FFmpeg operations (capture, encode)
 │   ├── gstreamerHelper.js # Helper for GStreamer operations (capture)
-│   ├── poseTracker.js    # Pose tracking service
+│   ├── poseTracker.js    # Pose tracking service (DEPRECATED/REPURPOSED? Verify usage - pose tracking now client-side)
 │   ├── sceneService.js   # Service for managing scene progression (DEPRECATED? Verify usage)
 │   └── sessionService.js # Manages session ID and directories
 ├── /skeletor           # Cuts participants from video using skeletal data
@@ -131,13 +129,14 @@ The application is built with **Node.js**, acting as the core event controller:
 │   ├── homeView.js       # Logic for the main/home view, fetches session data
 │   ├── teleprompterView.js # Logic for the teleprompter view
 │   ├── /styles         # CSS Stylesheets
-│   │   └── home.css      # Styles for home.ejs (NEW)
-│   └── /templates      # HTML/EJS templates (home.ejs includes session UI)
+│   │   └── home.css      # Styles for home.ejs
+│   └── /templates      # HTML/EJS templates
+│       └── home.ejs      # Main control panel UI (includes TFJS CDN scripts, session UI)
 ├── /websocket          # WebSocket handling logic
 │   ├── broadcaster.js    # Handles broadcasting messages to clients
 │   └── handler.js        # Handles incoming WebSocket messages
-├── /workers            # NEW: Worker thread scripts
-│   └── recordingWorker.js # Handles concurrent camera recording & processing pipeline
+├── /workers            # Worker thread scripts
+│   └── recordingWorker.js # Handles concurrent camera video CAPTURE (pose tracking removed)
 │
 ├── /.git               # Git repository data (contents not listed)
 

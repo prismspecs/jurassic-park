@@ -21,7 +21,10 @@
 <body>
   <div class="page-layout">
     <!-- NEW Left Sidebar -->
-    <div class="left-sidebar">
+    <div class="left-sidebar" id="left-sidebar-panel">
+      <div class="panel-header">
+        <button class="fullscreen-toggle-btn" data-target="left-sidebar-panel">□</button>
+      </div>
       <div class="controls-section card">
         <!-- NEW Session Controls -->
         <div class="session-controls">
@@ -148,7 +151,10 @@
     <div class="resizer-handle" id="resizer-left-main"></div>
 
     <!-- Main Content Area -->
-    <div class="main-content">
+    <div class="main-content" id="main-content-panel">
+      <div class="panel-header">
+        <button class="fullscreen-toggle-btn" data-target="main-content-panel">□</button>
+      </div>
       <h1>AI Director Shots</h1>
       <div class="shot-container">
         <% scenes.forEach((scene, sceneIdx)=> { if (scene.shots &&
@@ -189,7 +195,10 @@
     <div class="resizer-handle" id="resizer-main-right"></div>
 
     <!-- Right Sidebar -->
-    <div class="sidebar">
+    <div class="sidebar" id="right-sidebar-panel">
+      <div class="panel-header">
+        <button class="fullscreen-toggle-btn" data-target="right-sidebar-panel">□</button>
+      </div>
       <!-- REVISED AUDIO DEVICE SECTION -->
       <div class="controls-section card">
         <h2>Audio Recording Devices (Server-Side)</h2>

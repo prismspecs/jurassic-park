@@ -6,6 +6,7 @@
 html,
 body {
   height: 100%;
+  width: 100%;
   /* font-family: monospace; */
   margin: 0;
   padding: 0;
@@ -21,6 +22,9 @@ body {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  position: relative;
+  box-sizing: border-box;
+  /* For positioning the button */
 }
 
 .sidebar {
@@ -31,6 +35,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  position: relative;
+  box-sizing: border-box;
+  /* For positioning the button */
+  min-width: 150px;
+  /* Ensure it doesn't collapse too much */
+  flex-shrink: 0;
+  /* Prevent shrinking beyond min-width */
 }
 
 h1 {
@@ -406,6 +417,12 @@ video {
   height: 100%;
   box-sizing: border-box;
   flex-shrink: 0;
+  position: relative;
+  /* For positioning the button */
+  display: flex;
+  /* Use flex for internal layout */
+  flex-direction: column;
+  /* Stack header and content */
 }
 
 .resizer-handle {
@@ -418,10 +435,6 @@ video {
   border-left: 1px solid #ccc;
   border-right: 1px solid #ccc;
   box-sizing: border-box;
-}
-
-.resizer-handle:hover {
-  background-color: #bbb;
 }
 
 /* Shot Container/Card Styles (Check for overlap with scene-container/scene-card) */
@@ -634,4 +647,74 @@ video {
   /* Remove the original padding */
   box-shadow: none;
   /* Remove the original shadow */
+}
+
+/* Fullscreen Toggle Styles */
+.panel-header {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 20;
+  /* Ensure button is above other content */
+}
+
+.fullscreen-toggle-btn {
+  padding: 2px 6px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  background-color: rgba(200, 200, 200, 0.5);
+  border: 1px solid rgba(150, 150, 150, 0.5);
+  border-radius: 3px;
+  width: auto;
+  /* Override general button width */
+  text-align: center;
+  /* Override general button text-align */
+}
+
+.fullscreen-toggle-btn:hover {
+  background-color: rgba(180, 180, 180, 0.7);
+}
+
+/* Fullscreen State */
+.page-layout>.fullscreen {
+  flex-basis: 100% !important;
+  /* Override flex-basis */
+  flex-grow: 1 !important;
+  /* Ensure it takes full space */
+  width: 100% !important;
+  /* Ensure full width */
+  min-width: 100% !important;
+  /* Ensure full width */
+  border-left: none !important;
+  /* Remove borders */
+  border-right: none !important;
+}
+
+.page-layout>.panel-hidden {
+  display: none !important;
+  /* Hide other panels and resizers */
+}
+
+/* Adjust button text/icon when fullscreen */
+.page-layout>.fullscreen .fullscreen-toggle-btn::before {
+  content: "X";
+  /* Change icon/text to indicate exit */
+}
+
+.page-layout>div:not(.fullscreen) .fullscreen-toggle-btn::before {
+  content: "□";
+  /* Default icon/text */
+}
+
+/* Hide button content when using ::before */
+.fullscreen-toggle-btn {
+  font-size: 0;
+  /* Hide original button text */
+}
+
+.fullscreen-toggle-btn::before {
+  font-size: 16px;
+  /* Set font size for the pseudo-element */
+  line-height: 1;
 }
