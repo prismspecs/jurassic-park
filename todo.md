@@ -1,17 +1,12 @@
 ## to do
 
-
 ### Interface
-
-+ Create a hidden control panel which has some additional styling options that can also be activated via keypress. For example, "H" will toggle hiding all header tags on the page. This aids in it appearing more like the mind of a robot when it is seen. (Less human readability, more stylisitically cryptic). This hidden control panel pops up from a visible button on the left control panel. This button has the text "S3CR37 P4N31"
-
-
 
 ### Functional
 
-- The ability to simply play a video on the main teleprompter
+- Add props to the character/actor/QR display. As you can see in the scenes.json file, each character also has a "prop" assigned. When the actor is called up to play the character, it currently displays the actor's headshot, the name of the character, and a QR code. In addition to this, it should also display the prop. Currently the prop image files are stored in database/props. If the prop lists "sunglasses" it should find the associated sunglasses.png file in that directory.
 
-- Add costume to the character/actor/QR display
+- The ability to simply play a video on the main teleprompter
 
 - 3,2,1 count down before recording, after Action (this will be a video played on all teleprompters)
 

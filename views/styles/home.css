@@ -1,3 +1,20 @@
+:root {
+  --color-bg: #f0f0f0;
+  --color-surface: #ffffff;
+  --color-border: #cccccc;
+  --color-text: #333333;
+  --color-accent: #00ff00;
+  --color-error: #cc0000;
+
+  /* RGB versions for rgba() */
+  --rgb-bg: 240, 240, 240;
+  --rgb-surface: 255, 255, 255;
+  --rgb-border: 204, 204, 204;
+  --rgb-text: 51, 51, 51;
+  --rgb-accent: 0, 255, 0;
+  --rgb-error: 204, 0, 0;
+}
+
 /* Global styles */
 * {
   font-family: monospace;
@@ -10,7 +27,7 @@ body {
   /* font-family: monospace; */
   margin: 0;
   padding: 0;
-  background: #f0f0f0;
+  background: var(--color-bg);
   display: flex;
   min-height: 100vh;
 }
@@ -29,9 +46,9 @@ body {
 
 .sidebar {
   flex: 1;
-  background: #fff;
+  background: var(--color-surface);
   padding: 20px;
-  border-left: 1px solid #ccc;
+  border-left: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -47,21 +64,22 @@ body {
 h1 {
   margin: 0 0 20px 0;
   text-align: center;
+  color: var(--color-text);
 }
 
 /* Camera controls */
 .controls-section {
-  background: #f8f8f8;
+  background: var(--color-bg);
   padding: 15px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(var(--rgb-text), 0.1);
   box-sizing: border-box;
 }
 
 .controls-section h2 {
   margin: 0 0 15px 0;
   font-size: 18px;
-  color: #333;
+  color: var(--color-text);
 }
 
 .scene-container {
@@ -73,12 +91,12 @@ h1 {
 }
 
 .scene-card {
-  background: #fff;
-  border: 1px solid #ccc;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   width: 220px;
   padding: 10px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 4px rgba(var(--rgb-text), 0.2);
   cursor: pointer;
   transition: transform 0.2s ease;
   overflow: hidden;
@@ -102,6 +120,7 @@ h1 {
   font-weight: bold;
   margin-bottom: 5px;
   font-size: 14px;
+  color: var(--color-text);
 }
 
 /* Camera controls */
@@ -117,15 +136,15 @@ h1 {
   width: 100%;
   padding: 0.5rem;
   font-size: 1rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
   border-radius: 4px;
-  background-color: white;
+  background-color: var(--color-surface);
 }
 
 .camera-preview {
   width: 100%;
   margin-bottom: 1rem;
-  background-color: #f0f0f0;
+  background-color: var(--color-bg);
   border-radius: 4px;
   overflow: hidden;
   position: relative;
@@ -162,7 +181,7 @@ h1 {
 .ptz-controls {
   margin-top: 1rem;
   padding: 1rem;
-  background-color: #f8f8f8;
+  background-color: var(--color-bg);
   border-radius: 4px;
 }
 
@@ -174,6 +193,7 @@ h1 {
   display: inline-block;
   width: 60px;
   font-weight: bold;
+  color: var(--color-text);
 }
 
 .ptz-slider input[type="range"] {
@@ -189,8 +209,8 @@ h1 {
 
 /* Console output */
 #console-output {
-  background: #1e1e1e;
-  color: #fff;
+  background: var(--color-surface);
+  color: var(--color-surface);
   font-family: monospace;
   padding: 10px;
   width: 100%;
@@ -205,15 +225,15 @@ h1 {
 }
 
 #console-output .timestamp {
-  color: #888;
+  color: var(--color-border);
 }
 
 #console-output .error {
-  color: #ff6b6b;
+  color: var(--color-error);
 }
 
 #console-output .info {
-  color: #4ecdc4;
+  color: var(--color-text);
 }
 
 /* Buttons */
@@ -229,9 +249,10 @@ button {
   font-size: 14px;
   width: 100%;
   text-align: left;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
   border-radius: 4px;
-  background: #fff;
+  background: var(--color-surface);
+  color: var(--color-text);
   transition: background-color 0.2s;
   box-sizing: border-box;
 }
@@ -239,14 +260,14 @@ button {
 /* Secret Panel Button */
 .cryptic-btn {
   font-family: 'Courier New', Courier, monospace;
-  background-color: #333;
-  color: #0f0;
-  border-color: #0f0;
+  background-color: var(--color-text);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
   margin-top: 10px;
 }
 
 .cryptic-btn:hover {
-  background-color: #444;
+  background-color: rgba(var(--rgb-text), 0.8);
 }
 
 /* Secret Panel Styles */
@@ -256,12 +277,12 @@ button {
   bottom: 10px;
   left: 10px;
   right: 10px;
-  background: rgba(30, 30, 30, 0.95);
-  color: #0f0;
+  background: rgba(var(--rgb-text), 0.95);
+  color: var(--color-accent);
   padding: 15px;
-  border: 1px solid #0f0;
+  border: 1px solid var(--color-accent);
   border-radius: 8px;
-  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+  box-shadow: 0 0 15px rgba(var(--rgb-accent), 0.5);
   z-index: 1000;
   max-height: 40%;
   overflow-y: auto;
@@ -273,8 +294,8 @@ button {
 
 #secret-panel h2 {
   margin-top: 0;
-  color: #0f0;
-  border-bottom: 1px solid #0f0;
+  color: var(--color-accent);
+  border-bottom: 1px solid var(--color-accent);
   padding-bottom: 5px;
 }
 
@@ -305,9 +326,10 @@ body.hide-headers h6 {
 }
 
 .session-button.active {
-  background-color: #e0e0e0;
+  background-color: var(--color-bg);
   font-weight: bold;
-  border-color: #a0a0a0;
+  border-color: var(--color-border);
+  color: var(--color-text);
 }
 
 .delete-session-button {
@@ -316,18 +338,18 @@ body.hide-headers h6 {
   font-size: 12px;
   background: none;
   border: none;
-  color: #cc0000;
+  color: var(--color-error);
   cursor: pointer;
   flex-shrink: 0;
 }
 
 .delete-session-button:hover {
-  color: #ff0000;
+  color: var(--color-error);
   background: none;
 }
 
 button:hover {
-  background: #f0f0f0;
+  background: var(--color-bg);
 }
 
 #status {
@@ -335,8 +357,9 @@ button:hover {
   font-weight: bold;
   text-align: center;
   padding: 10px;
-  background: #f8f8f8;
+  background: var(--color-bg);
   border-radius: 4px;
+  color: var(--color-text);
 }
 
 /* Video elements */
@@ -344,12 +367,12 @@ video {
   width: 640px;
   margin: 10px auto;
   display: block;
-  border: 2px solid #ccc;
+  border: 2px solid var(--color-border);
 }
 
 /* Teleprompter controls */
 .teleprompter-button-group {
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: rgba(var(--rgb-text), 0.05);
   border-radius: 8px;
   padding: 12px;
   margin: 10px 0;
@@ -358,7 +381,7 @@ video {
 .teleprompter-button-group .group-label {
   font-weight: bold;
   margin-bottom: 8px;
-  color: #666;
+  color: var(--color-text);
 }
 
 .teleprompter-button-group button {
@@ -370,7 +393,7 @@ video {
   max-height: 150px;
   overflow-y: auto;
   margin-top: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border);
   padding: 5px;
 }
 
@@ -383,32 +406,32 @@ video {
 }
 
 .log-timestamp {
-  color: #888;
+  color: var(--color-border);
   margin-right: 5px;
 }
 
 .log-info {
-  color: #333;
+  color: var(--color-text);
 }
 
 .log-warn {
-  color: orange;
+  color: var(--color-error);
 }
 
 .log-error {
-  color: red;
+  color: var(--color-error);
   font-weight: bold;
 }
 
 .log-success {
-  color: green;
+  color: var(--color-accent);
 }
 
 /* Actor Loading Styles */
 .actor-loading {
   margin-top: 15px;
   padding-top: 10px;
-  border-top: 1px dashed #ccc;
+  border-top: 1px dashed var(--color-border);
 }
 
 .actor-loading label {
@@ -427,15 +450,15 @@ video {
 }
 
 .status-info {
-  color: #555;
+  color: var(--color-text);
 }
 
 .status-success {
-  color: green;
+  color: var(--color-accent);
 }
 
 .status-error {
-  color: red;
+  color: var(--color-error);
 }
 
 /* Layout Styles (Potentially conflict with existing body, .main-content, .sidebar) */
@@ -450,9 +473,9 @@ video {
   flex-basis: 25%;
   min-width: 150px;
   padding: 15px;
-  border-right: 1px solid #ccc;
+  border-right: 1px solid var(--color-border);
   overflow-y: auto;
-  background-color: #f8f8f8;
+  background-color: var(--color-bg);
   height: 100%;
   box-sizing: border-box;
   flex-shrink: 0;
@@ -463,13 +486,13 @@ video {
 
 .resizer-handle {
   width: 5px;
-  background-color: #ddd;
+  background-color: var(--color-border);
   cursor: col-resize;
   flex-shrink: 0;
   height: 100%;
   z-index: 10;
-  border-left: 1px solid #ccc;
-  border-right: 1px solid #ccc;
+  border-left: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
   box-sizing: border-box;
 }
 
@@ -481,15 +504,17 @@ video {
 }
 
 .shot-card {
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
   padding: 10px;
   border-radius: 4px;
   width: 200px;
   cursor: pointer;
+  background-color: var(--color-surface);
+  color: var(--color-text);
 }
 
 .shot-card:hover {
-  border-color: #aaa;
+  border-color: var(--color-border);
 }
 
 .shot-card img {
@@ -512,8 +537,9 @@ video {
 .camera-control {
   margin-bottom: 20px;
   padding: 15px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
   border-radius: 5px;
+  background-color: var(--color-surface);
 }
 
 .camera-header {
@@ -528,9 +554,9 @@ video {
   height: 28px;
   padding: 0;
   text-align: center;
-  background-color: #fdd;
-  border: 1px solid #f99;
-  color: #c00;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
   cursor: pointer;
   font-size: 1em;
   line-height: 26px;
@@ -539,13 +565,13 @@ video {
 }
 
 .remove-btn:hover {
-  background-color: #fcc;
-  border-color: #f66;
+  background-color: var(--color-surface);
+  border-color: var(--color-error);
 }
 
 .device-info {
   font-size: 0.8em;
-  color: #666;
+  color: var(--color-text);
   margin-bottom: 10px;
 }
 
@@ -566,8 +592,10 @@ video {
 .setting-group select {
   width: 100%;
   padding: 5px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
   border-radius: 3px;
+  background-color: var(--color-surface);
+  color: var(--color-text);
 }
 
 /* Updated PTZ Control Styling */
@@ -600,19 +628,20 @@ video {
   text-align: right;
   font-family: monospace;
   font-size: 0.9em;
+  color: var(--color-text);
 }
 
 .ptz-controls-container {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 0;
-  border-top: 1px solid #eee;
-  border-bottom: 1px solid #eee;
+  border-top: 1px solid var(--color-bg);
+  border-bottom: 1px solid var(--color-bg);
   margin: 10px 0;
 }
 
 .ptz-placeholder {
-  color: #666;
+  color: var(--color-text);
   font-style: italic;
   padding: 10px;
   text-align: center;
@@ -622,7 +651,7 @@ video {
 .shot-camera-description {
   font-size: 0.9em;
   margin-top: 5px;
-  color: #555;
+  color: var(--color-text);
 }
 
 /* NEW Collapsible Section Styles */
@@ -633,8 +662,8 @@ video {
 .collapsible-header {
   cursor: pointer;
   padding: 8px 12px;
-  background-color: #eee;
-  border: 1px solid #ddd;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   margin: 0 0 5px 0;
   font-size: 16px;
@@ -643,17 +672,20 @@ video {
   justify-content: space-between;
   align-items: center;
   transition: background-color 0.2s ease;
+  color: var(--color-text);
 }
 
 .collapsible-header:hover {
-  background-color: #e0e0e0;
+  background-color: var(--color-bg);
 }
 
 .collapsible-content {
-  border: 1px solid #eee;
+  border: 1px solid var(--color-bg);
   border-top: none;
   border-radius: 0 0 4px 4px;
   padding: 10px;
+  background-color: var(--color-surface);
+  color: var(--color-text);
 }
 
 .collapsible-content>.teleprompter-button-group {
@@ -675,15 +707,16 @@ video {
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
-  background-color: rgba(200, 200, 200, 0.5);
-  border: 1px solid rgba(150, 150, 150, 0.5);
+  background-color: rgba(var(--rgb-border), 0.5);
+  border: 1px solid rgba(var(--rgb-border), 0.5);
   border-radius: 3px;
   width: auto;
   text-align: center;
+  color: var(--color-text);
 }
 
 .fullscreen-toggle-btn:hover {
-  background-color: rgba(180, 180, 180, 0.7);
+  background-color: rgba(var(--rgb-border), 0.7);
 }
 
 /* Fullscreen State */
@@ -716,4 +749,169 @@ video {
 .fullscreen-toggle-btn::before {
   font-size: 16px;
   line-height: 1;
+}
+
+/* --- Inverted Color Scheme --- */
+body.color-scheme-inverted {
+  --color-bg: #333333;
+  --color-surface: #555555;
+  --color-border: #888888;
+  --color-text: #ffffff;
+  --color-accent: #00ff00; /* Keep accent */
+  --color-error: #ff6b6b; /* Lighter red for dark bg */
+
+  /* RGB versions for rgba() */
+  --rgb-bg: 51, 51, 51;
+  --rgb-surface: 85, 85, 85;
+  --rgb-border: 136, 136, 136;
+  --rgb-text: 255, 255, 255;
+  --rgb-accent: 0, 255, 0;
+  --rgb-error: 255, 107, 107;
+}
+
+/* Adjust console specifically for inverted mode if needed */
+body.color-scheme-inverted #console-output {
+  background: var(--color-surface); /* Darker surface */
+  color: var(--color-text); /* White text */
+}
+
+body.color-scheme-inverted #console-output .timestamp {
+  color: var(--color-border);
+}
+
+body.color-scheme-inverted #console-output .error {
+  color: var(--color-error); /* Use the inverted error color */
+}
+
+body.color-scheme-inverted #console-output .info {
+  color: var(--color-text); /* White info text */
+}
+
+/* Make sure cryptic button text is visible in inverted */
+body.color-scheme-inverted .cryptic-btn {
+  background-color: var(--color-surface);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+body.color-scheme-inverted .cryptic-btn:hover {
+  background-color: var(--color-bg);
+}
+
+/* Adjust regular buttons for inverted */
+body.color-scheme-inverted button:not(.cryptic-btn):not(.delete-session-button) {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+body.color-scheme-inverted button:not(.cryptic-btn):not(.delete-session-button):hover {
+  background: var(--color-bg);
+}
+
+/* Adjust delete button */
+body.color-scheme-inverted .delete-session-button {
+  color: var(--color-error);
+}
+
+/* Adjust active session button */
+body.color-scheme-inverted .session-button.active {
+  background-color: var(--color-bg);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+/* Adjust collapsible headers/content */
+body.color-scheme-inverted .collapsible-header {
+  background-color: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+body.color-scheme-inverted .collapsible-header:hover {
+  background-color: var(--color-bg);
+}
+
+body.color-scheme-inverted .collapsible-content {
+  background-color: var(--color-surface);
+  border-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Adjust fullscreen button */
+body.color-scheme-inverted .fullscreen-toggle-btn {
+  background-color: rgba(var(--rgb-border), 0.5);
+  border: 1px solid rgba(var(--rgb-border), 0.7);
+  color: var(--color-text);
+}
+
+body.color-scheme-inverted .fullscreen-toggle-btn:hover {
+  background-color: rgba(var(--rgb-border), 0.7);
+}
+
+/* Adjust text inputs/selects */
+body.color-scheme-inverted select,
+body.color-scheme-inverted input[type="text"],
+body.color-scheme-inverted input[type="file"] /* Add other inputs as needed */
+{
+  background-color: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+/* Adjust PTZ Placeholder */
+body.color-scheme-inverted .ptz-placeholder {
+    color: var(--color-border);
+}
+
+/* Adjust remove button */
+body.color-scheme-inverted .remove-btn {
+    background-color: var(--color-surface);
+    border-color: var(--color-error);
+    color: var(--color-error);
+}
+body.color-scheme-inverted .remove-btn:hover {
+    background-color: var(--color-bg);
+    border-color: var(--color-error);
+}
+
+/* Adjust status */
+body.color-scheme-inverted #status {
+    background: var(--color-surface);
+    color: var(--color-text);
+}
+
+/* Adjust scene/shot cards */
+body.color-scheme-inverted .scene-card,
+body.color-scheme-inverted .shot-card {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text);
+    box-shadow: 0 2px 4px rgba(var(--rgb-text), 0.2); /* Use inverted text color for shadow base */
+}
+
+body.color-scheme-inverted .scene-card:hover,
+body.color-scheme-inverted .shot-card:hover {
+    border-color: var(--color-accent);
+}
+
+/* Adjust sidebar */
+body.color-scheme-inverted .sidebar {
+    background: var(--color-bg);
+    border-left-color: var(--color-border);
+}
+
+/* Adjust main content */
+body.color-scheme-inverted .main-content {
+    background: var(--color-surface); /* Or --color-bg depending on desired look */
+}
+
+/* Adjust controls section */
+body.color-scheme-inverted .controls-section {
+    background: var(--color-surface);
+    box-shadow: 0 2px 4px rgba(var(--rgb-text), 0.1);
+    color: var(--color-text);
+}
+body.color-scheme-inverted .controls-section h2 {
+    color: var(--color-text);
 }

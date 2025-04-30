@@ -159,22 +159,28 @@ async function callActorsForShot(scene, shotIndex) {
     for (let index = 0; index < actorsToCall.length; index++) {
         const actor = actorsToCall[index];
         const characterName = characterNames[index];
-        // Construct teleprompter URL using scene dir and shot name/id?
-        // For now, character name is likely enough, assuming teleprompter route handles it.
-        const characterUrl = `${baseUrl}/teleprompter/${encodeURIComponent(characterName)}`; 
+        const characterData = characters[characterName]; // Get data for this character from the shot
+        const propName = characterData ? characterData.prop : null; // Get the prop name
+
+        // Construct teleprompter URL
+        const characterUrl = `${baseUrl}/teleprompter/${encodeURIComponent(characterName)}`;
         const headshotUrl = `/database/actors/${encodeURIComponent(actor.id)}/headshot.jpg`;
+        
+        // Construct prop image URL (assuming .png extension, adjust if needed)
+        const propImageUrl = propName ? `/database/props/${encodeURIComponent(propName)}.png` : null; 
 
         try {
             // Generate QR code as a Data URL
             const qrCodeDataUrl = await QRCode.toDataURL(characterUrl);
 
-            // Add actor data to the array
+            // Add actor data to the array, including the prop image URL
             actorCallData.push({
                 name: actor.name,
                 id: actor.id, // Keep id if needed elsewhere, maybe for debugging
                 character: characterName,
                 headshotImage: headshotUrl,
-                qrCodeImage: qrCodeDataUrl
+                qrCodeImage: qrCodeDataUrl,
+                propImage: propImageUrl // Add prop image URL
             });
 
             // Speak the call (keep this individual)
@@ -186,6 +192,7 @@ async function callActorsForShot(scene, shotIndex) {
             actorCallData.push({ // Add placeholder or error info
                 name: actor.name,
                 character: characterName,
+                propImage: propImageUrl, // Include prop image even on QR error
                 error: `Failed to generate QR code`
             });
         }
@@ -193,9 +200,9 @@ async function callActorsForShot(scene, shotIndex) {
 
     // Broadcast the consolidated actor call data
     if (actorCallData.length > 0) {
-        broadcast({ 
-            type: 'ACTOR_CALLS', 
-            actors: actorCallData, 
+        broadcast({
+            type: 'ACTOR_CALLS',
+            actors: actorCallData,
             scene: scene.directory, // Include context
             shot: shot.name || `shot_${shotIndex+1}`
         });
@@ -204,10 +211,10 @@ async function callActorsForShot(scene, shotIndex) {
 
     // Broadcast that actors are being called (Original ACTORS_CALLED - keep for other UI logic?)
     // Now maybe include shot info?
-    broadcast({ 
-        type: 'ACTORS_CALLED', 
-        scene: scene, 
-        shot: shot 
+    broadcast({
+        type: 'ACTORS_CALLED',
+        scene: scene,
+        shot: shot
     });
 }
 // --- END REFACTOR ---
@@ -608,4 +615,4 @@ module.exports = {
     actorsReady,
     action,
     getCurrentScene
-}; 
+};

@@ -132,6 +132,15 @@
           }</strong><br>as ${actor.character || "Unknown"}`;
           actorCard.appendChild(textInfo);
 
+          // Prop Image
+          if (actor.propImage) {
+            const propImg = document.createElement("img");
+            propImg.className = "message-image prop-image"; // Add a specific class for styling
+            propImg.src = actor.propImage;
+            propImg.alt = `${actor.character} prop`;
+            actorCard.appendChild(propImg);
+          }
+
           // QR Code or Error
           if (actor.qrCodeImage) {
             const qrImg = document.createElement("img");

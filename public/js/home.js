@@ -277,8 +277,9 @@ function initializeFullscreenToggles() {
 function initializeSecretPanel() {
   const toggleBtn = document.getElementById('secret-panel-toggle-btn');
   const secretPanel = document.getElementById('secret-panel');
-  const toggleHeadersCheckbox = document.getElementById('toggle-headers-checkbox');
+  const toggleHeadersCheckbox = document.getElementById('hideHeadersToggle');
   const body = document.body;
+  const invertColorsBtn = document.getElementById('invertColorsBtn');
 
   if (!toggleBtn || !secretPanel || !toggleHeadersCheckbox) {
     logToConsole('Secret panel elements not found. Cannot initialize.', 'warn');
@@ -311,6 +312,25 @@ function initializeSecretPanel() {
       toggleHeadersVisibility();
     }
   });
+
+  // Handle Invert Colors Button Click
+  if (invertColorsBtn) {
+    invertColorsBtn.addEventListener('click', () => {
+      document.body.classList.toggle('color-scheme-inverted');
+      console.log('Toggled inverted color scheme.'); // Optional: Log action
+      // You might want to save this preference in localStorage
+      if (document.body.classList.contains('color-scheme-inverted')) {
+        localStorage.setItem('colorScheme', 'inverted');
+      } else {
+        localStorage.removeItem('colorScheme');
+      }
+    });
+  }
+
+  // Restore color scheme preference on load
+  if (localStorage.getItem('colorScheme') === 'inverted') {
+    document.body.classList.add('color-scheme-inverted');
+  }
 
   logToConsole('Secret panel initialized.', 'info');
 }
