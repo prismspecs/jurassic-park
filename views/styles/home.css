@@ -1,8 +1,11 @@
 /* Global styles */
+* {
+  font-family: monospace;
+}
 html,
 body {
     height: 100%;
-    font-family: sans-serif;
+    /* font-family: monospace; */
     margin: 0;
     padding: 0;
     background: #f0f0f0;
@@ -519,19 +522,73 @@ video {
 }
 
 .ptz-placeholder {
-  text-align: center;
-  color: #999;
+  color: #666;
   font-style: italic;
-  margin: 10px 0;
+  padding: 10px;
+  text-align: center;
 }
 
 /* Shot Camera Description Style */
 .shot-camera-description {
-    font-style: italic;
-    color: #0056b3; /* Dark blue */
-    margin: 5px 0 10px 0; /* Adjust spacing */
-    padding: 5px;
-    background-color: #e7f3ff; /* Light blue background */
-    border-left: 3px solid #0056b3;
     font-size: 0.9em;
+    margin-top: 5px;
+    color: #555;
 }
+
+/* NEW Collapsible Section Styles */
+.collapsible-section {
+    margin-bottom: 15px; /* Add some space below the section */
+}
+
+.collapsible-header {
+    cursor: pointer;
+    padding: 8px 12px;
+    background-color: #eee; /* Light background for the header */
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin: 0 0 5px 0; /* Reset default h3 margins and add small bottom margin */
+    font-size: 16px; /* Slightly smaller than h2 */
+    font-weight: bold;
+    display: flex; /* Use flex for alignment */
+    justify-content: space-between; /* Push arrow to the right */
+    align-items: center; /* Vertically center content */
+    transition: background-color 0.2s ease;
+}
+
+.collapsible-header:hover {
+    background-color: #e0e0e0; /* Slightly darker on hover */
+}
+
+.collapsible-content {
+    /* Content is shown/hidden by JS toggling display:none/block */
+    /* Optional: Add some padding if needed when visible */
+    /* padding: 10px; */ 
+    border: 1px solid #eee; /* Optional border for the content area */
+    border-top: none; /* Avoid double border with header */
+    border-radius: 0 0 4px 4px; /* Match bottom corners */
+    padding: 10px; /* Add padding inside the content box */
+}
+
+/* Style adjustments for the teleprompter group specifically when inside collapsible */
+.collapsible-content > .teleprompter-button-group {
+    border: none; /* Remove the original border */
+    padding: 0;   /* Remove the original padding */
+    box-shadow: none; /* Remove the original shadow */
+}
+
+/* Style for the arrow icon (using the unicode characters directly) */
+.collapsible-header::after {
+    /* Using pseudo-element for the arrow is an alternative,
+       but since we're manipulating innerHTML in JS, we'll stick to that */
+    /* content: '\25BC'; /* Default down arrow */
+    /* transition: transform 0.2s ease; */
+}
+
+.collapsible-section.collapsed .collapsible-header::after {
+   /* transform: rotate(-90deg); /* Rotate arrow when collapsed */
+}
+
+/* Hide content when collapsed (handled by JS setting display: none) */
+/* .collapsible-section.collapsed .collapsible-content { */
+/*   display: none; */
+/* } */

@@ -126,8 +126,7 @@ The application is built with **Node.js**, acting as the core event controller:
 │   ├── sceneService.js   # Service for managing scene progression (DEPRECATED? Verify usage)
 │   └── sessionService.js # Manages session ID and directories
 ├── /skeletor           # Cuts participants from video using skeletal data
-├── /temp               # Temporary files (e.g., uploaded audio before conversion)
-├── /temp_uploads       # Temporary uploads directory (e.g., uploaded actor files)
+├── /temp               # Temporary files (e.g., uploaded audio, actor files)
 ├── /views              # Server-side templates and view logic
 │   ├── homeView.js       # Logic for the main/home view, fetches session data
 │   ├── teleprompterView.js # Logic for the teleprompter view

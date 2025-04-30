@@ -21,34 +21,31 @@ const audioRecorder = AudioRecorder.getInstance();
 router.use(express.urlencoded({ extended: true }));
 router.use(express.json());
 
-// Create temp_uploads directory if it doesn't exist
-const tempDir = path.join(__dirname, '..', 'temp_uploads');
+// Create temp directory if it doesn't exist
+const tempDir = path.join(__dirname, '..', 'temp');
 if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
 }
 
-// Configure multer for file uploads
+// Configure multer for file uploads (including actors)
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, tempDir);
+        cb(null, tempDir); // Use the unified temp directory
     },
     filename: function (req, file, cb) {
+        // Keep original filename for actor uploads, add timestamp for others?
+        // For now, keeping originalname for simplicity, might need refinement
+        // if filename conflicts become an issue between actor uploads and audio.
         cb(null, file.originalname);
     }
 });
 
 const upload = multer({ storage: storage });
 
-// Create temp directory if it doesn't exist
-const tempDirAudio = path.join(__dirname, '..', 'temp');
-if (!fs.existsSync(tempDirAudio)) {
-    fs.mkdirSync(tempDirAudio, { recursive: true });
-}
-
-// Configure multer for audio uploads
+// Configure multer for audio uploads (Now uses the same tempDir)
 const audioStorage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, tempDirAudio);
+        cb(null, tempDir); // Use the unified temp directory
     },
     filename: function (req, file, cb) {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -92,7 +89,7 @@ router.post('/api/sessions/create', (req, res) => {
 // POST to select an existing session (updated to use new service method)
 router.post('/api/select-session', (req, res) => {
     const { sessionId } = req.body;
-    
+
     if (!sessionId) {
         return res.status(400).json({ success: false, error: "Session ID is required" });
     }
@@ -100,13 +97,13 @@ router.post('/api/select-session', (req, res) => {
     try {
         const trimmedSessionId = sessionId.trim();
         const existingSessions = sessionService.listExistingSessions();
-        
+
         // Validate that the provided ID actually exists as a directory
         if (!existingSessions.includes(trimmedSessionId)) {
             // Double-check filesystem just in case list was stale?
             const sessionPath = path.join(__dirname, '..', 'recordings', trimmedSessionId);
             if (!fs.existsSync(sessionPath)) {
-                 return res.status(404).json({ success: false, error: `Session directory not found: ${trimmedSessionId}` });
+                return res.status(404).json({ success: false, error: `Session directory not found: ${trimmedSessionId}` });
             }
             // If it exists on disk but wasn't in the list, log a warning but proceed
             console.warn(`Session ${trimmedSessionId} exists on disk but was not in listExistingSessions result. Selecting anyway.`);
@@ -155,7 +152,7 @@ router.delete('/api/sessions/:sessionId(*)', (req, res) => { // Use (*) to allow
 
     // Make sure the resolved path is still within the recordings directory
     if (!sessionPath.startsWith(path.resolve(recordingsBaseDir))) {
-         return res.status(400).json({ success: false, error: "Invalid session ID path." });
+        return res.status(400).json({ success: false, error: "Invalid session ID path." });
     }
 
     // Basic validation
@@ -201,8 +198,8 @@ router.delete('/api/sessions/:sessionId(*)', (req, res) => { // Use (*) to allow
                 errorMessage = `Cannot delete session directory ${sessionId} as it is currently in use.`;
                 statusCode = 409; // Conflict
             } else if (err.code === 'ENOTEMPTY') {
-                 errorMessage = `Directory ${sessionId} not empty (recursive delete might have failed or is not supported).`;
-                 statusCode = 500;
+                errorMessage = `Directory ${sessionId} not empty (recursive delete might have failed or is not supported).`;
+                statusCode = 500;
             }
 
             return res.status(statusCode).json({ success: false, error: errorMessage });
@@ -315,18 +312,18 @@ router.get('/initShot/:sceneDir/:shotName', (req, res) => {
     try {
         // Call the controller function (which should be synchronous for now or return status)
         const result = initShot(sceneDir, shotName); // Assuming initShot exists in sceneController
-        res.json({ 
-            success: true, 
-            message: `Shot '${shotName}' in scene '${sceneDir}' initialized.`, 
+        res.json({
+            success: true,
+            message: `Shot '${shotName}' in scene '${sceneDir}' initialized.`,
             scene: sceneDir,
             shot: shotName
         });
     } catch (error) {
         console.error(`Error initializing shot ${shotName} in scene ${sceneDir}:`, error);
         res.status(400).json({ // Use 400 for bad request (e.g., shot not found)
-             success: false, 
-             message: `Error initializing shot: ${error.message}` 
-        }); 
+            success: false,
+            message: `Error initializing shot: ${error.message}`
+        });
     }
 });
 // --- END NEW ---
@@ -348,7 +345,8 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
         // First, scan existing actor directories and add them to callsheet if not present
         const existingDirs = fs.readdirSync(actorsDir).filter(dir => {
             const fullPath = path.join(actorsDir, dir);
-            return fs.statSync(fullPath).isDirectory() && dir !== 'temp_uploads';
+            // Ensure we don't check 'temp' or 'temp_uploads' if they somehow exist inside actorsDir
+            return fs.statSync(fullPath).isDirectory() && dir !== 'temp' && dir !== 'temp_uploads';
         });
 
         const recoveredActors = [];
@@ -449,7 +447,7 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
 
         // Clean up temp files
         files.forEach(file => {
-            const filePath = path.join(tempDir, file.originalname);
+            const filePath = path.join(tempDir, file.originalname); // Use unified tempDir
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
             }
@@ -501,7 +499,7 @@ router.post('/clearAudio', express.json(), (req, res) => {
         // console.log(`Attempting to delete audio file from session: ${audioPath}`);
 
         // If it's meant to delete the *temporary* webm/wav before/after conversion:
-        const audioPath = path.join(__dirname, '..', 'temp', filename); // Current behavior
+        const audioPath = path.join(__dirname, '..', 'temp', filename); // Correctly points to temp now
         console.log(`Attempting to delete audio file from temp: ${audioPath}`);
 
 
@@ -607,4 +605,4 @@ router.delete('/api/audio/active-devices/:deviceId(*)', (req, res) => {
 
 // --- END Audio Device API Endpoints ---
 
-module.exports = router; 
+module.exports = router;

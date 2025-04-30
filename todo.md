@@ -1,5 +1,16 @@
 ## to do
 
+
+### Interface
+
++ Create a hidden control panel which has some additional styling options that can also be activated via keypress. For example, "H" will toggle hiding all header tags on the page. This aids in it appearing more like the mind of a robot when it is seen. (Less human readability, more stylisitically cryptic).
+
++ Create buttons for each panel which, when clicked, toggle that panel to be fullscreen. Clicking this button again while "fullscreened" will put it back to normal.
+
+### Functional
+
++ Create a toggle for each Camera. Enabling this draws skeletal tracking on top of that preview feed.
+
 - The ability to simply play a video on the main teleprompter
 
 - Add costume to the character/actor/QR display

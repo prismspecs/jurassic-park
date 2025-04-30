@@ -5,6 +5,7 @@
         "shots": [
             {
                 "name": "main",
+                "type": "normal",
                 "number": 0,
                 "duration": "0:05",
                 "description": "This is a test description",
@@ -128,6 +129,68 @@
                             }
                         ],
                         "props": "sunglasses"
+                    }
+                }
+            },
+            {
+                "name": "dinosaur",
+                "type": "dinosaur",
+                "number": 1,
+                "duration": "0:15",
+                "description": "Testing the dinosaur tracking system",
+                "setup": "Setup for dinosaur...",
+                "cameras": [
+                    {
+                        "name": "Camera_1",
+                        "description": "Front-facing main camera",
+                        "position": "F",
+                        "direction": "front",
+                        "movements": [
+                            {
+                                "pan": 0,
+                                "tilt": 0,
+                                "zoom": 0,
+                                "time": 0
+                            }
+                        ]
+                    },
+                    {
+                        "name": "Camera_2",
+                        "description": "Rear camera",
+                        "position": "B",
+                        "direction": "back",
+                        "movements": [
+                            {
+                                "pan": 0,
+                                "tilt": 0,
+                                "zoom": 0,
+                                "time": 0
+                            }
+                        ]
+                    }
+                ],
+                "ins-outs": [
+                    {
+                        "in": 1,
+                        "out": 3,
+                        "sequence": 1
+                    },
+                    {
+                        "in": 3,
+                        "out": 5,
+                        "sequence": 2
+                    }
+                ],
+                "characters": {
+                    "dinosaur": {
+                        "full-name": "Dinosaur",
+                        "lines": [
+                            {
+                                "text": "Brrr!!",
+                                "time-in": 1,
+                                "time-out": 4
+                            }
+                        ]
                     }
                 }
             }
