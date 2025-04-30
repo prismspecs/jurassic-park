@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dinosaur Game</title>
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- Update TensorFlow.js libraries to match main app versions -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.10.0/dist/tf-core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.10.0/dist/tf-converter.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.10.0/dist/tf-backend-webgl.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@0.0.6/dist/pose-detection.min.js"></script>
+  </head>
+  <body>
+    <h1>Dinosaur Game</h1>
+    <div id="loading">Loading model and webcam...</div>
+    <div id="main" style="display: none; position: relative">
+      <!-- Webcam video element (hidden but used for input) -->
+      <video id="webcam" playsinline style="display: none"></video>
+      <!-- Canvas for drawing the output -->
+      <canvas id="output"></canvas>
+      <!-- Optional: Display score -->
+      <div id="score">Score: 0%</div>
+    </div>
+
+    <!-- Load the application script -->
+    <script src="script.js"></script>
+  </body>
+</html>
