@@ -4,7 +4,8 @@ const socket = io();
 // Restore webcam references
 const webcamVideo = document.getElementById('webcamVideo');
 const startButton = document.getElementById('startButton');
-const toggleFaceOverlayButton = document.getElementById('toggleFaceOverlayButton');
+// Remove toggleFaceOverlayButton reference
+// const toggleFaceOverlayButton = document.getElementById('toggleFaceOverlayButton');
 const togglePreviewButton = document.getElementById('togglePreviewButton');
 const resyncButton = document.getElementById('resyncButton');
 // Add new UI element references
@@ -212,11 +213,13 @@ startButton.addEventListener('click', () => {
     socket.emit('startVideo');
 });
 
-// Add listener for the toggle button
+// Remove listener for the toggle face overlay button
+/*
 toggleFaceOverlayButton.addEventListener('click', () => {
     console.log('Toggle Face Overlay button clicked on control panel');
     socket.emit('toggleFaceOverlay');
 });
+*/
 
 // Add listener for the preview toggle button
 togglePreviewButton.addEventListener('click', () => {

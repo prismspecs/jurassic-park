@@ -19,7 +19,6 @@ let showFaceIntervals = [
     { start: 128, end: 142 } // 2:08 to 2:22
 ];
 let currentFaceInterval = null;
-let isOverlayForcedVisible = false; // Flag to track manual toggle state
 let isControlPanelWebcamReady = false; // Flag to track if control panel webcam is ready
 let latestFrameDataUrl = null; // Store the latest frame data URL
 let currentFaceBox = null; // Store the current detected face box
@@ -107,7 +106,7 @@ async function detectFaces() {
             const detections = await faceapi.detectAllFaces(img, detectionOptions);
             allDetectedFaces = detections.map(detection => detection.box); // Update all detected faces
 
-            const shouldShowFace = (currentFaceInterval !== null) || isOverlayForcedVisible;
+            const shouldShowFace = (currentFaceInterval !== null);
             let trackedFaceBox = null;
             const trackingThreshold = (videoPlayer?.clientWidth || 640) * FACE_TRACKING_THRESHOLD_PERCENT; // Use video width for threshold
 
@@ -179,14 +178,14 @@ async function detectFaces() {
                         console.log("Showing face overlay.");
                         faceOverlay.style.display = 'flex';
                     }
-                } else if (faceOverlay.style.display !== 'none' && !isOverlayForcedVisible) {
+                } else if (faceOverlay.style.display !== 'none') {
                     console.log(`Hiding face overlay (no face found/tracked).`);
                     faceOverlay.style.display = 'none';
                 }
 
-            } else { // Not in interval and not forced visible
-                if (faceOverlay.style.display !== 'none' && !isOverlayForcedVisible) {
-                    console.log(`Hiding face overlay (interval ended/not forced).`);
+            } else { // Not in interval
+                if (faceOverlay.style.display !== 'none') {
+                    console.log(`Hiding face overlay (interval ended).`);
                     faceOverlay.style.display = 'none';
                     currentFaceBox = null; // Clear face when hiding
                 }
@@ -194,7 +193,7 @@ async function detectFaces() {
 
         } else {
             // console.log("No frame data available yet.");
-            if (faceOverlay.style.display !== 'none' && !isOverlayForcedVisible) {
+            if (faceOverlay.style.display !== 'none') {
                 faceOverlay.style.display = 'none'; // Hide if no frame data
                 currentFaceBox = null;
             }
@@ -202,7 +201,7 @@ async function detectFaces() {
     } catch (err) {
         console.error("Face detection error:", err);
         currentFaceBox = null; // Clear face on error
-        if (faceOverlay.style.display !== 'none' && !isOverlayForcedVisible) {
+        if (faceOverlay.style.display !== 'none') {
             faceOverlay.style.display = 'none';
         }
     }
@@ -332,13 +331,13 @@ function checkFaceOverlayTime() {
     }
 
     // If we're in an interval but not showing a face yet, trigger face detection
-    if (shouldShowFace && faceOverlay.style.display === 'none' && !isOverlayForcedVisible) {
+    if (shouldShowFace && faceOverlay.style.display === 'none') {
         console.log('In face interval - attempting immediate detection');
         detectFaces(); // Try to detect and show face immediately
     }
 
-    // If we're not in an interval and the overlay is visible (and not forced)
-    if (!shouldShowFace && faceOverlay.style.display !== 'none' && !isOverlayForcedVisible) {
+    // If we're not in an interval and the overlay is visible
+    if (!shouldShowFace && faceOverlay.style.display !== 'none') {
         faceOverlay.style.display = 'none';
     }
 }
@@ -356,9 +355,6 @@ toggleFaceOverlayButton.addEventListener('click', () => {
     }
 });
 */
-
-// Remove startButton listener
-// startButton.addEventListener('click', () => { ... });
 
 videoPlayer.addEventListener('timeupdate', checkFaceOverlayTime);
 
@@ -381,7 +377,7 @@ videoPlayer.addEventListener('pause', () => {
         clearInterval(faceDetectionInterval);
         faceDetectionInterval = null;
     }
-    if (!isOverlayForcedVisible) { // Check flag before hiding
+    if (faceOverlay.style.display !== 'none') {
         faceOverlay.style.display = 'none';
     }
 });
@@ -392,7 +388,7 @@ videoPlayer.addEventListener('ended', () => {
         clearInterval(faceDetectionInterval);
         faceDetectionInterval = null;
     }
-    if (!isOverlayForcedVisible) { // Check flag before hiding
+    if (faceOverlay.style.display !== 'none') {
         faceOverlay.style.display = 'none';
     }
 });
@@ -435,18 +431,20 @@ socket.on('webcamReady', () => {
     }
 });
 
-// Add listener for toggle command from server
-socket.on('toggleFaceOverlay', () => {
-    if (faceOverlay.style.display === 'none') {
-        console.log('Received toggle command: Forcing face overlay ON');
-        faceOverlay.style.display = 'flex';
-        isOverlayForcedVisible = true;
+// Add listener for preview toggle command from server
+socket.on('togglePreview', (data) => { // Add data parameter
+    const faceIndicator = document.getElementById('faceIndicator');
+    if (faceIndicator) {
+        // Use the 'show' property from the data to set the display style
+        if (data.show) {
+            console.log('Received togglePreview command: Showing preview');
+            faceIndicator.style.display = 'block'; // Or 'flex', depending on CSS
+        } else {
+            console.log('Received togglePreview command: Hiding preview');
+            faceIndicator.style.display = 'none';
+        }
     } else {
-        console.log('Received toggle command: Forcing face overlay OFF');
-        faceOverlay.style.display = 'none';
-        isOverlayForcedVisible = false;
-        // Re-run time check in case it should be on due to video time
-        checkFaceOverlayTime();
+        console.error('faceIndicator element not found!');
     }
 });
 
@@ -471,8 +469,8 @@ socket.on('webcamFrame', (frameDataUrl) => {
     // Run face detection periodically even if not in an interval
     // This helps ensure we have an updated face position 
     if (frameCounter % DETECTION_INTERVAL === 0) {
-        // Only trigger detection if in an interval or overlay is forced visible
-        if (currentFaceInterval !== null || isOverlayForcedVisible) {
+        // Only trigger detection if in an interval
+        if (currentFaceInterval !== null) {
             detectFaces();
         }
     }

@@ -51,11 +51,13 @@ io.on('connection', (socket) => {
     io.emit('playVideoOnScreen');
   });
 
-  // Add listener for toggle command
+  // Remove listener for toggle face overlay command
+  /*
   socket.on('toggleFaceOverlay', () => {
     console.log('Received toggleFaceOverlay command from control panel');
     io.emit('toggleFaceOverlay');
   });
+  */
 
   // Add listener for toggle preview command
   socket.on('togglePreview', (data) => {

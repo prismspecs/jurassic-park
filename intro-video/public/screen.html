@@ -1,39 +1,38 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>Jurassic Park Intro - Screen</title>
-    <!-- Remove style block -->
-    <!-- <style> ... </style> -->
-    <!-- Add link to external stylesheet -->
-    <link rel="stylesheet" href="style.css" />
 
-    <script>
-      // Check if page is loaded in an iframe
-      window.addEventListener("load", function () {
-        if (window.self !== window.top) {
-          document.body.classList.add("in-iframe");
-        }
-      });
-    </script>
-  </head>
+<head>
+  <title>Jurassic Park Intro - Screen</title>
+  <!-- Remove style block -->
+  <!-- <style> ... </style> -->
+  <!-- Add link to external stylesheet -->
+  <link rel="stylesheet" href="style.css" />
 
-  <!-- Add class to body -->
+  <script>
+    // Check if page is loaded in an iframe
+    window.addEventListener("load", function () {
+      if (window.self !== window.top) {
+        document.body.classList.add("in-iframe");
+      }
+    });
+  </script>
+</head>
 
-  <body class="screen-display">
-    <div id="videoContainer">
-      <video id="videoPlayer" src="movie.mp4"></video>
-      <!-- Remove controls attribute -->
-      <div id="faceOverlay">
-        <canvas id="faceCanvas"></canvas>
-      </div>
+<!-- Add class to body -->
 
-      <!-- Remove webcam video element as it's not needed anymore -->
-      <!-- <video id=\"webcamVideo\" autoplay muted playsinline></video> -->
+<body class="screen-display">
+  <div id="videoContainer">
+    <video id="videoPlayer" src="movie.mp4"></video>
+    <!-- Remove controls attribute -->
+    <div id="faceOverlay">
+      <canvas id="faceCanvas"></canvas>
+    </div>
 
-      <!-- Add face detection indicator -->
-      <div
-        id="faceIndicator"
-        style="
+    <!-- Remove webcam video element as it's not needed anymore -->
+    <!-- <video id=\"webcamVideo\" autoplay muted playsinline></video> -->
+
+    <!-- Add face detection indicator -->
+    <div id="faceIndicator" style="
           position: absolute;
           top: 10px;
           right: 10px;
@@ -42,22 +41,19 @@
           border: 2px solid green;
           background-color: black;
           z-index: 10;
-          display: flex;
+          display: none; /* Hide by default */
           justify-content: center;
           align-items: center;
           overflow: hidden;
           color: white;
           font-size: 12px;
           text-align: center;
-        "
-      >
-        <div>Waiting for webcam feed...</div>
-      </div>
+        ">
+      <div>Waiting for webcam feed...</div>
+    </div>
 
-      <!-- Add status message -->
-      <div
-        id="statusMessage"
-        style="
+    <!-- Add status message -->
+    <div id="statusMessage" style="
           position: absolute;
           top: 10px;
           left: 10px;
@@ -68,27 +64,27 @@
           display: none;
           font-size: 14px;
           border-radius: 5px;
-        "
-      >
-        Status: Ready
-      </div>
+        ">
+      Status: Ready
     </div>
+  </div>
 
-    <!-- Remove debug panel -->
-    <!-- <div style="position: absolute; bottom: 10px; right: 10px; z-index: 10; background: rgba(0,0,0,0.7); padding: 10px; color: white; font-size: 12px;">
+  <!-- Remove debug panel -->
+  <!-- <div style="position: absolute; bottom: 10px; right: 10px; z-index: 10; background: rgba(0,0,0,0.7); padding: 10px; color: white; font-size: 12px;">
       <button id="detectFaceButton" style="margin-bottom: 5px;">Test Face Detection</button>
       <button id="toggleDebugButton" style="margin-bottom: 5px; margin-left: 5px;">Toggle Debug Info</button>
       <div id="debugInfo" style="max-width: 300px; max-height: 200px; overflow: auto; margin-top: 5px; display: none;"></div>
     </div> -->
 
-    <!-- Remove controls -->
-    <!-- <div id="controls"> ... </div> -->
+  <!-- Remove controls -->
+  <!-- <div id="controls"> ... </div> -->
 
-    <!-- Include Socket.IO client library -->
-    <script src="/socket.io/socket.io.js"></script>
-    <!-- Include face-api.js -->
-    <script src="/face-api/face-api.min.js"></script>
-    <!-- Client-side script for screen -->
-    <script src="screen.js"></script>
-  </body>
+  <!-- Include Socket.IO client library -->
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- Include face-api.js -->
+  <script src="/face-api/face-api.min.js"></script>
+  <!-- Client-side script for screen -->
+  <script src="screen.js"></script>
+</body>
+
 </html>
