@@ -204,6 +204,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize Fullscreen Toggles
   initializeFullscreenToggles();
 
+  // --- Initialize Secret Panel ---
+  initializeSecretPanel();
+
 }); // End DOMContentLoaded 
 
 // --- Initialize Collapsible Sections ---
@@ -268,4 +271,46 @@ function initializeFullscreenToggles() {
       }
     });
   });
+}
+
+// --- Initialize Secret Panel ---
+function initializeSecretPanel() {
+  const toggleBtn = document.getElementById('secret-panel-toggle-btn');
+  const secretPanel = document.getElementById('secret-panel');
+  const toggleHeadersCheckbox = document.getElementById('toggle-headers-checkbox');
+  const body = document.body;
+
+  if (!toggleBtn || !secretPanel || !toggleHeadersCheckbox) {
+    logToConsole('Secret panel elements not found. Cannot initialize.', 'warn');
+    return;
+  }
+
+  // Function to toggle header visibility and sync checkbox
+  function toggleHeadersVisibility() {
+    const headersHidden = body.classList.toggle('hide-headers');
+    toggleHeadersCheckbox.checked = headersHidden;
+    logToConsole(`Headers ${headersHidden ? 'hidden' : 'visible'}`, 'info');
+  }
+
+  // Toggle panel visibility on button click
+  toggleBtn.addEventListener('click', () => {
+    secretPanel.classList.toggle('secret-panel-visible');
+    logToConsole(`Secret panel ${secretPanel.classList.contains('secret-panel-visible') ? 'shown' : 'hidden'}`, 'info');
+  });
+
+  // Toggle headers on checkbox change
+  toggleHeadersCheckbox.addEventListener('change', toggleHeadersVisibility);
+
+  // Toggle headers on 'H' key press
+  document.addEventListener('keydown', (event) => {
+    // Ignore if typing in an input field
+    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'SELECT') {
+      return;
+    }
+    if (event.key === 'h' || event.key === 'H') {
+      toggleHeadersVisibility();
+    }
+  });
+
+  logToConsole('Secret panel initialized.', 'info');
 }

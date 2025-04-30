@@ -29,8 +29,8 @@ The **AI director** orchestrates the performance and ensures that each shot clos
 
 - Each shot is saved in a **directory structure matching the shot database**.
 - **Video files** are recorded concurrently for all cameras specified in a shot using **Node.js Worker Threads** (`workers/recordingWorker.js`). Each worker handles video capture using **FFmpeg** or **GStreamer**, initiated by helper services (`ffmpegHelper.js`, `gstreamerHelper.js`), saving the raw video to a camera-specific subdirectory within the session directory (e.g., `recordings/<session_id>/<camera_name>/original.mp4`).
-- **Live Pose Tracking & Overlay**: Pose tracking is performed *client-side* in the browser directly on the live camera preview streams using **TensorFlow.js (MoveNet)**. The skeleton is drawn onto an overlay canvas in the UI (`public/js/modules/camera-manager.js`). This provides immediate visual feedback but is *not* part of the recorded video file.
-- **Skeletor** is a separate Node.js module designed to take a *recorded* video file as input and use skeletal data (potentially generated offline or via a different process) to create a new video with the subject isolated on a transparent background. Its integration with the live recording process needs clarification.
+- **Live Pose Tracking & Overlay**: Pose tracking is performed _client-side_ in the browser directly on the live camera preview streams using **TensorFlow.js (MoveNet)**. The skeleton is drawn onto an overlay canvas in the UI (`public/js/modules/camera-manager.js`). This provides immediate visual feedback but is _not_ part of the recorded video file.
+- **Skeletor** is a separate Node.js module designed to take a _recorded_ video file as input and use skeletal data (potentially generated offline or via a different process) to create a new video with the subject isolated on a transparent background. Its integration with the live recording process needs clarification.
 - **Actor dialogue and audience sound effects** are stored separately for post-processing.
 - A **final scene compilation** is created based on the best takes.
 
@@ -67,6 +67,13 @@ The application is built with **Node.js**, acting as the core event controller:
 
 - **Pose tracking models** analyze actor movement.
 - **Text-to-speech AI** for vocalizing the AI director's instructions.
+
+#### **Secret Control Panel**
+
+- A hidden control panel, accessible via a "S3CR37 P4N31" button in the left sidebar, provides access to additional styling and debugging options.
+- Initially, it contains a toggle to hide/show all header elements (`h1` to `h6`) across the page.
+- This toggle can also be activated by pressing the "H" key (case-insensitive) when not focused on an input field.
+- The panel is styled with a cryptic, low-light theme.
 
 ### **Code Structure**
 

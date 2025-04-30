@@ -233,6 +233,63 @@ button {
   border-radius: 4px;
   background: #fff;
   transition: background-color 0.2s;
+  box-sizing: border-box;
+}
+
+/* Secret Panel Button */
+.cryptic-btn {
+  font-family: 'Courier New', Courier, monospace;
+  background-color: #333;
+  color: #0f0;
+  border-color: #0f0;
+  margin-top: 10px;
+}
+
+.cryptic-btn:hover {
+  background-color: #444;
+}
+
+/* Secret Panel Styles */
+#secret-panel {
+  display: none;
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  right: 10px;
+  background: rgba(30, 30, 30, 0.95);
+  color: #0f0;
+  padding: 15px;
+  border: 1px solid #0f0;
+  border-radius: 8px;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+  z-index: 1000;
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+#secret-panel.secret-panel-visible {
+  display: block;
+}
+
+#secret-panel h2 {
+  margin-top: 0;
+  color: #0f0;
+  border-bottom: 1px solid #0f0;
+  padding-bottom: 5px;
+}
+
+.secret-controls label {
+  margin-right: 10px;
+}
+
+/* Class to hide headers */
+body.hide-headers h1,
+body.hide-headers h2,
+body.hide-headers h3,
+body.hide-headers h4,
+body.hide-headers h5,
+body.hide-headers h6 {
+  display: none;
 }
 
 /* Style for individual session items */
@@ -240,46 +297,33 @@ button {
   display: flex;
   align-items: center;
   gap: 5px;
-  /* Space between session button and delete button */
   margin-bottom: 5px;
-  /* Space between session items */
 }
 
 .session-button {
   flex-grow: 1;
-  /* Allow button to take available space */
-  /* Inherits general button styles */
 }
 
 .session-button.active {
   background-color: #e0e0e0;
-  /* Light grey background for active */
   font-weight: bold;
   border-color: #a0a0a0;
-  /* Darker border for active */
 }
 
 .delete-session-button {
   padding: 5px;
-  /* Smaller padding */
   width: auto;
-  /* Auto width based on content */
   font-size: 12px;
-  /* Smaller font */
   background: none;
   border: none;
   color: #cc0000;
-  /* Red color for delete */
   cursor: pointer;
   flex-shrink: 0;
-  /* Prevent shrinking */
 }
 
 .delete-session-button:hover {
   color: #ff0000;
-  /* Brighter red on hover */
   background: none;
-  /* Override general button hover */
 }
 
 button:hover {
@@ -339,29 +383,24 @@ video {
 }
 
 .log-timestamp {
-  /* Possibly overlaps with #console-output .timestamp */
   color: #888;
   margin-right: 5px;
 }
 
 .log-info {
-  /* Possibly overlaps with #console-output .info */
   color: #333;
 }
 
 .log-warn {
-  /* Possibly overlaps with #console-output .warn (if it exists) */
   color: orange;
 }
 
 .log-error {
-  /* Possibly overlaps with #console-output .error */
   color: red;
   font-weight: bold;
 }
 
 .log-success {
-  /* Possibly overlaps with #console-output .success (if it exists) */
   color: green;
 }
 
@@ -418,11 +457,8 @@ video {
   box-sizing: border-box;
   flex-shrink: 0;
   position: relative;
-  /* For positioning the button */
   display: flex;
-  /* Use flex for internal layout */
   flex-direction: column;
-  /* Stack header and content */
 }
 
 .resizer-handle {
@@ -439,14 +475,12 @@ video {
 
 /* Shot Container/Card Styles (Check for overlap with scene-container/scene-card) */
 .shot-container {
-  /* Similar to .scene-container */
   display: flex;
   flex-wrap: wrap;
   gap: 15px;
 }
 
 .shot-card {
-  /* Similar to .scene-card */
   border: 1px solid #ccc;
   padding: 10px;
   border-radius: 4px;
@@ -557,9 +591,7 @@ video {
   margin: 0 10px 0 0;
   height: 20px;
   width: 100%;
-  /* Ensure all sliders have 100% width */
   min-width: 0;
-  /* Override any browser defaults */
   box-sizing: border-box;
 }
 
@@ -596,57 +628,38 @@ video {
 /* NEW Collapsible Section Styles */
 .collapsible-section {
   margin-bottom: 15px;
-  /* Add some space below the section */
 }
 
 .collapsible-header {
   cursor: pointer;
   padding: 8px 12px;
   background-color: #eee;
-  /* Light background for the header */
   border: 1px solid #ddd;
   border-radius: 4px;
   margin: 0 0 5px 0;
-  /* Reset default h3 margins and add small bottom margin */
   font-size: 16px;
-  /* Slightly smaller than h2 */
   font-weight: bold;
   display: flex;
-  /* Use flex for alignment */
   justify-content: space-between;
-  /* Push arrow to the right */
   align-items: center;
-  /* Vertically center content */
   transition: background-color 0.2s ease;
 }
 
 .collapsible-header:hover {
   background-color: #e0e0e0;
-  /* Slightly darker on hover */
 }
 
 .collapsible-content {
-  /* Content is shown/hidden by JS toggling display:none/block */
-  /* Optional: Add some padding if needed when visible */
-  /* padding: 10px; */
   border: 1px solid #eee;
-  /* Optional border for the content area */
   border-top: none;
-  /* Avoid double border with header */
   border-radius: 0 0 4px 4px;
-  /* Match bottom corners */
   padding: 10px;
-  /* Add padding inside the content box */
 }
 
-/* Style adjustments for the teleprompter group specifically when inside collapsible */
 .collapsible-content>.teleprompter-button-group {
   border: none;
-  /* Remove the original border */
   padding: 0;
-  /* Remove the original padding */
   box-shadow: none;
-  /* Remove the original shadow */
 }
 
 /* Fullscreen Toggle Styles */
@@ -655,7 +668,6 @@ video {
   top: 5px;
   right: 5px;
   z-index: 20;
-  /* Ensure button is above other content */
 }
 
 .fullscreen-toggle-btn {
@@ -667,9 +679,7 @@ video {
   border: 1px solid rgba(150, 150, 150, 0.5);
   border-radius: 3px;
   width: auto;
-  /* Override general button width */
   text-align: center;
-  /* Override general button text-align */
 }
 
 .fullscreen-toggle-btn:hover {
@@ -679,42 +689,31 @@ video {
 /* Fullscreen State */
 .page-layout>.fullscreen {
   flex-basis: 100% !important;
-  /* Override flex-basis */
   flex-grow: 1 !important;
-  /* Ensure it takes full space */
   width: 100% !important;
-  /* Ensure full width */
   min-width: 100% !important;
-  /* Ensure full width */
   border-left: none !important;
-  /* Remove borders */
   border-right: none !important;
 }
 
 .page-layout>.panel-hidden {
   display: none !important;
-  /* Hide other panels and resizers */
 }
 
 /* Adjust button text/icon when fullscreen */
 .page-layout>.fullscreen .fullscreen-toggle-btn::before {
   content: "X";
-  /* Change icon/text to indicate exit */
 }
 
 .page-layout>div:not(.fullscreen) .fullscreen-toggle-btn::before {
   content: "□";
-  /* Default icon/text */
 }
 
-/* Hide button content when using ::before */
 .fullscreen-toggle-btn {
   font-size: 0;
-  /* Hide original button text */
 }
 
 .fullscreen-toggle-btn::before {
   font-size: 16px;
-  /* Set font size for the pseudo-element */
   line-height: 1;
 }
