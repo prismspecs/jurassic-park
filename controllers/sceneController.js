@@ -88,12 +88,12 @@ async function initShot(sceneDirectory, shotIdentifier) {
             if (managedCamera) {
                 broadcastConsole(`-> MATCH FOUND: Logging description for '${cameraName}': ${cameraDescription}`, 'success');
                 // Add to list for UI update
-                shotCameraDescriptions.push({ name: cameraName, description: cameraDescription }); 
+                shotCameraDescriptions.push({ name: cameraName, description: cameraDescription });
             } else {
                 broadcastConsole(`-> NO MATCH: Camera '${cameraName}' (from shot file) is not currently managed. Description: ${cameraDescription}`, 'warn');
             }
         });
-         broadcastConsole(`--- Finished Checking Shot Camera Definitions ---`, 'info');
+        broadcastConsole(`--- Finished Checking Shot Camera Definitions ---`, 'info');
     } else {
         broadcastConsole(`No 'cameras' array found in shot data for '${shotIdentifier}'.`, 'warn');
     }
@@ -104,7 +104,7 @@ async function initShot(sceneDirectory, shotIdentifier) {
     // --- End camera description logic ---
 
     // Broadcast SHOT_INIT message (or reuse SCENE_INIT?)
-    broadcast({ type: 'SHOT_INIT', scene: scene, shot: shotData, shotIndex: shotIndex }); 
+    broadcast({ type: 'SHOT_INIT', scene: scene, shot: shotData, shotIndex: shotIndex });
 
     // TODO: Add any other logic needed when a shot starts, e.g.:
     // - Resetting actor readiness?
@@ -133,10 +133,10 @@ async function callActorsForShot(scene, shotIndex) {
     // Get the characters object from the current shot
     const characters = shot.characters;
     if (!characters) {
-         broadcastConsole(`No 'characters' defined for shot ${shotIndex} in scene '${scene.directory}'. Cannot call actors.`, 'warn');
-         // Potentially broadcast ACTORS_CALLED anyway to allow proceeding?
-         broadcast({ type: 'ACTORS_CALLED', scene: scene, shot: shot }); // Still send signal?
-         return;
+        broadcastConsole(`No 'characters' defined for shot ${shotIndex} in scene '${scene.directory}'. Cannot call actors.`, 'warn');
+        // Potentially broadcast ACTORS_CALLED anyway to allow proceeding?
+        broadcast({ type: 'ACTORS_CALLED', scene: scene, shot: shot }); // Still send signal?
+        return;
     }
 
     // Get the character names from the characters object
@@ -160,27 +160,43 @@ async function callActorsForShot(scene, shotIndex) {
         const actor = actorsToCall[index];
         const characterName = characterNames[index];
         const characterData = characters[characterName]; // Get data for this character from the shot
-        const propName = characterData ? characterData.prop : null; // Get the prop name
+        // const propName = characterData ? characterData.prop : null; // Get the prop name - OLD
+        const propsValue = characterData ? characterData.props : null; // Use "props" key
 
         // Construct teleprompter URL
         const characterUrl = `${baseUrl}/teleprompter/${encodeURIComponent(characterName)}`;
         const headshotUrl = `/database/actors/${encodeURIComponent(actor.id)}/headshot.jpg`;
-        
-        // Construct prop image URL (assuming .png extension, adjust if needed)
-        const propImageUrl = propName ? `/database/props/${encodeURIComponent(propName)}.png` : null; 
+
+        // Construct prop image URL(s) (assuming .png extension, adjust if needed)
+        // const propImageUrl = propName ? `/database/props/${encodeURIComponent(propName)}.png` : null; // OLD
+        let propImageUrls = []; // Initialize as an empty array
+        if (propsValue) {
+            if (Array.isArray(propsValue)) {
+                // Handle array of prop names
+                propImageUrls = propsValue.map(propName => `/database/props/${encodeURIComponent(propName)}.png`);
+            } else if (typeof propsValue === 'string' && propsValue.toLowerCase() !== 'none') {
+                // Handle single prop name string (ignore "none")
+                propImageUrls.push(`/database/props/${encodeURIComponent(propsValue)}.png`);
+            }
+        }
+
+        // *** ADDED LOG ***
+        // console.log(`[sceneController] Processing actor: ${actor.name}, Character: ${characterName}, Prop Name: ${propName}, Prop Image URL: ${propImageUrl}`); // OLD LOG
+        console.log(`[sceneController] Processing actor: ${actor.name}, Character: ${characterName}, Props Value: ${JSON.stringify(propsValue)}, Prop Image URLs: ${JSON.stringify(propImageUrls)}`);
 
         try {
             // Generate QR code as a Data URL
             const qrCodeDataUrl = await QRCode.toDataURL(characterUrl);
 
-            // Add actor data to the array, including the prop image URL
+            // Add actor data to the array, including the prop image URL(s)
             actorCallData.push({
                 name: actor.name,
                 id: actor.id, // Keep id if needed elsewhere, maybe for debugging
                 character: characterName,
                 headshotImage: headshotUrl,
                 qrCodeImage: qrCodeDataUrl,
-                propImage: propImageUrl // Add prop image URL
+                // propImage: propImageUrl // OLD
+                propImages: propImageUrls // Use propImages array
             });
 
             // Speak the call (keep this individual)
@@ -192,11 +208,16 @@ async function callActorsForShot(scene, shotIndex) {
             actorCallData.push({ // Add placeholder or error info
                 name: actor.name,
                 character: characterName,
-                propImage: propImageUrl, // Include prop image even on QR error
+                // propImage: propImageUrl, // OLD
+                propImages: propImageUrls, // Include prop images even on QR error
                 error: `Failed to generate QR code`
             });
         }
     }
+
+    // Log the data just before broadcasting
+    // console.log('\n>>> [sceneController] ACTOR_CALLS Data Payload:\n', JSON.stringify(actorCallData, null, 2), '\n<<<'); // Previous log
+    console.log('>>> [sceneController] Preparing ACTOR_CALLS data:', actorCallData);
 
     // Broadcast the consolidated actor call data
     if (actorCallData.length > 0) {
@@ -204,7 +225,7 @@ async function callActorsForShot(scene, shotIndex) {
             type: 'ACTOR_CALLS',
             actors: actorCallData,
             scene: scene.directory, // Include context
-            shot: shot.name || `shot_${shotIndex+1}`
+            shot: shot.name || `shot_${shotIndex + 1}`
         });
         broadcastConsole(`Broadcasted ACTOR_CALLS for ${actorCallData.length} actor(s)`);
     }
@@ -269,7 +290,7 @@ async function action(req, res) {
         const errorMsg = `Action aborted: Scene/Shot data not found or index out of bounds for ${currentStageState.scene} / Shot Index: ${currentStageState.shotIndex}`;
         console.error(errorMsg);
         broadcastConsole(errorMsg, 'error');
-         if (res) return res.status(404).json({ success: false, message: errorMsg });
+        if (res) return res.status(404).json({ success: false, message: errorMsg });
         return;
     }
     const shot = scene.shots[currentStageState.shotIndex]; // Safe to access now
@@ -286,7 +307,7 @@ async function action(req, res) {
         const errorMsg = `Action failed: Could not get session directory: ${sessionError.message}`;
         console.error("Action failed: Could not get session directory:", sessionError);
         broadcastConsole(errorMsg, 'error');
-         if (res) return res.status(500).json({ success: false, message: errorMsg });
+        if (res) return res.status(500).json({ success: false, message: errorMsg });
         return;
     }
 
@@ -339,10 +360,10 @@ async function action(req, res) {
 
                 // Check if global resolution is valid (already fetched earlier)
                 if (!resolution || typeof resolution.width !== 'number' || typeof resolution.height !== 'number') {
-                     const errorMsg = `Skipping recording: Invalid or missing global recording resolution.`;
+                    const errorMsg = `Skipping recording: Invalid or missing global recording resolution.`;
                     broadcastConsole(errorMsg, 'error');
                     // Maybe break the loop or return error? For now, skip camera
-                    continue; 
+                    continue;
                 }
 
                 const workerData = {
@@ -362,30 +383,30 @@ async function action(req, res) {
                 const exitPromise = new Promise((resolve) => {
                     worker.on('message', (message) => {
                         // Handle messages from worker (e.g., progress, completion, errors)
-                         console.log(`[Worker ${recordingCameraName} MSG]:`, message);
-                         // Broadcast relevant status updates
-                         if(message.status === 'error') {
+                        console.log(`[Worker ${recordingCameraName} MSG]:`, message);
+                        // Broadcast relevant status updates
+                        if (message.status === 'error') {
                             broadcastConsole(`[Worker ${recordingCameraName} ERROR]: ${message.message}`, 'error');
-                         } else if (message.status === 'capture_complete') {
-                             broadcastConsole(`[Worker ${recordingCameraName}]: Capture complete. Result: ${message.resultPath}`, 'success');
-                         } else if (message.status) {
-                             broadcastConsole(`[Worker ${recordingCameraName}]: ${message.status} - ${message.message || ''}`, 'info');
-                         }
+                        } else if (message.status === 'capture_complete') {
+                            broadcastConsole(`[Worker ${recordingCameraName}]: Capture complete. Result: ${message.resultPath}`, 'success');
+                        } else if (message.status) {
+                            broadcastConsole(`[Worker ${recordingCameraName}]: ${message.status} - ${message.message || ''}`, 'info');
+                        }
                     });
                     worker.on('error', (error) => {
                         console.error(`[Worker ${recordingCameraName} Error]:`, error);
                         broadcastConsole(`[Worker ${recordingCameraName} FATAL ERROR]: ${error.message}`, 'error');
-                         // Remove worker from active list? Handle cleanup?
-                         // Resolve the promise even on error to avoid deadlocks
-                         resolve({ name: recordingCameraName, status: 'error', error });
+                        // Remove worker from active list? Handle cleanup?
+                        // Resolve the promise even on error to avoid deadlocks
+                        resolve({ name: recordingCameraName, status: 'error', error });
                     });
                     worker.on('exit', (code) => {
                         if (code !== 0) {
                             console.error(`[Worker ${recordingCameraName}] exited with code ${code}`);
                             broadcastConsole(`[Worker ${recordingCameraName}] exited unexpectedly with code ${code}`, 'error');
                         } else {
-                             console.log(`[Worker ${recordingCameraName}] exited successfully.`);
-                             broadcastConsole(`[Worker ${recordingCameraName}] finished processing.`, 'info');
+                            console.log(`[Worker ${recordingCameraName}] exited successfully.`);
+                            broadcastConsole(`[Worker ${recordingCameraName}] finished processing.`, 'info');
                         }
                         // Remove worker from active list (optional, as we wait for promises now)
                         const index = activeWorkers.findIndex(w => w.worker === worker);
@@ -420,7 +441,7 @@ async function action(req, res) {
                                     logMsg += ` Pan=${move.pan}°(${ptzPayload.pan})`;
                                 }
                                 if (typeof move.tilt === 'number') {
-                                     // Use imported mapping function
+                                    // Use imported mapping function
                                     ptzPayload.tilt = mapTiltDegreesToValue(move.tilt);
                                     logMsg += ` Tilt=${move.tilt}°(${ptzPayload.tilt})`;
                                 }
@@ -429,14 +450,14 @@ async function action(req, res) {
                                     ptzPayload.zoom = move.zoom;
                                     logMsg += ` Zoom=${move.zoom}%`;
                                 } else if (move.zoom !== undefined) {
-                                     broadcastConsole(`Invalid zoom value (${move.zoom}) for ${recordingCameraName} at ${move.time}s. Must be 0-100. Ignoring zoom.`, 'warn');
+                                    broadcastConsole(`Invalid zoom value (${move.zoom}) for ${recordingCameraName} at ${move.time}s. Must be 0-100. Ignoring zoom.`, 'warn');
                                 }
 
                                 if (Object.keys(ptzPayload).length > 0) {
                                     broadcastConsole(logMsg, 'info');
                                     await cameraControl.setPTZ(recordingCameraName, ptzPayload);
                                 } else {
-                                     broadcastConsole(`No valid PTZ values found for ${recordingCameraName} at ${move.time}s.`, 'warn');
+                                    broadcastConsole(`No valid PTZ values found for ${recordingCameraName} at ${move.time}s.`, 'warn');
                                 }
 
                             } catch (ptzError) {
@@ -447,7 +468,7 @@ async function action(req, res) {
                         cameraMovementTimeouts.push(timeoutId); // Store timeout ID here
                     });
                 } else {
-                     broadcastConsole(`No PTZ movements defined for ${recordingCameraName} in this shot.`, 'info');
+                    broadcastConsole(`No PTZ movements defined for ${recordingCameraName} in this shot.`, 'info');
                 }
                 // --- END Scheduling PTZ Movements ---
 
@@ -524,7 +545,7 @@ async function action(req, res) {
 
         // --- BROADCAST SHOT_END ---
         try {
-             broadcast({
+            broadcast({
                 type: 'SHOT_END',
                 scene: { directory: currentStageState.scene },
                 shot: { name: shot.name, number: shot.number }
@@ -593,8 +614,8 @@ async function action(req, res) {
                     broadcastConsole(`Error terminating worker ${name}: ${termErr.message}`, 'error');
                 });
             } catch (termErr) {
-                 console.error(`Exception terminating worker ${name}:`, termErr);
-                 broadcastConsole(`Exception terminating worker ${name}: ${termErr.message}`, 'error');
+                console.error(`Exception terminating worker ${name}:`, termErr);
+                broadcastConsole(`Exception terminating worker ${name}: ${termErr.message}`, 'error');
             }
         });
         activeWorkers.length = 0; // Clear the array

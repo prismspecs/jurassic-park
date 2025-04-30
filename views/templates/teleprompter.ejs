@@ -1,254 +1,262 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="UTF-8" />
-    <title>AI Director Teleprompter</title>
-    <link rel="stylesheet" href="/views/styles/teleprompter.css" />
-  </head>
 
-  <body>
-    <div id="video-container">
-      <video id="teleprompter-video" autoplay playsinline></video>
-    </div>
-    <div id="teleprompter"></div>
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Director Teleprompter</title>
+  <link rel="stylesheet" href="/views/styles/teleprompter.css" />
+</head>
 
-    <script>
-      let ws;
-      const teleprompter = document.getElementById("teleprompter");
-      const videoContainer = document.getElementById("video-container");
-      const videoElement = document.getElementById("teleprompter-video");
-      let isFaded = false;
+<body>
+  <div id="video-container">
+    <video id="teleprompter-video" autoplay playsinline></video>
+  </div>
+  <div id="teleprompter"></div>
 
-      function addMessage(text, style, headshotImage, qrCodeImage) {
-        const message = document.createElement("div");
-        message.className = "message " + (style || "normal");
+  <script>
+    let ws;
+    const teleprompter = document.getElementById("teleprompter");
+    const videoContainer = document.getElementById("video-container");
+    const videoElement = document.getElementById("teleprompter-video");
+    let isFaded = false;
 
-        const content = document.createElement("div");
-        content.className = "message-content";
+    function addMessage(text, style, headshotImage, qrCodeImage) {
+      const message = document.createElement("div");
+      message.className = "message " + (style || "normal");
 
-        if (text.includes(":")) {
-          const [character, action] = text.split(":").map((s) => s.trim());
-          content.innerHTML = "<strong>" + character + ":</strong> " + action;
-        } else {
-          content.textContent = text;
-        }
+      const content = document.createElement("div");
+      content.className = "message-content";
 
-        message.appendChild(content);
-
-        const imageContainer = document.createElement("div");
-        imageContainer.className = "message-image-container";
-
-        if (headshotImage) {
-          const headshotImg = document.createElement("img");
-          headshotImg.className = "message-image headshot";
-          headshotImg.src = headshotImage;
-          imageContainer.appendChild(headshotImg);
-        }
-
-        if (qrCodeImage) {
-          const qrImg = document.createElement("img");
-          qrImg.className = "message-image qrcode";
-          qrImg.src = qrCodeImage;
-          imageContainer.appendChild(qrImg);
-        }
-
-        if (imageContainer.hasChildNodes()) {
-          message.appendChild(imageContainer);
-        }
-
-        if (teleprompter.firstChild) {
-          teleprompter.insertBefore(message, teleprompter.firstChild);
-        } else {
-          teleprompter.appendChild(message);
-        }
-
-        requestAnimationFrame(() => {
-          message.classList.add("new");
-          setTimeout(() => {
-            message.classList.remove("new");
-          }, 50);
-        });
-
-        const maxMessages = 10;
-        while (teleprompter.children.length > maxMessages) {
-          const lastMessage = teleprompter.lastChild;
-          lastMessage.classList.add("old");
-          setTimeout(() => {
-            lastMessage.remove();
-          }, 500);
-        }
+      if (text.includes(":")) {
+        const [character, action] = text.split(":").map((s) => s.trim());
+        content.innerHTML = "<strong>" + character + ":</strong> " + action;
+      } else {
+        content.textContent = text;
       }
 
-      function clearText() {
-        const messages = teleprompter.children;
-        for (let i = 0; i < messages.length; i++) {
-          messages[i].classList.add("old");
-        }
+      message.appendChild(content);
+
+      const imageContainer = document.createElement("div");
+      imageContainer.className = "message-image-container";
+
+      if (headshotImage) {
+        const headshotImg = document.createElement("img");
+        headshotImg.className = "message-image headshot";
+        headshotImg.src = headshotImage;
+        imageContainer.appendChild(headshotImg);
+      }
+
+      if (qrCodeImage) {
+        const qrImg = document.createElement("img");
+        qrImg.className = "message-image qrcode";
+        qrImg.src = qrCodeImage;
+        imageContainer.appendChild(qrImg);
+      }
+
+      if (imageContainer.hasChildNodes()) {
+        message.appendChild(imageContainer);
+      }
+
+      if (teleprompter.firstChild) {
+        teleprompter.insertBefore(message, teleprompter.firstChild);
+      } else {
+        teleprompter.appendChild(message);
+      }
+
+      requestAnimationFrame(() => {
+        message.classList.add("new");
         setTimeout(() => {
-          teleprompter.innerHTML = "";
+          message.classList.remove("new");
+        }, 50);
+      });
+
+      const maxMessages = 10;
+      while (teleprompter.children.length > maxMessages) {
+        const lastMessage = teleprompter.lastChild;
+        lastMessage.classList.add("old");
+        setTimeout(() => {
+          lastMessage.remove();
         }, 500);
       }
+    }
 
-      function playVideo(videoPath) {
-        videoElement.src = videoPath;
-        videoContainer.classList.add("active");
-
-        videoElement.onended = () => {
-          videoContainer.classList.remove("active");
-        };
+    function clearText() {
+      const messages = teleprompter.children;
+      for (let i = 0; i < messages.length; i++) {
+        messages[i].classList.add("old");
       }
+      setTimeout(() => {
+        teleprompter.innerHTML = "";
+      }, 500);
+    }
 
-      // New function to display actor calls in a grid
-      function addActorCallsMessage(actors) {
-        const messageContainer = document.createElement("div");
-        messageContainer.className = "message actor-calls-container"; // Use existing message styling + specific class
+    function playVideo(videoPath) {
+      videoElement.src = videoPath;
+      videoContainer.classList.add("active");
 
-        const title = document.createElement("h2");
-        title.textContent = "Actors Called:";
-        title.className = "actor-calls-title";
-        messageContainer.appendChild(title);
+      videoElement.onended = () => {
+        videoContainer.classList.remove("active");
+      };
+    }
 
-        const gridContainer = document.createElement("div");
-        gridContainer.className = "actor-grid";
+    // New function to display actor calls in a grid
+    function addActorCallsMessage(actors) {
+      const messageContainer = document.createElement("div");
+      messageContainer.className = "message actor-calls-container"; // Use existing message styling + specific class
 
-        actors.forEach((actor) => {
-          const actorCard = document.createElement("div");
-          actorCard.className = "actor-card";
+      const title = document.createElement("h2");
+      title.textContent = "Actors Called:";
+      title.className = "actor-calls-title";
+      messageContainer.appendChild(title);
 
-          // Headshot
-          if (actor.headshotImage) {
-            const headshotImg = document.createElement("img");
-            headshotImg.className = "message-image headshot"; // Reuse styling if appropriate
-            headshotImg.src = actor.headshotImage;
-            headshotImg.alt = `${actor.name} headshot`;
-            actorCard.appendChild(headshotImg);
-          }
+      const gridContainer = document.createElement("div");
+      gridContainer.className = "actor-grid";
 
-          // Text Info
-          const textInfo = document.createElement("p");
-          textInfo.className = "actor-card-text";
-          textInfo.innerHTML = `<strong>${
-            actor.name || "Unknown"
+      actors.forEach((actor) => {
+        const actorCard = document.createElement("div");
+        actorCard.className = "actor-card";
+
+        // Headshot
+        if (actor.headshotImage) {
+          const headshotImg = document.createElement("img");
+          headshotImg.className = "message-image headshot"; // Reuse styling if appropriate
+          headshotImg.src = actor.headshotImage;
+          headshotImg.alt = `${actor.name} headshot`;
+          actorCard.appendChild(headshotImg);
+        }
+
+        // Text Info
+        const textInfo = document.createElement("p");
+        textInfo.className = "actor-card-text";
+        textInfo.innerHTML = `<strong>${actor.name || "Unknown"
           }</strong><br>as ${actor.character || "Unknown"}`;
-          actorCard.appendChild(textInfo);
+        actorCard.appendChild(textInfo);
 
-          // Prop Image
-          if (actor.propImage) {
+        // Prop Image(s)
+        if (actor.propImages && Array.isArray(actor.propImages) && actor.propImages.length > 0) {
+          const propsContainer = document.createElement('div'); // Container for props
+          propsContainer.className = 'actor-card-props-container';
+          actor.propImages.forEach(propImageUrl => {
             const propImg = document.createElement("img");
-            propImg.className = "message-image prop-image"; // Add a specific class for styling
-            propImg.src = actor.propImage;
-            propImg.alt = `${actor.character} prop`;
-            actorCard.appendChild(propImg);
-          }
-
-          // QR Code or Error
-          if (actor.qrCodeImage) {
-            const qrImg = document.createElement("img");
-            qrImg.className = "message-image qrcode"; // Reuse styling if appropriate
-            qrImg.src = actor.qrCodeImage;
-            qrImg.alt = `${actor.character} QR Code`;
-            actorCard.appendChild(qrImg);
-          } else if (actor.error) {
-            const errorText = document.createElement("p");
-            errorText.className = "actor-card-error";
-            errorText.textContent = actor.error;
-            actorCard.appendChild(errorText);
-          }
-
-          gridContainer.appendChild(actorCard);
-        });
-
-        messageContainer.appendChild(gridContainer);
-
-        // Add to the beginning of the list (similar to addMessage)
-        if (teleprompter.firstChild) {
-          teleprompter.insertBefore(messageContainer, teleprompter.firstChild);
-        } else {
-          teleprompter.appendChild(messageContainer);
+            propImg.className = "message-image prop-image"; // Use existing class
+            propImg.src = propImageUrl;
+            // Extract prop name from URL for alt text (simple version)
+            const propName = propImageUrl.split('/').pop().split('.')[0];
+            propImg.alt = `${actor.character} prop: ${propName}`;
+            propsContainer.appendChild(propImg);
+          });
+          actorCard.appendChild(propsContainer); // Append the container
         }
 
-        // Optional: Trigger animation (similar to addMessage)
-        requestAnimationFrame(() => {
-          messageContainer.classList.add("new");
-          setTimeout(() => {
-            messageContainer.classList.remove("new");
-          }, 50);
-        });
-
-        // Remove old messages if we have too many (adjust limit if needed)
-        const maxMessages = 10;
-        while (teleprompter.children.length > maxMessages) {
-          const lastMessage = teleprompter.lastChild;
-          lastMessage.classList.add("old");
-          setTimeout(() => {
-            lastMessage.remove();
-          }, 500);
+        // QR Code or Error
+        if (actor.qrCodeImage) {
+          const qrImg = document.createElement("img");
+          qrImg.className = "message-image qrcode"; // Reuse styling if appropriate
+          qrImg.src = actor.qrCodeImage;
+          qrImg.alt = `${actor.character} QR Code`;
+          actorCard.appendChild(qrImg);
+        } else if (actor.error) {
+          const errorText = document.createElement("p");
+          errorText.className = "actor-card-error";
+          errorText.textContent = actor.error;
+          actorCard.appendChild(errorText);
         }
+
+        gridContainer.appendChild(actorCard);
+      });
+
+      messageContainer.appendChild(gridContainer);
+
+      // Add to the beginning of the list (similar to addMessage)
+      if (teleprompter.firstChild) {
+        teleprompter.insertBefore(messageContainer, teleprompter.firstChild);
+      } else {
+        teleprompter.appendChild(messageContainer);
       }
 
-      // Renamed from handleWebSocketMessage back to handleWebSocketMessage
-      function handleWebSocketMessage(event) {
-        const data = JSON.parse(event.data);
-        // Check origin for security if necessary: if (event.origin !== 'expected_origin') return;
-        console.log("Teleprompter received via WebSocket:", data);
+      // Optional: Trigger animation (similar to addMessage)
+      requestAnimationFrame(() => {
+        messageContainer.classList.add("new");
+        setTimeout(() => {
+          messageContainer.classList.remove("new");
+        }, 50);
+      });
 
-        if (data.type === "TELEPROMPTER") {
-          console.log("Adding teleprompter message:", data.text);
-          addMessage(
-            data.text,
-            data.style || "normal",
-            data.headshotImage,
-            data.qrCodeImage
-          );
-        } else if (data.type === "ACTOR_CALLS") {
-          // Handle new type
-          console.log("Adding actor calls message:", data.actors);
-          addActorCallsMessage(data.actors);
-        } else if (data.type === "SCENE_EVENT") {
-          console.log("Adding scene event:", data.event);
-          const message = data.event.character + ": " + data.event.text;
-          addMessage(message, data.event.style || "normal");
-        } else if (data.type === "CLEAR_TELEPROMPTER") {
-          clearText();
-        } else if (data.type === "PLAY_VIDEO") {
-          playVideo(data.videoPath);
-        }
+      // Remove old messages if we have too many (adjust limit if needed)
+      const maxMessages = 10;
+      while (teleprompter.children.length > maxMessages) {
+        const lastMessage = teleprompter.lastChild;
+        lastMessage.classList.add("old");
+        setTimeout(() => {
+          lastMessage.remove();
+        }, 500);
       }
+    }
 
-      // Remove WebSocket connection logic
-      // /*
-      function connectWebSocket() {
-        ws = new WebSocket("ws://" + window.location.host);
+    // Renamed from handleWebSocketMessage back to handleWebSocketMessage
+    function handleWebSocketMessage(event) {
+      const data = JSON.parse(event.data);
+      // Check origin for security if necessary: if (event.origin !== 'expected_origin') return;
+      console.log("Teleprompter received via WebSocket:", data);
 
-        ws.onopen = function () {
-          console.log("Teleprompter WebSocket connected");
-          clearText();
-          console.log("Teleprompter cleared on new WebSocket connection.");
-        };
-
-        ws.onmessage = handleWebSocketMessage;
-
-        ws.onerror = function (error) {
-          console.error("Teleprompter WebSocket error:", error);
-          setTimeout(connectWebSocket, 5000);
-        };
-
-        ws.onclose = function () {
-          console.log("Teleprompter WebSocket closed");
-          setTimeout(connectWebSocket, 5000);
-        };
+      if (data.type === "TELEPROMPTER") {
+        console.log("Adding teleprompter message:", data.text);
+        addMessage(
+          data.text,
+          data.style || "normal",
+          data.headshotImage,
+          data.qrCodeImage
+        );
+      } else if (data.type === "ACTOR_CALLS") {
+        // Handle new type
+        console.log("Adding actor calls message:", data.actors);
+        addActorCallsMessage(data.actors);
+      } else if (data.type === "SCENE_EVENT") {
+        console.log("Adding scene event:", data.event);
+        const message = data.event.character + ": " + data.event.text;
+        addMessage(message, data.event.style || "normal");
+      } else if (data.type === "CLEAR_TELEPROMPTER") {
+        clearText();
+      } else if (data.type === "PLAY_VIDEO") {
+        playVideo(data.videoPath);
       }
+    }
 
-      connectWebSocket();
-      // */
+    // Remove WebSocket connection logic
+    // /*
+    function connectWebSocket() {
+      ws = new WebSocket("ws://" + window.location.host);
 
-      // Add listener for messages from parent window (home.ejs)
-      // window.addEventListener("message", handleParentMessage); // Correctly call the renamed handler
+      ws.onopen = function () {
+        console.log("Teleprompter WebSocket connected");
+        clearText();
+        console.log("Teleprompter cleared on new WebSocket connection.");
+      };
 
-      function toggleFade() {
-        isFaded = !isFaded;
-        teleprompter.classList.toggle("fade", isFaded);
-      }
-    </script>
-  </body>
+      ws.onmessage = handleWebSocketMessage;
+
+      ws.onerror = function (error) {
+        console.error("Teleprompter WebSocket error:", error);
+        setTimeout(connectWebSocket, 5000);
+      };
+
+      ws.onclose = function () {
+        console.log("Teleprompter WebSocket closed");
+        setTimeout(connectWebSocket, 5000);
+      };
+    }
+
+    connectWebSocket();
+    // */
+
+    // Add listener for messages from parent window (home.ejs)
+    // window.addEventListener("message", handleParentMessage); // Correctly call the renamed handler
+
+    function toggleFade() {
+      isFaded = !isFaded;
+      teleprompter.classList.toggle("fade", isFaded);
+    }
+  </script>
+</body>
+
 </html>

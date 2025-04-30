@@ -171,6 +171,18 @@ body {
     border: 1px solid #eee;
 }
 
+/* Add styling for the prop image */
+.actor-card .message-image.prop-image {
+    max-width: 60px;
+    /* Slightly smaller than QR/Headshot */
+    max-height: 60px;
+    margin-top: 5px;
+    /* Add some space above */
+    object-fit: contain;
+    /* Ensure the whole prop is visible */
+    /* No border needed unless desired */
+}
+
 .actor-card-text {
     font-size: 0.9rem;
     line-height: 1.3;

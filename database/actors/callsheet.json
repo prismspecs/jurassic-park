@@ -3,48 +3,48 @@
     "id": "Brad Pitt",
     "name": "Brad Pitt",
     "available": true,
-    "sceneCount": 95
+    "sceneCount": 96
   },
   {
     "id": "Johannes Büttner",
     "name": "Johannes Buttner",
     "available": true,
-    "sceneCount": 95
+    "sceneCount": 96
   },
   {
     "id": "Tyra Banks",
     "name": "Tyra Banks",
     "available": true,
-    "sceneCount": 95
+    "sceneCount": 96
   },
   {
     "id": "Grayson-D6751A",
     "name": "Grayson",
     "available": true,
-    "sceneCount": 94
+    "sceneCount": 96
   },
   {
     "id": "Test-A7FD85",
     "name": "Test",
     "available": true,
-    "sceneCount": 94
+    "sceneCount": 95
   },
   {
     "id": "asd-577A28",
     "name": "asd",
     "available": true,
-    "sceneCount": 2
+    "sceneCount": 8
   },
   {
     "id": "asdasd-3BF128",
     "name": "asdasd",
     "available": true,
-    "sceneCount": 2
+    "sceneCount": 8
   },
   {
     "id": "Name Here-514F34",
     "name": "Name Here",
     "available": true,
-    "sceneCount": 2
+    "sceneCount": 8
   }
 ]
