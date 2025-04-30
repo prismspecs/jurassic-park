@@ -108,19 +108,26 @@ function updateMaskImageData() {
         return;
     }
     
-    // Get current canvas dimensions
-    const canvasWidth = baseCanvas.width;
-    const canvasHeight = baseCanvas.height;
-    
-    // Draw mask to a temporary canvas to get its imageData
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvasWidth;
-    tempCanvas.height = canvasHeight;
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.drawImage(maskImage, 0, 0, canvasWidth, canvasHeight);
-    maskImageData = tempCtx.getImageData(0, 0, canvasWidth, canvasHeight);
-    
-    console.log(`Mask image data updated to ${canvasWidth}x${canvasHeight}`);
+    try {
+        // Get current canvas dimensions
+        const canvasWidth = baseCanvas.width;
+        const canvasHeight = baseCanvas.height;
+        
+        console.log(`Updating mask image data to ${canvasWidth}x${canvasHeight}`);
+        
+        // Draw mask to a temporary canvas to get its imageData
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvasWidth;
+        tempCanvas.height = canvasHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(maskImage, 0, 0, canvasWidth, canvasHeight);
+        maskImageData = tempCtx.getImageData(0, 0, canvasWidth, canvasHeight);
+        
+        console.log(`Mask image data updated: ${maskImageData.width}x${maskImageData.height}`);
+    } catch (err) {
+        console.error("Error updating mask image data:", err);
+        maskImageData = null;
+    }
 }
 
 /**
@@ -668,16 +675,17 @@ function calculateOverlapScore(bodyShapeImageData) {
 
     const maskData = maskImageData.data;
     const bodyData = bodyShapeImageData.data;
-    const pixelCount = maskData.length / 4; // RGBA = 4 values per pixel
+    const pixelCount = Math.min(maskData.length, bodyData.length) / 4; // RGBA = 4 values per pixel
 
     // Compare each pixel
     for (let i = 0; i < pixelCount; i++) {
         const offset = i * 4;
         
-        // A pixel is white if its RGB values are high (close to 255)
-        // Using a threshold to account for compression artifacts
+        // A pixel is considered a mask pixel if it's bright (white mask)
         const isMaskPixel = maskData[offset] > 200; // Red channel > 200 in mask
-        const isBodyPixel = bodyData[offset] > 100; // Red channel > 100 in body
+        
+        // A pixel from the silhouette is active if it has any opacity
+        const isBodyPixel = bodyData[offset + 3] > 30; // Alpha threshold
         
         if (isMaskPixel) maskPixels++;
         if (isBodyPixel) bodyPixels++;
@@ -691,7 +699,7 @@ function calculateOverlapScore(bodyShapeImageData) {
 
     // Use Dice coefficient for scoring: 2 * overlap / (mask + body)
     const score = (2 * overlapPixels) / (maskPixels + bodyPixels);
-    
+
     return Math.round(score * 100);
 }
 
@@ -703,42 +711,104 @@ function drawDifferenceLayer(ctx) {
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
     
-    if (!settings.showDifference || !maskImageData) {
-        ctx.clearRect(0, 0, width, height);
+    console.log("Drawing difference layer...");
+    
+    // Clear the canvas first
+    ctx.clearRect(0, 0, width, height);
+    
+    // Draw a visible debug marker to confirm the function is being called
+    ctx.fillStyle = "rgba(255, 0, 0, 0.2)";  // Semi-transparent red
+    ctx.fillRect(0, 0, 50, 50);
+    
+    // If difference layer is disabled or mask isn't loaded, just return
+    if (!settings.showDifference) {
+        console.log("Difference layer disabled in settings");
         return;
     }
     
-    // Get the silhouette data
-    const silhouetteData = silhouetteCtx.getImageData(0, 0, width, height);
+    if (!maskImage.complete) {
+        console.log("Mask image not loaded - can't draw difference layer");
+        return;
+    }
     
-    // Create a new ImageData for the difference layer
-    const differenceData = new ImageData(width, height);
-    
-    // Compare each pixel to find overlaps
-    for (let i = 0; i < maskImageData.data.length; i += 4) {
-        // Check if both the mask and silhouette have visible pixels at this position
-        // For mask, we consider it "on" if it's mostly white (R > 200)
-        // For silhouette, we consider it "on" if it has any opacity
-        const isMaskPixel = maskImageData.data[i] > 200;
-        const isSilhouettePixel = silhouetteData.data[i + 3] > 0; // Check alpha channel
+    // Make sure we have the latest mask image data at the current dimensions
+    if (!maskImageData) {
+        console.log("No mask image data - regenerating");
+        updateMaskImageData();
         
-        if (isMaskPixel && isSilhouettePixel) {
-            // Overlap - set to green
-            differenceData.data[i] = 0;       // R
-            differenceData.data[i + 1] = 255; // G
-            differenceData.data[i + 2] = 0;   // B
-            differenceData.data[i + 3] = 255; // A (fully opaque)
-        } else {
-            // No overlap - transparent
-            differenceData.data[i] = 0;
-            differenceData.data[i + 1] = 0;
-            differenceData.data[i + 2] = 0;
-            differenceData.data[i + 3] = 0;
+        // If still no mask data, we can't proceed
+        if (!maskImageData) {
+            console.error("Failed to create mask image data");
+            return;
         }
     }
     
-    // Put the difference data onto the canvas
-    ctx.putImageData(differenceData, 0, 0);
+    console.log(`Mask dimensions: ${maskImageData.width}x${maskImageData.height}, Canvas: ${width}x${height}`);
+    
+    try {
+        // Get the silhouette data from its canvas
+        const silhouetteData = silhouetteCtx.getImageData(0, 0, width, height);
+        console.log(`Got silhouette data: ${silhouetteData.width}x${silhouetteData.height}`);
+        
+        // Direct pixel manipulation for maximum performance and reliability
+        const diffImageData = ctx.createImageData(width, height);
+        const diffData = diffImageData.data;
+        const maskData = maskImageData.data;
+        const silData = silhouetteData.data;
+        
+        // Pixel count for logging
+        let overlapCount = 0;
+        let maskCount = 0;
+        let silhouetteCount = 0;
+        
+        // Process each pixel
+        for (let i = 0; i < diffData.length; i += 4) {
+            // A pixel from the mask is considered active if it's bright (white mask)
+            const isMaskPixel = maskData[i] > 200;
+            
+            // A pixel from the silhouette is active if it has any opacity
+            const isSilhouettePixel = silData[i + 3] > 30; // Alpha channel with threshold
+            
+            if (isMaskPixel) maskCount++;
+            if (isSilhouettePixel) silhouetteCount++;
+            
+            // If both are active, we have an overlap
+            if (isMaskPixel && isSilhouettePixel) {
+                // Set to bright green for overlap
+                diffData[i] = 0;       // R
+                diffData[i + 1] = 255; // G
+                diffData[i + 2] = 0;   // B
+                diffData[i + 3] = 255; // A (fully opaque)
+                overlapCount++;
+            } else {
+                // No overlap - transparent
+                diffData[i] = 0;
+                diffData[i + 1] = 0;
+                diffData[i + 2] = 0;
+                diffData[i + 3] = 0;
+            }
+        }
+        
+        // Put the difference data directly onto the canvas
+        ctx.putImageData(diffImageData, 0, 0);
+        
+        // Log stats for debugging
+        console.log(`Difference detection: ${overlapCount} overlap pixels, ${maskCount} mask pixels, ${silhouetteCount} silhouette pixels`);
+        
+        // Draw another visible marker to confirm we got this far
+        ctx.fillStyle = "rgba(0, 0, 255, 0.2)";  // Semi-transparent blue
+        ctx.fillRect(width - 50, 0, 50, 50);
+        
+    } catch (err) {
+        console.error("Error drawing difference layer:", err);
+        
+        // If there was an error, at least draw something visible for debugging
+        ctx.fillStyle = "rgba(255, 0, 255, 0.5)";  // Semi-transparent magenta
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = "white";
+        ctx.font = "16px sans-serif";
+        ctx.fillText("Error in difference layer", 10, 30);
+    }
 }
 
 /**
@@ -927,7 +997,7 @@ function setupControlListeners() {
     document.getElementById('reset-controls').addEventListener('click', () => {
         settings = { ...DEFAULT_SETTINGS };
         updateControlsUI();
-        // Update canvas visibility
+        // Update canvas visibility for all layers
         silhouetteCanvas.style.display = settings.showSilhouette ? 'block' : 'none';
         skeletonCanvas.style.display = settings.showSkeleton ? 'block' : 'none';
         differenceCanvas.style.display = settings.showDifference ? 'block' : 'none';
@@ -969,8 +1039,12 @@ async function detectionLoop() {
         }
     });
     
+    // Make sure difference canvas is visible
+    differenceCanvas.style.display = settings.showDifference ? 'block' : 'none';
+    
     // If dimensions changed, update the mask data
     if (dimensionsChanged) {
+        console.log(`Canvas dimensions updated to ${actualWidth}x${actualHeight}`);
         updateMaskImageData();
     }
 
@@ -984,18 +1058,15 @@ async function detectionLoop() {
         // Get the first detected pose (if any)
         const pose = poses && poses.length > 0 ? poses[0] : null;
         
-        // Log for debugging
-        if (pose) {
-            console.log("Pose detected with", pose.keypoints.length, "keypoints");
-        } else {
-            console.log("No pose detected");
-        }
-        
         // Draw on each canvas layer
         drawBaseLayer(baseCtx);
         drawSilhouette(pose, silhouetteCtx);
-        drawDifferenceLayer(differenceCtx);
         drawSkeleton(pose, skeletonCtx);
+        
+        // Make sure difference layer gets drawn last
+        if (settings.showDifference) {
+            drawDifferenceLayer(differenceCtx);
+        }
 
         // Calculate score if we have a pose
         if (pose && pose.keypoints.length > 0) {

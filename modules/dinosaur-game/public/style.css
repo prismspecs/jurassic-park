@@ -69,8 +69,12 @@ h3 {
     z-index: 2;
 }
 
-#skeleton-canvas {
+#difference-canvas {
     z-index: 3;
+}
+
+#skeleton-canvas {
+    z-index: 4;
 }
 
 #score {
