@@ -2,276 +2,312 @@
 * {
   font-family: monospace;
 }
+
 html,
 body {
-    height: 100%;
-    /* font-family: monospace; */
-    margin: 0;
-    padding: 0;
-    background: #f0f0f0;
-    display: flex;
-    min-height: 100vh;
+  height: 100%;
+  /* font-family: monospace; */
+  margin: 0;
+  padding: 0;
+  background: #f0f0f0;
+  display: flex;
+  min-height: 100vh;
 }
 
 /* Home page styles */
 .main-content {
-    flex: 3;
-    padding: 20px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
+  flex: 3;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar {
-    flex: 1;
-    background: #fff;
-    padding: 20px;
-    border-left: 1px solid #ccc;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
+  flex: 1;
+  background: #fff;
+  padding: 20px;
+  border-left: 1px solid #ccc;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 h1 {
-    margin: 0 0 20px 0;
-    text-align: center;
+  margin: 0 0 20px 0;
+  text-align: center;
 }
 
 /* Camera controls */
 .controls-section {
-    background: #f8f8f8;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    box-sizing: border-box;
+  background: #f8f8f8;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
 }
 
 .controls-section h2 {
-    margin: 0 0 15px 0;
-    font-size: 18px;
-    color: #333;
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #333;
 }
 
 .scene-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
-    justify-content: center;
-    margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
+  margin-bottom: 20px;
 }
 
 .scene-card {
-    background: #fff;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    width: 220px;
-    padding: 10px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-    cursor: pointer;
-    transition: transform 0.2s ease;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  width: 220px;
+  padding: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .scene-card:hover {
-    transform: translateY(-3px);
+  transform: translateY(-3px);
 }
 
 .scene-card img {
-    width: 100%;
-    height: 150px;
-    object-fit: cover;
-    border-radius: 4px;
-    margin-bottom: 10px;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-bottom: 10px;
 }
 
 .scene-title {
-    font-weight: bold;
-    margin-bottom: 5px;
-    font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 5px;
+  font-size: 14px;
 }
 
 /* Camera controls */
 .camera-controls {
-    margin-bottom: 20px;
+  margin-bottom: 20px;
 }
 
 .camera-selector {
-    margin-bottom: 1rem;
+  margin-bottom: 1rem;
 }
 
 .camera-selector select {
-    width: 100%;
-    padding: 0.5rem;
-    font-size: 1rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background-color: white;
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: white;
 }
 
 .camera-preview {
-    width: 100%;
-    margin-bottom: 1rem;
-    background-color: #f0f0f0;
-    border-radius: 4px;
-    overflow: hidden;
+  width: 100%;
+  margin-bottom: 1rem;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  /* Needed for absolute positioning of overlay */
+}
+
+.skeleton-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* Allow clicks to go through to the video */
+  display: none;
+  /* Hidden by default */
+}
+
+.skeleton-toggle-group {
+  display: flex;
+  align-items: center;
+}
+
+.skeleton-toggle-group label {
+  margin-right: 5px;
 }
 
 .camera-preview video {
-    width: 100%;
-    height: auto;
-    display: block;
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
 .ptz-controls {
-    margin-top: 1rem;
-    padding: 1rem;
-    background-color: #f8f8f8;
-    border-radius: 4px;
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #f8f8f8;
+  border-radius: 4px;
 }
 
 .ptz-slider {
-    margin-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .ptz-slider label {
-    display: inline-block;
-    width: 60px;
-    font-weight: bold;
+  display: inline-block;
+  width: 60px;
+  font-weight: bold;
 }
 
 .ptz-slider input[type="range"] {
-    width: calc(100% - 100px);
-    margin: 0 0.5rem;
+  width: calc(100% - 100px);
+  margin: 0 0.5rem;
 }
 
 .ptz-slider span {
-    display: inline-block;
-    width: 40px;
-    text-align: right;
+  display: inline-block;
+  width: 40px;
+  text-align: right;
 }
 
 /* Console output */
 #console-output {
-    background: #1e1e1e;
-    color: #fff;
-    font-family: monospace;
-    padding: 10px;
-    width: 100%;
-    height: 300px;
-    overflow-y: auto;
-    text-align: left;
-    border-radius: 5px;
-    font-size: 14px;
-    line-height: 1.4;
-    margin-top: auto;
-    box-sizing: border-box;
+  background: #1e1e1e;
+  color: #fff;
+  font-family: monospace;
+  padding: 10px;
+  width: 100%;
+  height: 300px;
+  overflow-y: auto;
+  text-align: left;
+  border-radius: 5px;
+  font-size: 14px;
+  line-height: 1.4;
+  margin-top: auto;
+  box-sizing: border-box;
 }
 
 #console-output .timestamp {
-    color: #888;
+  color: #888;
 }
 
 #console-output .error {
-    color: #ff6b6b;
+  color: #ff6b6b;
 }
 
 #console-output .info {
-    color: #4ecdc4;
+  color: #4ecdc4;
 }
 
 /* Buttons */
 #buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 button {
-    padding: 10px 20px;
-    cursor: pointer;
-    font-size: 14px;
-    width: 100%;
-    text-align: left;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background: #fff;
-    transition: background-color 0.2s;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 14px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  transition: background-color 0.2s;
 }
 
 /* Style for individual session items */
 .session-item {
   display: flex;
   align-items: center;
-  gap: 5px; /* Space between session button and delete button */
-  margin-bottom: 5px; /* Space between session items */
+  gap: 5px;
+  /* Space between session button and delete button */
+  margin-bottom: 5px;
+  /* Space between session items */
 }
 
 .session-button {
-  flex-grow: 1; /* Allow button to take available space */
+  flex-grow: 1;
+  /* Allow button to take available space */
   /* Inherits general button styles */
 }
 
 .session-button.active {
-  background-color: #e0e0e0; /* Light grey background for active */
+  background-color: #e0e0e0;
+  /* Light grey background for active */
   font-weight: bold;
-  border-color: #a0a0a0; /* Darker border for active */
+  border-color: #a0a0a0;
+  /* Darker border for active */
 }
 
 .delete-session-button {
-  padding: 5px; /* Smaller padding */
-  width: auto; /* Auto width based on content */
-  font-size: 12px; /* Smaller font */
+  padding: 5px;
+  /* Smaller padding */
+  width: auto;
+  /* Auto width based on content */
+  font-size: 12px;
+  /* Smaller font */
   background: none;
   border: none;
-  color: #cc0000; /* Red color for delete */
+  color: #cc0000;
+  /* Red color for delete */
   cursor: pointer;
-  flex-shrink: 0; /* Prevent shrinking */
+  flex-shrink: 0;
+  /* Prevent shrinking */
 }
 
 .delete-session-button:hover {
-  color: #ff0000; /* Brighter red on hover */
-  background: none; /* Override general button hover */
+  color: #ff0000;
+  /* Brighter red on hover */
+  background: none;
+  /* Override general button hover */
 }
 
 button:hover {
-    background: #f0f0f0;
+  background: #f0f0f0;
 }
 
 #status {
-    margin: 10px 0;
-    font-weight: bold;
-    text-align: center;
-    padding: 10px;
-    background: #f8f8f8;
-    border-radius: 4px;
+  margin: 10px 0;
+  font-weight: bold;
+  text-align: center;
+  padding: 10px;
+  background: #f8f8f8;
+  border-radius: 4px;
 }
 
 /* Video elements */
 video {
-    width: 640px;
-    margin: 10px auto;
-    display: block;
-    border: 2px solid #ccc;
+  width: 640px;
+  margin: 10px auto;
+  display: block;
+  border: 2px solid #ccc;
 }
 
 /* Teleprompter controls */
 .teleprompter-button-group {
-    background-color: rgba(0, 0, 0, 0.05);
-    border-radius: 8px;
-    padding: 12px;
-    margin: 10px 0;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 10px 0;
 }
 
 .teleprompter-button-group .group-label {
-    font-weight: bold;
-    margin-bottom: 8px;
-    color: #666;
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #666;
 }
 
 .teleprompter-button-group button {
-    margin: 4px;
+  margin: 4px;
 }
 
 /* Add styles for session list */
@@ -291,25 +327,30 @@ video {
   font-size: 0.9em;
 }
 
-.log-timestamp { /* Possibly overlaps with #console-output .timestamp */
+.log-timestamp {
+  /* Possibly overlaps with #console-output .timestamp */
   color: #888;
   margin-right: 5px;
 }
 
-.log-info { /* Possibly overlaps with #console-output .info */
+.log-info {
+  /* Possibly overlaps with #console-output .info */
   color: #333;
 }
 
-.log-warn { /* Possibly overlaps with #console-output .warn (if it exists) */
+.log-warn {
+  /* Possibly overlaps with #console-output .warn (if it exists) */
   color: orange;
 }
 
-.log-error { /* Possibly overlaps with #console-output .error */
+.log-error {
+  /* Possibly overlaps with #console-output .error */
   color: red;
   font-weight: bold;
 }
 
-.log-success { /* Possibly overlaps with #console-output .success (if it exists) */
+.log-success {
+  /* Possibly overlaps with #console-output .success (if it exists) */
   color: green;
 }
 
@@ -384,13 +425,15 @@ video {
 }
 
 /* Shot Container/Card Styles (Check for overlap with scene-container/scene-card) */
-.shot-container { /* Similar to .scene-container */
+.shot-container {
+  /* Similar to .scene-container */
   display: flex;
   flex-wrap: wrap;
   gap: 15px;
 }
 
-.shot-card { /* Similar to .scene-card */
+.shot-card {
+  /* Similar to .scene-card */
   border: 1px solid #ccc;
   padding: 10px;
   border-radius: 4px;
@@ -500,8 +543,10 @@ video {
   flex: 1;
   margin: 0 10px 0 0;
   height: 20px;
-  width: 100%; /* Ensure all sliders have 100% width */
-  min-width: 0; /* Override any browser defaults */
+  width: 100%;
+  /* Ensure all sliders have 100% width */
+  min-width: 0;
+  /* Override any browser defaults */
   box-sizing: border-box;
 }
 
@@ -530,65 +575,63 @@ video {
 
 /* Shot Camera Description Style */
 .shot-camera-description {
-    font-size: 0.9em;
-    margin-top: 5px;
-    color: #555;
+  font-size: 0.9em;
+  margin-top: 5px;
+  color: #555;
 }
 
 /* NEW Collapsible Section Styles */
 .collapsible-section {
-    margin-bottom: 15px; /* Add some space below the section */
+  margin-bottom: 15px;
+  /* Add some space below the section */
 }
 
 .collapsible-header {
-    cursor: pointer;
-    padding: 8px 12px;
-    background-color: #eee; /* Light background for the header */
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    margin: 0 0 5px 0; /* Reset default h3 margins and add small bottom margin */
-    font-size: 16px; /* Slightly smaller than h2 */
-    font-weight: bold;
-    display: flex; /* Use flex for alignment */
-    justify-content: space-between; /* Push arrow to the right */
-    align-items: center; /* Vertically center content */
-    transition: background-color 0.2s ease;
+  cursor: pointer;
+  padding: 8px 12px;
+  background-color: #eee;
+  /* Light background for the header */
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin: 0 0 5px 0;
+  /* Reset default h3 margins and add small bottom margin */
+  font-size: 16px;
+  /* Slightly smaller than h2 */
+  font-weight: bold;
+  display: flex;
+  /* Use flex for alignment */
+  justify-content: space-between;
+  /* Push arrow to the right */
+  align-items: center;
+  /* Vertically center content */
+  transition: background-color 0.2s ease;
 }
 
 .collapsible-header:hover {
-    background-color: #e0e0e0; /* Slightly darker on hover */
+  background-color: #e0e0e0;
+  /* Slightly darker on hover */
 }
 
 .collapsible-content {
-    /* Content is shown/hidden by JS toggling display:none/block */
-    /* Optional: Add some padding if needed when visible */
-    /* padding: 10px; */ 
-    border: 1px solid #eee; /* Optional border for the content area */
-    border-top: none; /* Avoid double border with header */
-    border-radius: 0 0 4px 4px; /* Match bottom corners */
-    padding: 10px; /* Add padding inside the content box */
+  /* Content is shown/hidden by JS toggling display:none/block */
+  /* Optional: Add some padding if needed when visible */
+  /* padding: 10px; */
+  border: 1px solid #eee;
+  /* Optional border for the content area */
+  border-top: none;
+  /* Avoid double border with header */
+  border-radius: 0 0 4px 4px;
+  /* Match bottom corners */
+  padding: 10px;
+  /* Add padding inside the content box */
 }
 
 /* Style adjustments for the teleprompter group specifically when inside collapsible */
-.collapsible-content > .teleprompter-button-group {
-    border: none; /* Remove the original border */
-    padding: 0;   /* Remove the original padding */
-    box-shadow: none; /* Remove the original shadow */
+.collapsible-content>.teleprompter-button-group {
+  border: none;
+  /* Remove the original border */
+  padding: 0;
+  /* Remove the original padding */
+  box-shadow: none;
+  /* Remove the original shadow */
 }
-
-/* Style for the arrow icon (using the unicode characters directly) */
-.collapsible-header::after {
-    /* Using pseudo-element for the arrow is an alternative,
-       but since we're manipulating innerHTML in JS, we'll stick to that */
-    /* content: '\25BC'; /* Default down arrow */
-    /* transition: transform 0.2s ease; */
-}
-
-.collapsible-section.collapsed .collapsible-header::after {
-   /* transform: rotate(-90deg); /* Rotate arrow when collapsed */
-}
-
-/* Hide content when collapsed (handled by JS setting display: none) */
-/* .collapsible-section.collapsed .collapsible-content { */
-/*   display: none; */
-/* } */

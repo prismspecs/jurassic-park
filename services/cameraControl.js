@@ -205,7 +205,8 @@ class CameraControl {
             name: camera.name,
             previewDevice: camera.getPreviewDevice(),
             recordingDevice: camera.getRecordingDevice(),
-            ptzDevice: camera.getPTZDevice()
+            ptzDevice: camera.getPTZDevice(),
+            showSkeleton: camera.getShowSkeleton() // Include skeleton state
         }));
     }
 

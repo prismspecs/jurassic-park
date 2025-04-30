@@ -6,6 +6,7 @@ class Camera {
         this.ptzDevice = null;
         this.previewStream = null;
         this.previewElement = null;
+        this.showSkeleton = false; // Add state for skeleton tracking
     }
 
     async startPreview(videoElement) {
@@ -85,6 +86,16 @@ class Camera {
     getPTZDevice() {
         return this.ptzDevice;
     }
+
+    // Add methods to get/set skeleton state
+    getShowSkeleton() {
+        return this.showSkeleton;
+    }
+
+    setShowSkeleton(show) {
+        this.showSkeleton = !!show; // Ensure boolean
+        console.log(`[Camera Instance ${this.name}] showSkeleton set to: ${this.showSkeleton}`);
+    }
 }
 
-module.exports = Camera; 
+module.exports = Camera;

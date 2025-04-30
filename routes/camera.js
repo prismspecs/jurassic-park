@@ -181,6 +181,34 @@ router.post('/ptz', (req, res) => {
     }
 });
 
+// Toggle skeleton overlay for a specific camera
+router.post('/:cameraName/toggle-skeleton', (req, res) => {
+    const { cameraName } = req.params;
+    const { show } = req.body; // Expecting { show: true/false }
+
+    if (typeof show !== 'boolean') {
+        return res.status(400).json({ success: false, message: 'Invalid value for "show". Must be true or false.' });
+    }
+
+    try {
+        const camera = cameraControl.getCamera(cameraName);
+        if (!camera) {
+            return res.status(404).json({ success: false, message: `Camera ${cameraName} not found` });
+        }
+
+        camera.setShowSkeleton(show);
+        // Optionally broadcast this change if other clients need to know
+        // broadcast({ type: 'SKELETON_TOGGLED', cameraName: cameraName, show: show });
+        broadcastConsole(`Skeleton overlay for ${cameraName} set to ${show}`, 'info');
+        res.json({ success: true, message: `Skeleton overlay for ${cameraName} set to ${show}` });
+
+    } catch (err) {
+        console.error(`Error toggling skeleton for ${cameraName}:`, err);
+        broadcastConsole(`Error toggling skeleton for ${cameraName}: ${err.message}`, 'error');
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // Record video from a specific camera using a Worker Thread
 router.post('/:cameraName/record', (req, res) => { // Remove async, no top-level await needed
     const { cameraName } = req.params;
