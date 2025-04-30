@@ -47,7 +47,8 @@ const DEFAULT_SETTINGS = {
     showDifference: true,
     // Camera settings
     selectedCamera: '', // Will be populated with default camera
-    selectedResolution: '640x480' // Default resolution
+    selectedResolution: '640x480', // Default resolution
+    flipWebcam: true // Flip webcam horizontally by default
 };
 
 // Current settings (will be controlled by UI)
@@ -55,16 +56,16 @@ let settings = { ...DEFAULT_SETTINGS };
 
 // Define connections between keypoints for drawing lines (using COCO keypoint indices)
 const POSE_CONNECTIONS = [
-  // Face
-  [0, 1], [0, 2], [1, 3], [2, 4],
-  // Torso
-  [5, 6], [5, 7], [7, 9], [9, 11], [6, 8], [8, 10], [10, 12], [5, 11], [6, 12], [11, 12],
-  // Arms
-  [5, 13], [13, 15], [15, 17], // Left arm
-  [6, 14], [14, 16], [16, 18], // Right arm
-  // Legs
-  [11, 19], [19, 21], [21, 23], // Left leg
-  [12, 20], [20, 22], [22, 24]  // Right leg
+    // Face
+    [0, 1], [0, 2], [1, 3], [2, 4],
+    // Torso
+    [5, 6], [5, 7], [7, 9], [9, 11], [6, 8], [8, 10], [10, 12], [5, 11], [6, 12], [11, 12],
+    // Arms
+    [5, 13], [13, 15], [15, 17], // Left arm
+    [6, 14], [14, 16], [16, 18], // Right arm
+    // Legs
+    [11, 19], [19, 21], [21, 23], // Left leg
+    [12, 20], [20, 22], [22, 24]  // Right leg
 ];
 
 // Body part definitions for silhouette (groups of connected keypoints)
@@ -107,14 +108,14 @@ function updateMaskImageData() {
         console.warn('Cannot update mask image data: mask not loaded');
         return;
     }
-    
+
     try {
         // Get current canvas dimensions
         const canvasWidth = baseCanvas.width;
         const canvasHeight = baseCanvas.height;
-        
+
         console.log(`Updating mask image data to ${canvasWidth}x${canvasHeight}`);
-        
+
         // Draw mask to a temporary canvas to get its imageData
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = canvasWidth;
@@ -122,7 +123,7 @@ function updateMaskImageData() {
         const tempCtx = tempCanvas.getContext('2d');
         tempCtx.drawImage(maskImage, 0, 0, canvasWidth, canvasHeight);
         maskImageData = tempCtx.getImageData(0, 0, canvasWidth, canvasHeight);
-        
+
         console.log(`Mask image data updated: ${maskImageData.width}x${maskImageData.height}`);
     } catch (err) {
         console.error("Error updating mask image data:", err);
@@ -144,13 +145,13 @@ async function enumerateVideoDevices() {
 
         // Get the list of all media devices
         const devices = await navigator.mediaDevices.enumerateDevices();
-        
+
         // Filter for video input devices (cameras)
         const videoDevices = devices.filter(device => device.kind === 'videoinput');
-        
+
         // Clear the select element
         cameraSelect.innerHTML = '';
-        
+
         // Add option for each video device
         if (videoDevices.length === 0) {
             cameraSelect.innerHTML = '<option value="">No cameras detected</option>';
@@ -158,20 +159,20 @@ async function enumerateVideoDevices() {
             videoDevices.forEach((device, index) => {
                 const option = document.createElement('option');
                 option.value = device.deviceId;
-                
+
                 // Use device label if available, otherwise use generic name with index
                 option.text = device.label || `Camera ${index + 1}`;
-                
+
                 cameraSelect.appendChild(option);
             });
-            
+
             // Set the first camera as default if none is set
             if (!settings.selectedCamera && videoDevices.length > 0) {
                 settings.selectedCamera = videoDevices[0].deviceId;
                 cameraSelect.value = settings.selectedCamera;
             }
         }
-        
+
         return videoDevices;
     } catch (error) {
         console.error('Error enumerating video devices:', error);
@@ -196,12 +197,12 @@ async function setupWebcam() {
     if (currentStream) {
         currentStream.getTracks().forEach(track => track.stop());
     }
-    
+
     return new Promise((resolve, reject) => {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             // Parse the selected resolution
             const { width, height } = parseResolution(settings.selectedResolution);
-            
+
             // Build constraints based on settings
             const constraints = {
                 video: {
@@ -209,26 +210,26 @@ async function setupWebcam() {
                     height: { ideal: height }
                 }
             };
-            
+
             // Add device ID if one is selected
             if (settings.selectedCamera) {
                 constraints.video.deviceId = { exact: settings.selectedCamera };
             }
-            
+
             navigator.mediaDevices.getUserMedia(constraints)
                 .then(stream => {
                     currentStream = stream;
                     videoElement.srcObject = stream;
-                    
+
                     // Make sure video element is properly configured
                     videoElement.width = width;
                     videoElement.height = height;
                     videoElement.style.display = 'none'; // Hide original video but allow it to play
-                    
+
                     videoElement.addEventListener('loadeddata', () => {
                         console.log('Webcam stream loaded.');
                         console.log(`Actual video dimensions: ${videoElement.videoWidth}x${videoElement.videoHeight}`);
-                        
+
                         // Ensure video is playing
                         videoElement.play()
                             .then(() => {
@@ -244,7 +245,7 @@ async function setupWebcam() {
                 .catch(err => {
                     console.error('Error accessing webcam:', err);
                     loadingElement.textContent = 'Error accessing webcam. Please grant permission or try a different camera.';
-                    
+
                     // If the error is due to constraints, try again with default constraints
                     if (err.name === 'ConstraintNotSatisfiedError' || err.name === 'OverconstrainedError') {
                         console.log('Retrying with default constraints...');
@@ -253,10 +254,10 @@ async function setupWebcam() {
                                 currentStream = stream;
                                 videoElement.srcObject = stream;
                                 videoElement.style.display = 'none';
-                                
+
                                 videoElement.addEventListener('loadeddata', () => {
                                     console.log('Webcam stream loaded with default constraints.');
-                                    
+
                                     // Ensure video is playing
                                     videoElement.play()
                                         .then(() => {
@@ -292,7 +293,7 @@ async function loadPoseDetector() {
         await tf.setBackend('webgl');
         await tf.ready();
         console.log(`Using TensorFlow.js backend: ${tf.getBackend()}`);
-        
+
         console.log("Loading MoveNet pose detector model...");
         const model = poseDetection.SupportedModels.MoveNet;
         const detectorConfig = {
@@ -315,19 +316,25 @@ function drawBaseLayer(ctx) {
     // Get the actual canvas dimensions
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
-    
+
     // Clear the canvas
     ctx.clearRect(0, 0, width, height);
-    
+
     // Draw black background if webcam is hidden
     if (!settings.showWebcam) {
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, width, height);
     } else {
         // Draw webcam frame
+        ctx.save(); // Save context state
+        if (settings.flipWebcam) {
+            ctx.scale(-1, 1);
+            ctx.translate(-width, 0);
+        }
         ctx.drawImage(videoElement, 0, 0, width, height);
+        ctx.restore(); // Restore context state
     }
-    
+
     // Draw mask overlay if enabled (regardless of webcam visibility)
     if (settings.showMaskOverlay && maskImage.complete && maskImage.naturalWidth > 0) {
         ctx.globalAlpha = settings.maskOpacity; // Use the mask opacity setting
@@ -343,15 +350,15 @@ function drawSilhouette(pose, ctx) {
     // Get actual canvas dimensions
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
-    
+
     if (!pose || !pose.keypoints || !settings.showSilhouette) {
         ctx.clearRect(0, 0, width, height);
         return;
     }
-    
+
     // Clear the canvas first
     ctx.clearRect(0, 0, width, height);
-    
+
     // If pixelation is enabled, use a scaled-down canvas
     if (settings.silhouettePixelation > 1) {
         // Create a smaller temporary canvas for pixelation
@@ -359,43 +366,57 @@ function drawSilhouette(pose, ctx) {
         const pixelSize = settings.silhouettePixelation;
         const smallWidth = Math.floor(width / pixelSize);
         const smallHeight = Math.floor(height / pixelSize);
-        
+
         tempCanvas.width = smallWidth;
         tempCanvas.height = smallHeight;
         const tempCtx = tempCanvas.getContext('2d');
-        
+
         // Set the silhouette style on the temp context
         tempCtx.fillStyle = settings.silhouetteColor;
         tempCtx.globalAlpha = settings.silhouetteOpacity;
-        
+
         // Disable smoothing for pixelated look
         tempCtx.imageSmoothingEnabled = false;
-        
+
         // Draw the scaled-down silhouette
         drawSilhouetteToContext(pose, tempCtx, smallWidth / videoElement.videoWidth, smallHeight / videoElement.videoHeight);
-        
+
         // Now draw the pixelated silhouette back to the main canvas
         // Turn OFF image smoothing to keep the chunky pixelated look
         ctx.imageSmoothingEnabled = false;
+        ctx.save(); // Save context state
+        if (settings.flipWebcam) {
+            // Flip the target canvas if webcam is flipped
+            ctx.scale(-1, 1);
+            ctx.translate(-width, 0);
+        }
         ctx.drawImage(tempCanvas, 0, 0, smallWidth, smallHeight, 0, 0, width, height);
-        
+        ctx.restore(); // Restore context state
+
         // Reset alpha
         ctx.globalAlpha = 1.0;
     } else {
         // Regular drawing with no pixelation
         const scaleX = width / videoElement.videoWidth;
         const scaleY = height / videoElement.videoHeight;
-        
+
         // Set silhouette style
         ctx.fillStyle = settings.silhouetteColor;
         ctx.globalAlpha = settings.silhouetteOpacity;
-        
+
         // Disable smoothing
         ctx.imageSmoothingEnabled = false;
-        
+
         // Draw the silhouette directly to the main canvas
+        ctx.save(); // Save context state
+        if (settings.flipWebcam) {
+            // Flip the target canvas if webcam is flipped
+            ctx.scale(-1, 1);
+            ctx.translate(-width, 0);
+        }
         drawSilhouetteToContext(pose, ctx, scaleX, scaleY);
-        
+        ctx.restore(); // Restore context state
+
         // Reset alpha
         ctx.globalAlpha = 1.0;
     }
@@ -406,7 +427,7 @@ function drawSilhouette(pose, ctx) {
  */
 function drawSilhouetteToContext(pose, ctx, scaleX, scaleY) {
     const keypoints = pose.keypoints;
-    
+
     // Draw torso (always start with torso as it's the most reliable)
     const torsoPoints = {
         leftShoulder: findKeypoint(keypoints, 'left_shoulder'),
@@ -414,8 +435,8 @@ function drawSilhouetteToContext(pose, ctx, scaleX, scaleY) {
         leftHip: findKeypoint(keypoints, 'left_hip'),
         rightHip: findKeypoint(keypoints, 'right_hip')
     };
-    
-    if (torsoPoints.leftShoulder && torsoPoints.rightShoulder && 
+
+    if (torsoPoints.leftShoulder && torsoPoints.rightShoulder &&
         torsoPoints.leftHip && torsoPoints.rightHip) {
         // Draw filled torso
         drawBodySegment(
@@ -429,76 +450,76 @@ function drawSilhouetteToContext(pose, ctx, scaleX, scaleY) {
             settings.silhouetteThickness * Math.min(scaleX, scaleY)
         );
     }
-    
+
     // Draw head
     const nose = findKeypoint(keypoints, 'nose');
     const leftEye = findKeypoint(keypoints, 'left_eye');
     const rightEye = findKeypoint(keypoints, 'right_eye');
-    
+
     if (nose && (leftEye || rightEye)) {
         // Calculate head size based on distance between eyes or default size
         let headSize = settings.silhouetteThickness * 2 * Math.min(scaleX, scaleY);
         if (leftEye && rightEye) {
             const eyeDistance = Math.sqrt(
-                Math.pow((leftEye.x - rightEye.x) * scaleX, 2) + 
+                Math.pow((leftEye.x - rightEye.x) * scaleX, 2) +
                 Math.pow((leftEye.y - rightEye.y) * scaleY, 2)
             );
             headSize = Math.max(eyeDistance * 2, headSize);
         }
-        
+
         // Apply the head size multiplier
         headSize *= settings.silhouetteHeadSize;
-        
+
         // Draw head as a circle
         ctx.beginPath();
         ctx.arc(
-            nose.x * scaleX, 
-            nose.y * scaleY, 
-            headSize, 
+            nose.x * scaleX,
+            nose.y * scaleY,
+            headSize,
             0, 2 * Math.PI
         );
         ctx.fill();
     }
-    
+
     // Draw limbs
     // Left arm
     const leftShoulder = findKeypoint(keypoints, 'left_shoulder');
     const leftElbow = findKeypoint(keypoints, 'left_elbow');
     const leftWrist = findKeypoint(keypoints, 'left_wrist');
-    
+
     if (leftShoulder && leftElbow && leftWrist) {
-        drawLimb(ctx, [leftShoulder, leftElbow, leftWrist], scaleX, scaleY, 
-                settings.silhouetteThickness * Math.min(scaleX, scaleY));
+        drawLimb(ctx, [leftShoulder, leftElbow, leftWrist], scaleX, scaleY,
+            settings.silhouetteThickness * Math.min(scaleX, scaleY));
     }
-    
+
     // Right arm
     const rightShoulder = findKeypoint(keypoints, 'right_shoulder');
     const rightElbow = findKeypoint(keypoints, 'right_elbow');
     const rightWrist = findKeypoint(keypoints, 'right_wrist');
-    
+
     if (rightShoulder && rightElbow && rightWrist) {
-        drawLimb(ctx, [rightShoulder, rightElbow, rightWrist], scaleX, scaleY, 
-                settings.silhouetteThickness * Math.min(scaleX, scaleY));
+        drawLimb(ctx, [rightShoulder, rightElbow, rightWrist], scaleX, scaleY,
+            settings.silhouetteThickness * Math.min(scaleX, scaleY));
     }
-    
+
     // Left leg
     const leftHip = findKeypoint(keypoints, 'left_hip');
     const leftKnee = findKeypoint(keypoints, 'left_knee');
     const leftAnkle = findKeypoint(keypoints, 'left_ankle');
-    
+
     if (leftHip && leftKnee && leftAnkle) {
-        drawLimb(ctx, [leftHip, leftKnee, leftAnkle], scaleX, scaleY, 
-                settings.silhouetteThickness * Math.min(scaleX, scaleY));
+        drawLimb(ctx, [leftHip, leftKnee, leftAnkle], scaleX, scaleY,
+            settings.silhouetteThickness * Math.min(scaleX, scaleY));
     }
-    
+
     // Right leg
     const rightHip = findKeypoint(keypoints, 'right_hip');
     const rightKnee = findKeypoint(keypoints, 'right_knee');
     const rightAnkle = findKeypoint(keypoints, 'right_ankle');
-    
+
     if (rightHip && rightKnee && rightAnkle) {
-        drawLimb(ctx, [rightHip, rightKnee, rightAnkle], scaleX, scaleY, 
-                settings.silhouetteThickness * Math.min(scaleX, scaleY));
+        drawLimb(ctx, [rightHip, rightKnee, rightAnkle], scaleX, scaleY,
+            settings.silhouetteThickness * Math.min(scaleX, scaleY));
     }
 }
 
@@ -508,13 +529,13 @@ function drawSilhouetteToContext(pose, ctx, scaleX, scaleY) {
 function drawLimb(ctx, points, scaleX, scaleY, thickness) {
     // Create a path for the limb
     ctx.beginPath();
-    
+
     // Create a series of points for the limb centerline
     const centerPoints = points.map(point => ({
         x: point.x * scaleX,
         y: point.y * scaleY
     }));
-    
+
     // Draw the path with thickness
     drawThickPath(ctx, centerPoints, thickness);
 }
@@ -524,32 +545,32 @@ function drawLimb(ctx, points, scaleX, scaleY, thickness) {
  */
 function drawThickPath(ctx, points, thickness) {
     if (points.length < 2) return;
-    
+
     // Draw a circle at each joint
     points.forEach(point => {
         ctx.beginPath();
         ctx.arc(point.x, point.y, thickness / 2, 0, 2 * Math.PI);
         ctx.fill();
     });
-    
+
     // Draw thick lines between points
     for (let i = 0; i < points.length - 1; i++) {
         const p1 = points[i];
         const p2 = points[i + 1];
-        
+
         // Calculate the vector from p1 to p2
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        
+
         // Normalize the vector
         const nx = dx / distance;
         const ny = dy / distance;
-        
+
         // Create perpendicular vectors for thickness
         const px = -ny * (thickness / 2);
         const py = nx * (thickness / 2);
-        
+
         // Draw a quadrilateral
         ctx.beginPath();
         ctx.moveTo(p1.x + px, p1.y + py);
@@ -566,7 +587,7 @@ function drawThickPath(ctx, points, thickness) {
  */
 function drawBodySegment(ctx, points, thickness) {
     if (points.length < 3) return;
-    
+
     // Draw the main filled polygon
     ctx.beginPath();
     ctx.moveTo(points[0][0], points[0][1]);
@@ -575,19 +596,19 @@ function drawBodySegment(ctx, points, thickness) {
     }
     ctx.closePath();
     ctx.fill();
-    
+
     // Draw joints as circles at each point
     points.forEach(point => {
         ctx.beginPath();
         ctx.arc(point[0], point[1], thickness / 2, 0, 2 * Math.PI);
         ctx.fill();
     });
-    
+
     // Draw thick lines between points to smooth the edges
     for (let i = 0; i < points.length; i++) {
         const p1 = points[i];
         const p2 = points[(i + 1) % points.length]; // Connect back to the first point
-        
+
         ctx.beginPath();
         ctx.strokeStyle = ctx.fillStyle; // Set stroke color to match fill color
         ctx.lineWidth = thickness;
@@ -606,23 +627,32 @@ function drawSkeleton(pose, ctx) {
     // Get the actual canvas dimensions
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
-    
+
     if (!pose || !pose.keypoints || !settings.showSkeleton) {
         ctx.clearRect(0, 0, width, height);
         return;
     }
-    
+
     // Clear the canvas
     ctx.clearRect(0, 0, width, height);
-    
+
     const keypoints = pose.keypoints;
     const scaleX = width / videoElement.videoWidth;
     const scaleY = height / videoElement.videoHeight;
-    
+
+    // Save context state before potential flip
+    ctx.save();
+
+    // Apply flip transformation if needed
+    if (settings.flipWebcam) {
+        ctx.scale(-1, 1);
+        ctx.translate(-width, 0);
+    }
+
     // Draw the skeleton connections
     ctx.strokeStyle = settings.lineColor;
     ctx.lineWidth = settings.lineWidth;
-    
+
     // Draw the skeleton connections
     POSE_CONNECTIONS.forEach(([i, j]) => {
         const kp1 = keypoints[i];
@@ -641,7 +671,7 @@ function drawSkeleton(pose, ctx) {
             ctx.stroke();
         }
     });
-    
+
     // Draw keypoints as circles
     ctx.fillStyle = settings.keypointColor;
     keypoints.forEach((kp) => {
@@ -654,6 +684,9 @@ function drawSkeleton(pose, ctx) {
             ctx.fill();
         }
     });
+
+    // Restore context state after drawing
+    ctx.restore();
 }
 
 // Helper to find a specific keypoint by name
@@ -680,16 +713,16 @@ function calculateOverlapScore(bodyShapeImageData) {
     // Compare each pixel
     for (let i = 0; i < pixelCount; i++) {
         const offset = i * 4;
-        
+
         // A pixel is considered a mask pixel if it's bright (white mask)
         const isMaskPixel = maskData[offset] > 200; // Red channel > 200 in mask
-        
+
         // A pixel from the silhouette is active if it has any opacity
         const isBodyPixel = bodyData[offset + 3] > 30; // Alpha threshold
-        
+
         if (isMaskPixel) maskPixels++;
         if (isBodyPixel) bodyPixels++;
-        
+
         // Pixel is in both
         if (isMaskPixel && isBodyPixel) overlapPixels++;
     }
@@ -710,31 +743,31 @@ function drawDifferenceLayer(ctx) {
     // Get the actual canvas dimensions
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
-    
+
     // Clear the canvas first
     ctx.clearRect(0, 0, width, height);
-    
+
     // If difference layer is disabled or mask isn't loaded, just return
     if (!settings.showDifference) {
         return;
     }
-    
+
     if (!maskImage.complete) {
         console.log("Mask image not loaded - can't draw difference layer");
         return;
     }
-    
+
     // Make sure we have the latest mask image data at the current dimensions
     if (!maskImageData) {
         updateMaskImageData();
-        
+
         // If still no mask data, we can't proceed
         if (!maskImageData) {
             console.error("Failed to create mask image data");
             return;
         }
     }
-    
+
     try {
         // Create a temporary canvas to generate the silhouette data
         // This way we can get silhouette data even if silhouette layer is hidden
@@ -742,7 +775,7 @@ function drawDifferenceLayer(ctx) {
         tempCanvas.width = width;
         tempCanvas.height = height;
         const tempCtx = tempCanvas.getContext('2d');
-        
+
         // Use the current pose data from the main detection loop
         if (currentPose) {
             // Draw the silhouette to the temp canvas
@@ -754,32 +787,32 @@ function drawDifferenceLayer(ctx) {
             tempCtx.arc(width / 2, height / 2, 20, 0, Math.PI * 2);
             tempCtx.fill();
         }
-        
+
         // Get the silhouette data from the temp canvas
         const silhouetteData = tempCtx.getImageData(0, 0, width, height);
-        
+
         // Direct pixel manipulation for maximum performance and reliability
         const diffImageData = ctx.createImageData(width, height);
         const diffData = diffImageData.data;
         const maskData = maskImageData.data;
         const silData = silhouetteData.data;
-        
+
         // Pixel count for scoring
         let overlapCount = 0;
         let maskCount = 0;
         let silhouetteCount = 0;
-        
+
         // Process each pixel
         for (let i = 0; i < diffData.length; i += 4) {
             // A pixel from the mask is considered active if it's bright (white mask)
             const isMaskPixel = maskData[i] > 200;
-            
+
             // A pixel from the silhouette is active if it has any opacity
             const isSilhouettePixel = silData[i + 3] > 30; // Alpha channel with threshold
-            
+
             if (isMaskPixel) maskCount++;
             if (isSilhouettePixel) silhouetteCount++;
-            
+
             // If both are active, we have an overlap
             if (isMaskPixel && isSilhouettePixel) {
                 // Set to bright green for overlap
@@ -796,22 +829,22 @@ function drawDifferenceLayer(ctx) {
                 diffData[i + 3] = 0;
             }
         }
-        
+
         // Put the difference data directly onto the canvas
         ctx.putImageData(diffImageData, 0, 0);
-        
+
         // Calculate and update score (if mask has any pixels)
         if (maskCount > 0 && silhouetteCount > 0) {
             // Calculate how much of the mask is covered by silhouette
             const coverageScore = Math.round((overlapCount / maskCount) * 100);
             scoreElement.textContent = `Score: ${coverageScore}%`;
-            
+
             // Debug output
             console.log(`Score: ${coverageScore}% (Overlap: ${overlapCount}, Mask: ${maskCount}, Silhouette: ${silhouetteCount})`);
         } else {
             scoreElement.textContent = `Score: 0%`;
         }
-        
+
     } catch (err) {
         console.error("Error drawing difference layer:", err);
         scoreElement.textContent = `Score: Error`;
@@ -829,35 +862,36 @@ function updateControlsUI() {
     document.getElementById('line-color').value = settings.lineColor;
     document.getElementById('keypoint-color').value = settings.keypointColor;
     document.getElementById('silhouette-color').value = settings.silhouetteColor;
-    
+
     // Update range inputs
     document.getElementById('line-width').value = settings.lineWidth;
     document.getElementById('line-width-value').textContent = settings.lineWidth;
-    
+
     document.getElementById('keypoint-size').value = settings.keypointSize;
     document.getElementById('keypoint-size-value').textContent = settings.keypointSize;
-    
+
     document.getElementById('silhouette-thickness').value = settings.silhouetteThickness;
     document.getElementById('silhouette-thickness-value').textContent = settings.silhouetteThickness;
-    
+
     document.getElementById('silhouette-opacity').value = Math.round(settings.silhouetteOpacity * 100);
     document.getElementById('silhouette-opacity-value').textContent = `${Math.round(settings.silhouetteOpacity * 100)}%`;
-    
+
     document.getElementById('silhouette-pixelation').value = settings.silhouettePixelation;
     document.getElementById('silhouette-pixelation-value').textContent = `${settings.silhouettePixelation}x`;
-    
+
     document.getElementById('silhouette-head-size').value = settings.silhouetteHeadSize;
     document.getElementById('silhouette-head-size-value').textContent = `${settings.silhouetteHeadSize.toFixed(1)}x`;
-    
+
     document.getElementById('mask-opacity').value = Math.round(settings.maskOpacity * 100);
     document.getElementById('mask-opacity-value').textContent = `${Math.round(settings.maskOpacity * 100)}%`;
-    
+
     // Update checkboxes
     document.getElementById('show-webcam').checked = settings.showWebcam;
     document.getElementById('show-mask-overlay').checked = settings.showMaskOverlay;
     document.getElementById('show-silhouette').checked = settings.showSilhouette;
     document.getElementById('show-skeleton').checked = settings.showSkeleton;
     document.getElementById('show-difference').checked = settings.showDifference;
+    document.getElementById('flip-webcam').checked = settings.flipWebcam; // Update flip checkbox
 }
 
 /**
@@ -868,27 +902,27 @@ async function applyCameraSettings() {
     loadingElement.textContent = 'Applying camera settings...';
     loadingElement.style.display = 'block';
     mainElement.style.display = 'none';
-    
+
     // Cancel the animation frame to pause rendering
     if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
     }
-    
+
     try {
         // Update settings from UI
         settings.selectedCamera = cameraSelect.value;
         settings.selectedResolution = resolutionSelect.value;
-        
+
         // Restart webcam with new settings
         await setupWebcam();
-        
+
         // Update canvas dimensions if resolution changed
         const { width, height } = parseResolution(settings.selectedResolution);
         updateCanvasDimensions(width, height);
-        
+
         // Restart detection loop
         detectionLoop();
-        
+
         // Hide loading screen
         loadingElement.style.display = 'none';
         mainElement.style.display = 'block';
@@ -907,11 +941,11 @@ function updateCanvasDimensions(width, height) {
         canvas.width = width;
         canvas.height = height;
     });
-    
+
     // Update global variables
     videoWidth = width;
     videoHeight = height;
-    
+
     // Recreate mask image data (since dimensions might have changed)
     updateMaskImageData();
 }
@@ -924,85 +958,91 @@ function setupControlListeners() {
     applyCameraButton.addEventListener('click', () => {
         applyCameraSettings();
     });
-    
+
     // Layer visibility toggles
     document.getElementById('show-webcam').addEventListener('change', (e) => {
         settings.showWebcam = e.target.checked;
     });
-    
+
     document.getElementById('show-mask-overlay').addEventListener('change', (e) => {
         settings.showMaskOverlay = e.target.checked;
     });
-    
+
     document.getElementById('show-silhouette').addEventListener('change', (e) => {
         settings.showSilhouette = e.target.checked;
         // Update canvas visibility
         silhouetteCanvas.style.display = e.target.checked ? 'block' : 'none';
     });
-    
+
     document.getElementById('show-skeleton').addEventListener('change', (e) => {
         settings.showSkeleton = e.target.checked;
         // Update canvas visibility
         skeletonCanvas.style.display = e.target.checked ? 'block' : 'none';
     });
-    
+
     document.getElementById('show-difference').addEventListener('change', (e) => {
         settings.showDifference = e.target.checked;
         // Update canvas visibility
         differenceCanvas.style.display = e.target.checked ? 'block' : 'none';
     });
-    
+
+    // Flip webcam toggle
+    document.getElementById('flip-webcam').addEventListener('change', (e) => {
+        settings.flipWebcam = e.target.checked;
+        // No immediate redraw needed, loop will handle it
+    });
+
     // Mask opacity control
     document.getElementById('mask-opacity').addEventListener('input', (e) => {
         settings.maskOpacity = parseInt(e.target.value) / 100;
         document.getElementById('mask-opacity-value').textContent = `${e.target.value}%`;
     });
-    
+
     // Skeleton style controls
     document.getElementById('line-color').addEventListener('input', (e) => {
         settings.lineColor = e.target.value;
     });
-    
+
     document.getElementById('line-width').addEventListener('input', (e) => {
         settings.lineWidth = parseInt(e.target.value);
         document.getElementById('line-width-value').textContent = settings.lineWidth;
     });
-    
+
     document.getElementById('keypoint-color').addEventListener('input', (e) => {
         settings.keypointColor = e.target.value;
     });
-    
+
     document.getElementById('keypoint-size').addEventListener('input', (e) => {
         settings.keypointSize = parseInt(e.target.value);
         document.getElementById('keypoint-size-value').textContent = settings.keypointSize;
     });
-    
+
     // Silhouette style controls
     document.getElementById('silhouette-color').addEventListener('input', (e) => {
         settings.silhouetteColor = e.target.value;
     });
-    
+
     document.getElementById('silhouette-thickness').addEventListener('input', (e) => {
         settings.silhouetteThickness = parseInt(e.target.value);
         document.getElementById('silhouette-thickness-value').textContent = settings.silhouetteThickness;
     });
-    
+
     document.getElementById('silhouette-opacity').addEventListener('input', (e) => {
         const opacity = parseInt(e.target.value);
         settings.silhouetteOpacity = opacity / 100;
         document.getElementById('silhouette-opacity-value').textContent = `${opacity}%`;
     });
-    
+
     document.getElementById('silhouette-pixelation').addEventListener('input', (e) => {
         settings.silhouettePixelation = parseInt(e.target.value);
         document.getElementById('silhouette-pixelation-value').textContent = `${settings.silhouettePixelation}x`;
     });
-    
+
     document.getElementById('silhouette-head-size').addEventListener('input', (e) => {
         settings.silhouetteHeadSize = parseFloat(e.target.value);
         document.getElementById('silhouette-head-size-value').textContent = `${settings.silhouetteHeadSize.toFixed(1)}x`;
     });
-    
+
     // Reset button
     document.getElementById('reset-controls').addEventListener('click', () => {
         settings = { ...DEFAULT_SETTINGS };
@@ -1036,11 +1076,11 @@ async function detectionLoop() {
     // Get dimensions from video element if available
     const actualWidth = videoElement.videoWidth || videoWidth;
     const actualHeight = videoElement.videoHeight || videoHeight;
-    
+
     // Set canvas dimensions for all canvases
     const canvases = [baseCanvas, silhouetteCanvas, differenceCanvas, skeletonCanvas];
     let dimensionsChanged = false;
-    
+
     canvases.forEach(canvas => {
         if (canvas.width !== actualWidth || canvas.height !== actualHeight) {
             canvas.width = actualWidth;
@@ -1048,10 +1088,10 @@ async function detectionLoop() {
             dimensionsChanged = true;
         }
     });
-    
+
     // Make sure difference canvas is visible
     differenceCanvas.style.display = settings.showDifference ? 'block' : 'none';
-    
+
     // If dimensions changed, update the mask data
     if (dimensionsChanged) {
         console.log(`Canvas dimensions updated to ${actualWidth}x${actualHeight}`);
@@ -1061,28 +1101,28 @@ async function detectionLoop() {
     try {
         // Get pose estimation - explicitly set options for MoveNet
         const poses = await poseDetector.estimatePoses(videoElement, {
-            flipHorizontal: true,  // Mirror for more natural interaction
+            flipHorizontal: false, // Let the drawing functions handle flipping based on settings.flipWebcam
             maxPoses: 1           // Only detect one person
         });
-        
+
         // Get the first detected pose (if any)
         currentPose = poses && poses.length > 0 ? poses[0] : null;
-        
+
         // Draw on each canvas layer
         drawBaseLayer(baseCtx);
-        
+
         if (settings.showSilhouette && currentPose) {
             drawSilhouette(currentPose, silhouetteCtx);
         } else {
             silhouetteCtx.clearRect(0, 0, actualWidth, actualHeight);
         }
-        
+
         if (settings.showSkeleton && currentPose) {
             drawSkeleton(currentPose, skeletonCtx);
         } else {
             skeletonCtx.clearRect(0, 0, actualWidth, actualHeight);
         }
-        
+
         // Make sure difference layer gets drawn last and independently
         if (settings.showDifference) {
             drawDifferenceLayer(differenceCtx);
@@ -1104,20 +1144,20 @@ async function main() {
     try {
         // Draw test pattern to verify canvas works
         drawTestPattern(baseCtx);
-        
+
         // Check if TensorFlow.js is available
         if (!tf) {
             throw new Error('TensorFlow.js is not loaded. Check script includes in HTML.');
         }
-        
+
         // Setup control panel
         setupControlListeners();
         updateControlsUI();
-        
+
         // Enumerate available cameras
         loadingElement.textContent = 'Detecting cameras...';
         const videoDevices = await enumerateVideoDevices();
-        
+
         // Initialize TensorFlow.js and load pose detector
         loadingElement.textContent = 'Initializing TensorFlow.js...';
         const detectorLoaded = await loadPoseDetector();
@@ -1133,7 +1173,7 @@ async function main() {
         // Setup webcam with current settings
         loadingElement.textContent = 'Accessing webcam...';
         await setupWebcam();
-        
+
         // Set resolution dropdown to match actual video dimensions
         const actualResolution = `${videoElement.videoWidth}x${videoElement.videoHeight}`;
         const resolutionExists = Array.from(resolutionSelect.options).some(option => option.value === actualResolution);
@@ -1145,7 +1185,7 @@ async function main() {
         }
         resolutionSelect.value = actualResolution;
         settings.selectedResolution = actualResolution;
-        
+
         // Start detection loop
         loadingElement.style.display = 'none';
         mainElement.style.display = 'block';
@@ -1173,23 +1213,23 @@ window.addEventListener('load', () => {
 // Draw a test rectangle on the canvas to verify it's working
 function drawTestPattern(ctx) {
     if (!ctx) return;
-    
+
     ctx.canvas.width = videoWidth;
     ctx.canvas.height = videoHeight;
-    
+
     // Fill with dark background
     ctx.fillStyle = '#333';
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    
+
     // Draw a visible border
     ctx.strokeStyle = '#0F0'; // Bright green
     ctx.lineWidth = 10;
     ctx.strokeRect(10, 10, ctx.canvas.width - 20, ctx.canvas.height - 20);
-    
+
     // Draw text
     ctx.fillStyle = '#FFF';
     ctx.font = '20px sans-serif';
     ctx.fillText('Canvas initialized. Waiting for pose detection...', 50, 50);
-    
+
     console.log("Test pattern drawn on canvas");
 }
