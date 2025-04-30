@@ -25,6 +25,8 @@
         <canvas id="base-canvas" class="canvas-layer"></canvas>
         <!-- Silhouette layer -->
         <canvas id="silhouette-canvas" class="canvas-layer"></canvas>
+        <!-- Difference layer to show overlapping areas -->
+        <canvas id="difference-canvas" class="canvas-layer"></canvas>
         <!-- Skeleton layer on top -->
         <canvas id="skeleton-canvas" class="canvas-layer"></canvas>
       </div>
@@ -53,6 +55,11 @@
           </label>
         </div>
         <div class="control-group">
+          <label for="mask-opacity">Mask Opacity:</label>
+          <input type="range" id="mask-opacity" min="0" max="100" value="20" />
+          <span id="mask-opacity-value">20%</span>
+        </div>
+        <div class="control-group">
           <label>
             <input type="checkbox" id="show-silhouette" checked />
             Show Silhouette
@@ -62,6 +69,12 @@
           <label>
             <input type="checkbox" id="show-skeleton" checked />
             Show Skeleton
+          </label>
+        </div>
+        <div class="control-group">
+          <label>
+            <input type="checkbox" id="show-difference" checked />
+            Show Difference Layer
           </label>
         </div>
       </div>
@@ -125,10 +138,28 @@
         </div>
 
         <div class="control-group">
-          <label>
-            <input type="checkbox" id="silhouette-smooth" checked />
-            Smooth Edges
-          </label>
+          <label for="silhouette-pixelation">Pixelation:</label>
+          <input
+            type="range"
+            id="silhouette-pixelation"
+            min="1"
+            max="50"
+            value="16"
+          />
+          <span id="silhouette-pixelation-value">16x</span>
+        </div>
+
+        <div class="control-group">
+          <label for="silhouette-head-size">Head Size:</label>
+          <input
+            type="range"
+            id="silhouette-head-size"
+            min="0.5"
+            max="3.0"
+            step="0.1"
+            value="1.0"
+          />
+          <span id="silhouette-head-size-value">1.0x</span>
         </div>
       </div>
 

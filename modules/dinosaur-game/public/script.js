@@ -1,9 +1,11 @@
 const videoElement = document.getElementById('webcam');
 const baseCanvas = document.getElementById('base-canvas');
 const silhouetteCanvas = document.getElementById('silhouette-canvas');
+const differenceCanvas = document.getElementById('difference-canvas');
 const skeletonCanvas = document.getElementById('skeleton-canvas');
 const baseCtx = baseCanvas.getContext('2d');
 const silhouetteCtx = silhouetteCanvas.getContext('2d');
+const differenceCtx = differenceCanvas.getContext('2d');
 const skeletonCtx = skeletonCanvas.getContext('2d');
 const loadingElement = document.getElementById('loading');
 const mainElement = document.getElementById('main');
@@ -29,12 +31,16 @@ const DEFAULT_SETTINGS = {
     silhouetteColor: '#FFFFFF',
     silhouetteThickness: 50,
     silhouetteOpacity: 1.0,
-    silhouetteSmooth: true,
+    silhouettePixelation: 16, // Default to chunky pixelation (16x)
+    silhouetteHeadSize: 1.0, // Head size multiplier (1.0 = normal)
+    // Mask settings
+    maskOpacity: 0.2, // Default mask overlay opacity
     // Layer visibility
     showWebcam: true,
     showMaskOverlay: true,
     showSilhouette: true,
-    showSkeleton: true
+    showSkeleton: true,
+    showDifference: true
 };
 
 // Current settings (will be controlled by UI)
@@ -160,7 +166,7 @@ function drawBaseLayer(ctx) {
     
     // Draw mask overlay if enabled
     if (settings.showMaskOverlay && maskImage.complete && maskImage.naturalWidth > 0) {
-        ctx.globalAlpha = 0.2; // Make it very transparent
+        ctx.globalAlpha = settings.maskOpacity; // Use the mask opacity setting
         ctx.drawImage(maskImage, 0, 0, videoWidth, videoHeight);
         ctx.globalAlpha = 1.0; // Reset alpha
     }
@@ -178,21 +184,61 @@ function drawSilhouette(pose, ctx) {
     // Clear the canvas first
     ctx.clearRect(0, 0, videoWidth, videoHeight);
     
-    const keypoints = pose.keypoints;
-    const scaleX = videoWidth / videoElement.videoWidth;
-    const scaleY = videoHeight / videoElement.videoHeight;
-    
-    // Set silhouette style
-    ctx.fillStyle = settings.silhouetteColor;
-    ctx.globalAlpha = settings.silhouetteOpacity;
-    
-    // Enable anti-aliasing if smooth edges is checked
-    if (settings.silhouetteSmooth) {
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-    } else {
+    // If pixelation is enabled, use a scaled-down canvas
+    if (settings.silhouettePixelation > 1) {
+        // Create a smaller temporary canvas for pixelation
+        const tempCanvas = document.createElement('canvas');
+        const pixelSize = settings.silhouettePixelation;
+        const smallWidth = Math.floor(videoWidth / pixelSize);
+        const smallHeight = Math.floor(videoHeight / pixelSize);
+        
+        tempCanvas.width = smallWidth;
+        tempCanvas.height = smallHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        // Set the silhouette style on the temp context
+        tempCtx.fillStyle = settings.silhouetteColor;
+        tempCtx.globalAlpha = settings.silhouetteOpacity;
+        
+        // Disable smoothing for pixelated look
+        tempCtx.imageSmoothingEnabled = false;
+        
+        // Draw the scaled-down silhouette
+        drawSilhouetteToContext(pose, tempCtx, smallWidth / videoWidth, smallHeight / videoHeight);
+        
+        // Now draw the pixelated silhouette back to the main canvas
+        // Turn OFF image smoothing to keep the chunky pixelated look
         ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(tempCanvas, 0, 0, smallWidth, smallHeight, 0, 0, videoWidth, videoHeight);
+        
+        // Reset alpha
+        ctx.globalAlpha = 1.0;
+    } else {
+        // Regular drawing with no pixelation
+        const keypoints = pose.keypoints;
+        const scaleX = videoWidth / videoElement.videoWidth;
+        const scaleY = videoHeight / videoElement.videoHeight;
+        
+        // Set silhouette style
+        ctx.fillStyle = settings.silhouetteColor;
+        ctx.globalAlpha = settings.silhouetteOpacity;
+        
+        // Disable smoothing
+        ctx.imageSmoothingEnabled = false;
+        
+        // Draw the silhouette directly to the main canvas
+        drawSilhouetteToContext(pose, ctx, scaleX, scaleY);
+        
+        // Reset alpha
+        ctx.globalAlpha = 1.0;
     }
+}
+
+/**
+ * Helper function to draw the silhouette to a given context with scaling
+ */
+function drawSilhouetteToContext(pose, ctx, scaleX, scaleY) {
+    const keypoints = pose.keypoints;
     
     // Draw torso (always start with torso as it's the most reliable)
     const torsoPoints = {
@@ -213,7 +259,7 @@ function drawSilhouette(pose, ctx) {
                 [torsoPoints.rightHip.x * scaleX, torsoPoints.rightHip.y * scaleY],
                 [torsoPoints.leftHip.x * scaleX, torsoPoints.leftHip.y * scaleY]
             ],
-            settings.silhouetteThickness
+            settings.silhouetteThickness * Math.min(scaleX, scaleY)
         );
     }
     
@@ -224,7 +270,7 @@ function drawSilhouette(pose, ctx) {
     
     if (nose && (leftEye || rightEye)) {
         // Calculate head size based on distance between eyes or default size
-        let headSize = settings.silhouetteThickness * 2;
+        let headSize = settings.silhouetteThickness * 2 * Math.min(scaleX, scaleY);
         if (leftEye && rightEye) {
             const eyeDistance = Math.sqrt(
                 Math.pow((leftEye.x - rightEye.x) * scaleX, 2) + 
@@ -232,6 +278,9 @@ function drawSilhouette(pose, ctx) {
             );
             headSize = Math.max(eyeDistance * 2, headSize);
         }
+        
+        // Apply the head size multiplier
+        headSize *= settings.silhouetteHeadSize;
         
         // Draw head as a circle
         ctx.beginPath();
@@ -251,7 +300,8 @@ function drawSilhouette(pose, ctx) {
     const leftWrist = findKeypoint(keypoints, 'left_wrist');
     
     if (leftShoulder && leftElbow && leftWrist) {
-        drawLimb(ctx, [leftShoulder, leftElbow, leftWrist], scaleX, scaleY, settings.silhouetteThickness);
+        drawLimb(ctx, [leftShoulder, leftElbow, leftWrist], scaleX, scaleY, 
+                settings.silhouetteThickness * Math.min(scaleX, scaleY));
     }
     
     // Right arm
@@ -260,7 +310,8 @@ function drawSilhouette(pose, ctx) {
     const rightWrist = findKeypoint(keypoints, 'right_wrist');
     
     if (rightShoulder && rightElbow && rightWrist) {
-        drawLimb(ctx, [rightShoulder, rightElbow, rightWrist], scaleX, scaleY, settings.silhouetteThickness);
+        drawLimb(ctx, [rightShoulder, rightElbow, rightWrist], scaleX, scaleY, 
+                settings.silhouetteThickness * Math.min(scaleX, scaleY));
     }
     
     // Left leg
@@ -269,7 +320,8 @@ function drawSilhouette(pose, ctx) {
     const leftAnkle = findKeypoint(keypoints, 'left_ankle');
     
     if (leftHip && leftKnee && leftAnkle) {
-        drawLimb(ctx, [leftHip, leftKnee, leftAnkle], scaleX, scaleY, settings.silhouetteThickness);
+        drawLimb(ctx, [leftHip, leftKnee, leftAnkle], scaleX, scaleY, 
+                settings.silhouetteThickness * Math.min(scaleX, scaleY));
     }
     
     // Right leg
@@ -278,11 +330,9 @@ function drawSilhouette(pose, ctx) {
     const rightAnkle = findKeypoint(keypoints, 'right_ankle');
     
     if (rightHip && rightKnee && rightAnkle) {
-        drawLimb(ctx, [rightHip, rightKnee, rightAnkle], scaleX, scaleY, settings.silhouetteThickness);
+        drawLimb(ctx, [rightHip, rightKnee, rightAnkle], scaleX, scaleY, 
+                settings.silhouetteThickness * Math.min(scaleX, scaleY));
     }
-    
-    // Reset alpha
-    ctx.globalAlpha = 1.0;
 }
 
 /**
@@ -482,6 +532,48 @@ function calculateOverlapScore(bodyShapeImageData) {
 }
 
 /**
+ * Draws the difference layer showing where the silhouette overlaps with the mask
+ */
+function drawDifferenceLayer(ctx) {
+    if (!settings.showDifference || !maskImageData) {
+        ctx.clearRect(0, 0, videoWidth, videoHeight);
+        return;
+    }
+    
+    // Get the silhouette data
+    const silhouetteData = silhouetteCtx.getImageData(0, 0, videoWidth, videoHeight);
+    
+    // Create a new ImageData for the difference layer
+    const differenceData = new ImageData(videoWidth, videoHeight);
+    
+    // Compare each pixel to find overlaps
+    for (let i = 0; i < maskImageData.data.length; i += 4) {
+        // Check if both the mask and silhouette have visible pixels at this position
+        // For mask, we consider it "on" if it's mostly white (R > 200)
+        // For silhouette, we consider it "on" if it has any opacity
+        const isMaskPixel = maskImageData.data[i] > 200;
+        const isSilhouettePixel = silhouetteData.data[i + 3] > 0; // Check alpha channel
+        
+        if (isMaskPixel && isSilhouettePixel) {
+            // Overlap - set to green
+            differenceData.data[i] = 0;       // R
+            differenceData.data[i + 1] = 255; // G
+            differenceData.data[i + 2] = 0;   // B
+            differenceData.data[i + 3] = 255; // A (fully opaque)
+        } else {
+            // No overlap - transparent
+            differenceData.data[i] = 0;
+            differenceData.data[i + 1] = 0;
+            differenceData.data[i + 2] = 0;
+            differenceData.data[i + 3] = 0;
+        }
+    }
+    
+    // Put the difference data onto the canvas
+    ctx.putImageData(differenceData, 0, 0);
+}
+
+/**
  * Updates UI controls to match current settings.
  */
 function updateControlsUI() {
@@ -503,12 +595,21 @@ function updateControlsUI() {
     document.getElementById('silhouette-opacity').value = Math.round(settings.silhouetteOpacity * 100);
     document.getElementById('silhouette-opacity-value').textContent = `${Math.round(settings.silhouetteOpacity * 100)}%`;
     
+    document.getElementById('silhouette-pixelation').value = settings.silhouettePixelation;
+    document.getElementById('silhouette-pixelation-value').textContent = `${settings.silhouettePixelation}x`;
+    
+    document.getElementById('silhouette-head-size').value = settings.silhouetteHeadSize;
+    document.getElementById('silhouette-head-size-value').textContent = `${settings.silhouetteHeadSize.toFixed(1)}x`;
+    
+    document.getElementById('mask-opacity').value = Math.round(settings.maskOpacity * 100);
+    document.getElementById('mask-opacity-value').textContent = `${Math.round(settings.maskOpacity * 100)}%`;
+    
     // Update checkboxes
     document.getElementById('show-webcam').checked = settings.showWebcam;
     document.getElementById('show-mask-overlay').checked = settings.showMaskOverlay;
     document.getElementById('show-silhouette').checked = settings.showSilhouette;
     document.getElementById('show-skeleton').checked = settings.showSkeleton;
-    document.getElementById('silhouette-smooth').checked = settings.silhouetteSmooth;
+    document.getElementById('show-difference').checked = settings.showDifference;
 }
 
 /**
@@ -534,6 +635,18 @@ function setupControlListeners() {
         settings.showSkeleton = e.target.checked;
         // Update canvas visibility
         skeletonCanvas.style.display = e.target.checked ? 'block' : 'none';
+    });
+    
+    document.getElementById('show-difference').addEventListener('change', (e) => {
+        settings.showDifference = e.target.checked;
+        // Update canvas visibility
+        differenceCanvas.style.display = e.target.checked ? 'block' : 'none';
+    });
+    
+    // Mask opacity control
+    document.getElementById('mask-opacity').addEventListener('input', (e) => {
+        settings.maskOpacity = parseInt(e.target.value) / 100;
+        document.getElementById('mask-opacity-value').textContent = `${e.target.value}%`;
     });
     
     // Skeleton style controls
@@ -571,8 +684,14 @@ function setupControlListeners() {
         document.getElementById('silhouette-opacity-value').textContent = `${opacity}%`;
     });
     
-    document.getElementById('silhouette-smooth').addEventListener('change', (e) => {
-        settings.silhouetteSmooth = e.target.checked;
+    document.getElementById('silhouette-pixelation').addEventListener('input', (e) => {
+        settings.silhouettePixelation = parseInt(e.target.value);
+        document.getElementById('silhouette-pixelation-value').textContent = `${settings.silhouettePixelation}x`;
+    });
+    
+    document.getElementById('silhouette-head-size').addEventListener('input', (e) => {
+        settings.silhouetteHeadSize = parseFloat(e.target.value);
+        document.getElementById('silhouette-head-size-value').textContent = `${settings.silhouetteHeadSize.toFixed(1)}x`;
     });
     
     // Reset button
@@ -582,6 +701,7 @@ function setupControlListeners() {
         // Update canvas visibility
         silhouetteCanvas.style.display = settings.showSilhouette ? 'block' : 'none';
         skeletonCanvas.style.display = settings.showSkeleton ? 'block' : 'none';
+        differenceCanvas.style.display = settings.showDifference ? 'block' : 'none';
     });
 }
 
@@ -595,7 +715,7 @@ async function detectionLoop() {
     }
 
     // Set canvas dimensions for all canvases
-    const canvases = [baseCanvas, silhouetteCanvas, skeletonCanvas];
+    const canvases = [baseCanvas, silhouetteCanvas, differenceCanvas, skeletonCanvas];
     canvases.forEach(canvas => {
         if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
             canvas.width = videoWidth;
@@ -616,6 +736,7 @@ async function detectionLoop() {
         // Draw on each canvas layer
         drawBaseLayer(baseCtx);
         drawSilhouette(pose, silhouetteCtx);
+        drawDifferenceLayer(differenceCtx);
         drawSkeleton(pose, skeletonCtx);
 
         // Calculate score if we have a pose
