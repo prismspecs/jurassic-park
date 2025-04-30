@@ -1,6 +1,10 @@
 const videoElement = document.getElementById('webcam');
-const canvasElement = document.getElementById('output');
-const canvasCtx = canvasElement.getContext('2d');
+const baseCanvas = document.getElementById('base-canvas');
+const silhouetteCanvas = document.getElementById('silhouette-canvas');
+const skeletonCanvas = document.getElementById('skeleton-canvas');
+const baseCtx = baseCanvas.getContext('2d');
+const silhouetteCtx = silhouetteCanvas.getContext('2d');
+const skeletonCtx = skeletonCanvas.getContext('2d');
 const loadingElement = document.getElementById('loading');
 const mainElement = document.getElementById('main');
 const scoreElement = document.getElementById('score');
@@ -14,11 +18,27 @@ let animationFrameId = null;
 const videoWidth = 640;
 const videoHeight = 480;
 const maskPath = 'mask.jpg'; // Ensure this file exists in public/
-const scoreThreshold = 0.1; // Lower threshold for better detection
-const lineWidth = 5; // Adjusted for better visibility
-const bodyFillColor = 'rgba(255, 255, 255, 0.8)'; // For drawing body shape
-const overlapColor = 'green';
-const nonOverlapColor = 'red';
+const DEFAULT_SETTINGS = {
+    scoreThreshold: 0.1,
+    // Skeleton settings
+    lineWidth: 5,
+    lineColor: '#FF0000',
+    keypointSize: 5,
+    keypointColor: '#00FF00',
+    // Silhouette settings
+    silhouetteColor: '#FFFFFF',
+    silhouetteThickness: 50,
+    silhouetteOpacity: 1.0,
+    silhouetteSmooth: true,
+    // Layer visibility
+    showWebcam: true,
+    showMaskOverlay: true,
+    showSilhouette: true,
+    showSkeleton: true
+};
+
+// Current settings (will be controlled by UI)
+let settings = { ...DEFAULT_SETTINGS };
 
 // Define connections between keypoints for drawing lines (using COCO keypoint indices)
 const POSE_CONNECTIONS = [
@@ -33,6 +53,16 @@ const POSE_CONNECTIONS = [
   [11, 19], [19, 21], [21, 23], // Left leg
   [12, 20], [20, 22], [22, 24]  // Right leg
 ];
+
+// Body part definitions for silhouette (groups of connected keypoints)
+const BODY_PARTS = {
+    head: [0, 1, 2, 3, 4], // Nose, eyes, ears
+    torso: [5, 6, 11, 12], // Shoulders and hips
+    leftArm: [5, 7, 9], // Left shoulder to left wrist
+    rightArm: [6, 8, 10], // Right shoulder to right wrist
+    leftLeg: [11, 13, 15], // Left hip to left ankle 
+    rightLeg: [12, 14, 16]  // Right hip to right ankle
+};
 
 // --- Helper Functions ---
 
@@ -112,26 +142,265 @@ async function loadPoseDetector() {
 }
 
 /**
- * Draws the detected pose skeleton onto the canvas.
+ * Draws the base layer with webcam and mask overlay
  */
-function drawBodyShape(pose, ctx) {
-    // 1. Draw the webcam video frame
-    ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
-
-    // Optional: Show the mask as a semi-transparent overlay for debugging
-    if (maskImage.complete && maskImage.naturalWidth > 0) {
+function drawBaseLayer(ctx) {
+    // Clear the canvas
+    ctx.clearRect(0, 0, videoWidth, videoHeight);
+    
+    // Draw black background if webcam is hidden
+    if (!settings.showWebcam) {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, videoWidth, videoHeight);
+        return;
+    }
+    
+    // Draw webcam frame
+    ctx.drawImage(videoElement, 0, 0, videoWidth, videoHeight);
+    
+    // Draw mask overlay if enabled
+    if (settings.showMaskOverlay && maskImage.complete && maskImage.naturalWidth > 0) {
         ctx.globalAlpha = 0.2; // Make it very transparent
-        ctx.drawImage(maskImage, 0, 0, canvasElement.width, canvasElement.height);
+        ctx.drawImage(maskImage, 0, 0, videoWidth, videoHeight);
         ctx.globalAlpha = 1.0; // Reset alpha
     }
+}
 
-    if (!pose || !pose.keypoints) return; // Don't draw skeleton if no pose detected
-
-    const keypoints = pose.keypoints;
+/**
+ * Draws the human silhouette based on pose data
+ */
+function drawSilhouette(pose, ctx) {
+    if (!pose || !pose.keypoints || !settings.showSilhouette) {
+        ctx.clearRect(0, 0, videoWidth, videoHeight);
+        return;
+    }
     
-    // Draw the skeleton with improved visibility
-    ctx.strokeStyle = '#FF0000'; // Use bright red for visibility
-    ctx.lineWidth = lineWidth; // Use configured line width
+    // Clear the canvas first
+    ctx.clearRect(0, 0, videoWidth, videoHeight);
+    
+    const keypoints = pose.keypoints;
+    const scaleX = videoWidth / videoElement.videoWidth;
+    const scaleY = videoHeight / videoElement.videoHeight;
+    
+    // Set silhouette style
+    ctx.fillStyle = settings.silhouetteColor;
+    ctx.globalAlpha = settings.silhouetteOpacity;
+    
+    // Enable anti-aliasing if smooth edges is checked
+    if (settings.silhouetteSmooth) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+    } else {
+        ctx.imageSmoothingEnabled = false;
+    }
+    
+    // Draw torso (always start with torso as it's the most reliable)
+    const torsoPoints = {
+        leftShoulder: findKeypoint(keypoints, 'left_shoulder'),
+        rightShoulder: findKeypoint(keypoints, 'right_shoulder'),
+        leftHip: findKeypoint(keypoints, 'left_hip'),
+        rightHip: findKeypoint(keypoints, 'right_hip')
+    };
+    
+    if (torsoPoints.leftShoulder && torsoPoints.rightShoulder && 
+        torsoPoints.leftHip && torsoPoints.rightHip) {
+        // Draw filled torso
+        drawBodySegment(
+            ctx,
+            [
+                [torsoPoints.leftShoulder.x * scaleX, torsoPoints.leftShoulder.y * scaleY],
+                [torsoPoints.rightShoulder.x * scaleX, torsoPoints.rightShoulder.y * scaleY],
+                [torsoPoints.rightHip.x * scaleX, torsoPoints.rightHip.y * scaleY],
+                [torsoPoints.leftHip.x * scaleX, torsoPoints.leftHip.y * scaleY]
+            ],
+            settings.silhouetteThickness
+        );
+    }
+    
+    // Draw head
+    const nose = findKeypoint(keypoints, 'nose');
+    const leftEye = findKeypoint(keypoints, 'left_eye');
+    const rightEye = findKeypoint(keypoints, 'right_eye');
+    
+    if (nose && (leftEye || rightEye)) {
+        // Calculate head size based on distance between eyes or default size
+        let headSize = settings.silhouetteThickness * 2;
+        if (leftEye && rightEye) {
+            const eyeDistance = Math.sqrt(
+                Math.pow((leftEye.x - rightEye.x) * scaleX, 2) + 
+                Math.pow((leftEye.y - rightEye.y) * scaleY, 2)
+            );
+            headSize = Math.max(eyeDistance * 2, headSize);
+        }
+        
+        // Draw head as a circle
+        ctx.beginPath();
+        ctx.arc(
+            nose.x * scaleX, 
+            nose.y * scaleY, 
+            headSize, 
+            0, 2 * Math.PI
+        );
+        ctx.fill();
+    }
+    
+    // Draw limbs
+    // Left arm
+    const leftShoulder = findKeypoint(keypoints, 'left_shoulder');
+    const leftElbow = findKeypoint(keypoints, 'left_elbow');
+    const leftWrist = findKeypoint(keypoints, 'left_wrist');
+    
+    if (leftShoulder && leftElbow && leftWrist) {
+        drawLimb(ctx, [leftShoulder, leftElbow, leftWrist], scaleX, scaleY, settings.silhouetteThickness);
+    }
+    
+    // Right arm
+    const rightShoulder = findKeypoint(keypoints, 'right_shoulder');
+    const rightElbow = findKeypoint(keypoints, 'right_elbow');
+    const rightWrist = findKeypoint(keypoints, 'right_wrist');
+    
+    if (rightShoulder && rightElbow && rightWrist) {
+        drawLimb(ctx, [rightShoulder, rightElbow, rightWrist], scaleX, scaleY, settings.silhouetteThickness);
+    }
+    
+    // Left leg
+    const leftHip = findKeypoint(keypoints, 'left_hip');
+    const leftKnee = findKeypoint(keypoints, 'left_knee');
+    const leftAnkle = findKeypoint(keypoints, 'left_ankle');
+    
+    if (leftHip && leftKnee && leftAnkle) {
+        drawLimb(ctx, [leftHip, leftKnee, leftAnkle], scaleX, scaleY, settings.silhouetteThickness);
+    }
+    
+    // Right leg
+    const rightHip = findKeypoint(keypoints, 'right_hip');
+    const rightKnee = findKeypoint(keypoints, 'right_knee');
+    const rightAnkle = findKeypoint(keypoints, 'right_ankle');
+    
+    if (rightHip && rightKnee && rightAnkle) {
+        drawLimb(ctx, [rightHip, rightKnee, rightAnkle], scaleX, scaleY, settings.silhouetteThickness);
+    }
+    
+    // Reset alpha
+    ctx.globalAlpha = 1.0;
+}
+
+/**
+ * Helper to draw a limb segment from multiple keypoints
+ */
+function drawLimb(ctx, points, scaleX, scaleY, thickness) {
+    // Create a path for the limb
+    ctx.beginPath();
+    
+    // Create a series of points for the limb centerline
+    const centerPoints = points.map(point => ({
+        x: point.x * scaleX,
+        y: point.y * scaleY
+    }));
+    
+    // Draw the path with thickness
+    drawThickPath(ctx, centerPoints, thickness);
+}
+
+/**
+ * Draws a thick path from an array of points
+ */
+function drawThickPath(ctx, points, thickness) {
+    if (points.length < 2) return;
+    
+    // Draw a circle at each joint
+    points.forEach(point => {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, thickness / 2, 0, 2 * Math.PI);
+        ctx.fill();
+    });
+    
+    // Draw thick lines between points
+    for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        
+        // Calculate the vector from p1 to p2
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Normalize the vector
+        const nx = dx / distance;
+        const ny = dy / distance;
+        
+        // Create perpendicular vectors for thickness
+        const px = -ny * (thickness / 2);
+        const py = nx * (thickness / 2);
+        
+        // Draw a quadrilateral
+        ctx.beginPath();
+        ctx.moveTo(p1.x + px, p1.y + py);
+        ctx.lineTo(p2.x + px, p2.y + py);
+        ctx.lineTo(p2.x - px, p2.y - py);
+        ctx.lineTo(p1.x - px, p1.y - py);
+        ctx.closePath();
+        ctx.fill();
+    }
+}
+
+/**
+ * Draw a body segment as a filled polygon with thickness
+ */
+function drawBodySegment(ctx, points, thickness) {
+    if (points.length < 3) return;
+    
+    // Draw the main filled polygon
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i][0], points[i][1]);
+    }
+    ctx.closePath();
+    ctx.fill();
+    
+    // Draw joints as circles at each point
+    points.forEach(point => {
+        ctx.beginPath();
+        ctx.arc(point[0], point[1], thickness / 2, 0, 2 * Math.PI);
+        ctx.fill();
+    });
+    
+    // Draw thick lines between points to smooth the edges
+    for (let i = 0; i < points.length; i++) {
+        const p1 = points[i];
+        const p2 = points[(i + 1) % points.length]; // Connect back to the first point
+        
+        ctx.beginPath();
+        ctx.strokeStyle = ctx.fillStyle; // Set stroke color to match fill color
+        ctx.lineWidth = thickness;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.moveTo(p1[0], p1[1]);
+        ctx.lineTo(p2[0], p2[1]);
+        ctx.stroke();
+    }
+}
+
+/**
+ * Draws the skeleton on the top canvas layer
+ */
+function drawSkeleton(pose, ctx) {
+    if (!pose || !pose.keypoints || !settings.showSkeleton) {
+        ctx.clearRect(0, 0, videoWidth, videoHeight);
+        return;
+    }
+    
+    // Clear the canvas
+    ctx.clearRect(0, 0, videoWidth, videoHeight);
+    
+    const keypoints = pose.keypoints;
+    const scaleX = videoWidth / videoElement.videoWidth;
+    const scaleY = videoHeight / videoElement.videoHeight;
+    
+    // Draw the skeleton connections
+    ctx.strokeStyle = settings.lineColor;
+    ctx.lineWidth = settings.lineWidth;
     
     // Draw the skeleton connections
     POSE_CONNECTIONS.forEach(([i, j]) => {
@@ -139,11 +408,7 @@ function drawBodyShape(pose, ctx) {
         const kp2 = keypoints[j];
 
         // Check if keypoints and their scores are valid
-        if (kp1 && kp2 && kp1.score > scoreThreshold && kp2.score > scoreThreshold) {
-            // Scale keypoints if necessary
-            const scaleX = canvasElement.width / videoElement.videoWidth;
-            const scaleY = canvasElement.height / videoElement.videoHeight;
-
+        if (kp1 && kp2 && kp1.score > settings.scoreThreshold && kp2.score > settings.scoreThreshold) {
             const x1 = kp1.x * scaleX;
             const y1 = kp1.y * scaleY;
             const x2 = kp2.x * scaleX;
@@ -157,49 +422,23 @@ function drawBodyShape(pose, ctx) {
     });
     
     // Draw keypoints as circles
+    ctx.fillStyle = settings.keypointColor;
     keypoints.forEach((kp) => {
-        if (kp.score > scoreThreshold) {
-            const scaleX = canvasElement.width / videoElement.videoWidth;
-            const scaleY = canvasElement.height / videoElement.videoHeight;
+        if (kp.score > settings.scoreThreshold) {
             const x = kp.x * scaleX;
             const y = kp.y * scaleY;
 
             ctx.beginPath();
-            ctx.arc(x, y, 5, 0, 2 * Math.PI); // Draw a small circle for each keypoint
-            ctx.fillStyle = '#00FF00'; // Green dots
+            ctx.arc(x, y, settings.keypointSize, 0, 2 * Math.PI); // Draw a circle for each keypoint
             ctx.fill();
         }
     });
-    
-    // Optional: Draw filled torso if all required keypoints are detected
-    const torsoPoints = {
-        leftShoulder: findKeypoint(keypoints, 'left_shoulder'),
-        rightShoulder: findKeypoint(keypoints, 'right_shoulder'),
-        leftHip: findKeypoint(keypoints, 'left_hip'),
-        rightHip: findKeypoint(keypoints, 'right_hip')
-    };
-    
-    if (torsoPoints.leftShoulder && torsoPoints.rightShoulder && 
-        torsoPoints.leftHip && torsoPoints.rightHip) {
-        // Draw filled torso
-        const scaleX = canvasElement.width / videoElement.videoWidth;
-        const scaleY = canvasElement.height / videoElement.videoHeight;
-        
-        ctx.beginPath();
-        ctx.moveTo(torsoPoints.leftShoulder.x * scaleX, torsoPoints.leftShoulder.y * scaleY);
-        ctx.lineTo(torsoPoints.rightShoulder.x * scaleX, torsoPoints.rightShoulder.y * scaleY);
-        ctx.lineTo(torsoPoints.rightHip.x * scaleX, torsoPoints.rightHip.y * scaleY);
-        ctx.lineTo(torsoPoints.leftHip.x * scaleX, torsoPoints.leftHip.y * scaleY);
-        ctx.closePath();
-        ctx.fillStyle = bodyFillColor;
-        ctx.fill();
-    }
 }
 
 // Helper to find a specific keypoint by name
 function findKeypoint(keypoints, name) {
     const kp = keypoints.find(kp => kp.name === name);
-    return kp && kp.score > scoreThreshold ? kp : null;
+    return kp && kp.score > settings.scoreThreshold ? kp : null;
 }
 
 /**
@@ -242,7 +481,109 @@ function calculateOverlapScore(bodyShapeImageData) {
     return Math.round(score * 100);
 }
 
-// --- Main Application Logic ---
+/**
+ * Updates UI controls to match current settings.
+ */
+function updateControlsUI() {
+    // Update color pickers
+    document.getElementById('line-color').value = settings.lineColor;
+    document.getElementById('keypoint-color').value = settings.keypointColor;
+    document.getElementById('silhouette-color').value = settings.silhouetteColor;
+    
+    // Update range inputs
+    document.getElementById('line-width').value = settings.lineWidth;
+    document.getElementById('line-width-value').textContent = settings.lineWidth;
+    
+    document.getElementById('keypoint-size').value = settings.keypointSize;
+    document.getElementById('keypoint-size-value').textContent = settings.keypointSize;
+    
+    document.getElementById('silhouette-thickness').value = settings.silhouetteThickness;
+    document.getElementById('silhouette-thickness-value').textContent = settings.silhouetteThickness;
+    
+    document.getElementById('silhouette-opacity').value = Math.round(settings.silhouetteOpacity * 100);
+    document.getElementById('silhouette-opacity-value').textContent = `${Math.round(settings.silhouetteOpacity * 100)}%`;
+    
+    // Update checkboxes
+    document.getElementById('show-webcam').checked = settings.showWebcam;
+    document.getElementById('show-mask-overlay').checked = settings.showMaskOverlay;
+    document.getElementById('show-silhouette').checked = settings.showSilhouette;
+    document.getElementById('show-skeleton').checked = settings.showSkeleton;
+    document.getElementById('silhouette-smooth').checked = settings.silhouetteSmooth;
+}
+
+/**
+ * Initialize control panel event listeners.
+ */
+function setupControlListeners() {
+    // Layer visibility toggles
+    document.getElementById('show-webcam').addEventListener('change', (e) => {
+        settings.showWebcam = e.target.checked;
+    });
+    
+    document.getElementById('show-mask-overlay').addEventListener('change', (e) => {
+        settings.showMaskOverlay = e.target.checked;
+    });
+    
+    document.getElementById('show-silhouette').addEventListener('change', (e) => {
+        settings.showSilhouette = e.target.checked;
+        // Update canvas visibility
+        silhouetteCanvas.style.display = e.target.checked ? 'block' : 'none';
+    });
+    
+    document.getElementById('show-skeleton').addEventListener('change', (e) => {
+        settings.showSkeleton = e.target.checked;
+        // Update canvas visibility
+        skeletonCanvas.style.display = e.target.checked ? 'block' : 'none';
+    });
+    
+    // Skeleton style controls
+    document.getElementById('line-color').addEventListener('input', (e) => {
+        settings.lineColor = e.target.value;
+    });
+    
+    document.getElementById('line-width').addEventListener('input', (e) => {
+        settings.lineWidth = parseInt(e.target.value);
+        document.getElementById('line-width-value').textContent = settings.lineWidth;
+    });
+    
+    document.getElementById('keypoint-color').addEventListener('input', (e) => {
+        settings.keypointColor = e.target.value;
+    });
+    
+    document.getElementById('keypoint-size').addEventListener('input', (e) => {
+        settings.keypointSize = parseInt(e.target.value);
+        document.getElementById('keypoint-size-value').textContent = settings.keypointSize;
+    });
+    
+    // Silhouette style controls
+    document.getElementById('silhouette-color').addEventListener('input', (e) => {
+        settings.silhouetteColor = e.target.value;
+    });
+    
+    document.getElementById('silhouette-thickness').addEventListener('input', (e) => {
+        settings.silhouetteThickness = parseInt(e.target.value);
+        document.getElementById('silhouette-thickness-value').textContent = settings.silhouetteThickness;
+    });
+    
+    document.getElementById('silhouette-opacity').addEventListener('input', (e) => {
+        const opacity = parseInt(e.target.value);
+        settings.silhouetteOpacity = opacity / 100;
+        document.getElementById('silhouette-opacity-value').textContent = `${opacity}%`;
+    });
+    
+    document.getElementById('silhouette-smooth').addEventListener('change', (e) => {
+        settings.silhouetteSmooth = e.target.checked;
+    });
+    
+    // Reset button
+    document.getElementById('reset-controls').addEventListener('click', () => {
+        settings = { ...DEFAULT_SETTINGS };
+        updateControlsUI();
+        // Update canvas visibility
+        silhouetteCanvas.style.display = settings.showSilhouette ? 'block' : 'none';
+        skeletonCanvas.style.display = settings.showSkeleton ? 'block' : 'none';
+    });
+}
 
 /**
  * Main loop: Get pose, draw, calculate score, repeat.
@@ -253,55 +594,48 @@ async function detectionLoop() {
         return;
     }
 
-    // Set canvas dimensions to match video
-    if (canvasElement.width !== videoWidth || canvasElement.height !== videoHeight) {
-        canvasElement.width = videoWidth;
-        canvasElement.height = videoHeight;
-        console.log(`Canvas resized to ${canvasElement.width}x${canvasElement.height}`);
-    }
+    // Set canvas dimensions for all canvases
+    const canvases = [baseCanvas, silhouetteCanvas, skeletonCanvas];
+    canvases.forEach(canvas => {
+        if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
+            canvas.width = videoWidth;
+            canvas.height = videoHeight;
+        }
+    });
 
     try {
-        // Debug logging
-        console.log("Running pose estimation...");
-        
         // Get pose estimation - explicitly set options for MoveNet
         const poses = await poseDetector.estimatePoses(videoElement, {
             flipHorizontal: true,  // Mirror for more natural interaction
             maxPoses: 1           // Only detect one person
         });
         
-        // Debug logging
-        console.log(`Detected ${poses.length} poses`);
-        
         // Get the first detected pose (if any)
         const pose = poses && poses.length > 0 ? poses[0] : null;
         
-        if (pose) {
-            // Log keypoint counts for debugging
-            const validKeypoints = pose.keypoints.filter(kp => kp.score > scoreThreshold);
-            console.log(`Found ${validKeypoints.length} keypoints above threshold ${scoreThreshold}`);
-            if (validKeypoints.length > 0) {
-                console.log(`First keypoint: ${validKeypoints[0].name}, score: ${validKeypoints[0].score.toFixed(2)}`);
-            }
-        }
-        
-        // Draw the body shape with skeleton
-        drawBodyShape(pose, canvasCtx);
+        // Draw on each canvas layer
+        drawBaseLayer(baseCtx);
+        drawSilhouette(pose, silhouetteCtx);
+        drawSkeleton(pose, skeletonCtx);
 
-        // Only calculate score if we have a pose
+        // Calculate score if we have a pose
         if (pose && pose.keypoints.length > 0) {
-            // Create a temporary canvas to store the drawn body shape for scoring
+            // Create a temporary canvas to combine all layers for scoring
             const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = canvasElement.width;
-            tempCanvas.height = canvasElement.height;
+            tempCanvas.width = videoWidth;
+            tempCanvas.height = videoHeight;
             const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.drawImage(canvasElement, 0, 0);
             
-            // Get body shape data for score calculation
-            const bodyShapeImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+            // Draw only the silhouette on black background for scoring
+            tempCtx.fillStyle = '#000000';
+            tempCtx.fillRect(0, 0, videoWidth, videoHeight);
+            tempCtx.drawImage(silhouetteCanvas, 0, 0);
+            
+            // Get combined image data for score calculation
+            const combinedImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
 
             // Calculate score
-            const score = calculateOverlapScore(bodyShapeImageData);
+            const score = calculateOverlapScore(combinedImageData);
             scoreElement.textContent = `Score: ${score}%`;
         }
     } catch (error) {
@@ -318,12 +652,16 @@ async function detectionLoop() {
 async function main() {
     try {
         // Draw test pattern to verify canvas works
-        drawTestPattern();
+        drawTestPattern(baseCtx);
         
         // Check if TensorFlow.js is available
         if (!tf) {
             throw new Error('TensorFlow.js is not loaded. Check script includes in HTML.');
         }
+        
+        // Setup control panel
+        setupControlListeners();
+        updateControlsUI();
         
         // Initialize TensorFlow.js and load pose detector
         loadingElement.textContent = 'Initializing TensorFlow.js...';
@@ -375,25 +713,25 @@ window.addEventListener('load', () => {
 });
 
 // Draw a test rectangle on the canvas to verify it's working
-function drawTestPattern() {
-    if (!canvasElement || !canvasCtx) return;
+function drawTestPattern(ctx) {
+    if (!ctx) return;
     
-    canvasElement.width = videoWidth;
-    canvasElement.height = videoHeight;
+    ctx.canvas.width = videoWidth;
+    ctx.canvas.height = videoHeight;
     
     // Fill with dark background
-    canvasCtx.fillStyle = '#333';
-    canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     
     // Draw a visible border
-    canvasCtx.strokeStyle = '#0F0'; // Bright green
-    canvasCtx.lineWidth = 10;
-    canvasCtx.strokeRect(10, 10, canvasElement.width - 20, canvasElement.height - 20);
+    ctx.strokeStyle = '#0F0'; // Bright green
+    ctx.lineWidth = 10;
+    ctx.strokeRect(10, 10, ctx.canvas.width - 20, ctx.canvas.height - 20);
     
     // Draw text
-    canvasCtx.fillStyle = '#FFF';
-    canvasCtx.font = '20px sans-serif';
-    canvasCtx.fillText('Canvas initialized. Waiting for pose detection...', 50, 50);
+    ctx.fillStyle = '#FFF';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('Canvas initialized. Waiting for pose detection...', 50, 50);
     
     console.log("Test pattern drawn on canvas");
 }

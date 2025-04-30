@@ -18,10 +18,123 @@
     <div id="main" style="display: none; position: relative">
       <!-- Webcam video element (hidden but used for input) -->
       <video id="webcam" playsinline style="display: none"></video>
-      <!-- Canvas for drawing the output -->
-      <canvas id="output"></canvas>
+
+      <!-- Canvas layers for drawing -->
+      <div class="canvas-container">
+        <!-- Base canvas for webcam and mask -->
+        <canvas id="base-canvas" class="canvas-layer"></canvas>
+        <!-- Silhouette layer -->
+        <canvas id="silhouette-canvas" class="canvas-layer"></canvas>
+        <!-- Skeleton layer on top -->
+        <canvas id="skeleton-canvas" class="canvas-layer"></canvas>
+      </div>
+
       <!-- Optional: Display score -->
       <div id="score">Score: 0%</div>
+    </div>
+
+    <!-- Skeleton Controls -->
+    <div id="skeleton-controls" class="control-panel">
+      <h2>Skeleton Controls</h2>
+
+      <!-- Layer controls -->
+      <div class="layer-controls">
+        <h3>Layers</h3>
+        <div class="control-group">
+          <label>
+            <input type="checkbox" id="show-webcam" checked />
+            Show Webcam
+          </label>
+        </div>
+        <div class="control-group">
+          <label>
+            <input type="checkbox" id="show-mask-overlay" checked />
+            Show Mask Overlay
+          </label>
+        </div>
+        <div class="control-group">
+          <label>
+            <input type="checkbox" id="show-silhouette" checked />
+            Show Silhouette
+          </label>
+        </div>
+        <div class="control-group">
+          <label>
+            <input type="checkbox" id="show-skeleton" checked />
+            Show Skeleton
+          </label>
+        </div>
+      </div>
+
+      <!-- Skeleton style controls -->
+      <div class="style-controls">
+        <h3>Skeleton Style</h3>
+        <div class="control-group">
+          <label for="line-color">Line Color:</label>
+          <input type="color" id="line-color" value="#FF0000" />
+        </div>
+
+        <div class="control-group">
+          <label for="line-width">Line Width:</label>
+          <input type="range" id="line-width" min="1" max="20" value="5" />
+          <span id="line-width-value">5</span>
+        </div>
+
+        <div class="control-group">
+          <label for="keypoint-color">Keypoint Color:</label>
+          <input type="color" id="keypoint-color" value="#00FF00" />
+        </div>
+
+        <div class="control-group">
+          <label for="keypoint-size">Keypoint Size:</label>
+          <input type="range" id="keypoint-size" min="1" max="15" value="5" />
+          <span id="keypoint-size-value">5</span>
+        </div>
+      </div>
+
+      <!-- Silhouette style controls -->
+      <div class="style-controls">
+        <h3>Silhouette Style</h3>
+        <div class="control-group">
+          <label for="silhouette-color">Fill Color:</label>
+          <input type="color" id="silhouette-color" value="#FFFFFF" />
+        </div>
+
+        <div class="control-group">
+          <label for="silhouette-thickness">Thickness:</label>
+          <input
+            type="range"
+            id="silhouette-thickness"
+            min="5"
+            max="100"
+            value="50"
+          />
+          <span id="silhouette-thickness-value">50</span>
+        </div>
+
+        <div class="control-group">
+          <label for="silhouette-opacity">Opacity:</label>
+          <input
+            type="range"
+            id="silhouette-opacity"
+            min="0"
+            max="100"
+            value="100"
+          />
+          <span id="silhouette-opacity-value">100%</span>
+        </div>
+
+        <div class="control-group">
+          <label>
+            <input type="checkbox" id="silhouette-smooth" checked />
+            Smooth Edges
+          </label>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <button id="reset-controls">Reset to Defaults</button>
+      </div>
     </div>
 
     <!-- Load the application script -->
