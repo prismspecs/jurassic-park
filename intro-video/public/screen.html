@@ -1,82 +1,38 @@
 <!DOCTYPE html>
 <html>
-  <head>
+
+<head>
     <title>Jurassic Park Intro - Screen</title>
-    <style>
-      body {
-        font-family: sans-serif;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        margin: 0;
-        /* Remove default margin */
-        background-color: black;
-        /* Black background for fullscreen feel */
-        overflow: hidden;
-        /* Hide scrollbars */
-      }
-
-      #videoContainer {
-        position: relative;
-        width: 100vw;
-        /* Full viewport width */
-        height: 100vh;
-        /* Full viewport height */
-        border: none;
-        /* Remove border */
-        margin-bottom: 0;
-      }
-
-      #videoPlayer {
-        width: 100%;
-        height: 100%;
-      }
-
-      #faceOverlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.7);
-        display: none;
-        justify-content: center;
-        align-items: center;
-      }
-
-      #faceCanvas {
-        max-width: 100%;
-        max-height: 100%;
-      }
-
-      /* Remove webcamVideo CSS rules - no longer needed */
-    </style>
+    <!-- Remove style block -->
+    <!-- <style> ... </style> -->
+    <!-- Add link to external stylesheet -->
+    <link rel="stylesheet" href="style.css">
 
     <script>
-      // Check if page is loaded in an iframe
-      window.addEventListener("load", function () {
-        if (window.self !== window.top) {
-          document.body.classList.add("in-iframe");
-        }
-      });
+        // Check if page is loaded in an iframe
+        window.addEventListener("load", function () {
+            if (window.self !== window.top) {
+                document.body.classList.add("in-iframe");
+            }
+        });
     </script>
-  </head>
+</head>
 
-  <body>
+<!-- Add class to body -->
+
+<body class="screen-display">
     <div id="videoContainer">
-      <video id="videoPlayer" src="movie.mp4"></video>
-      <!-- Remove controls attribute -->
-      <div id="faceOverlay">
-        <canvas id="faceCanvas"></canvas>
-      </div>
+        <video id="videoPlayer" src="movie.mp4"></video>
+        <!-- Remove controls attribute -->
+        <div id="faceOverlay">
+            <canvas id="faceCanvas"></canvas>
+        </div>
 
-      <!-- Remove webcam video element as it's not needed anymore -->
-      <!-- <video id=\"webcamVideo\" autoplay muted playsinline></video> -->
+        <!-- Remove webcam video element as it's not needed anymore -->
+        <!-- <video id=\"webcamVideo\" autoplay muted playsinline></video> -->
 
-      <!-- Add face detection indicator -->
-      <div
-        id="faceIndicator"
-        style="
+        <!-- Add face detection indicator -->
+        <div id="faceIndicator" style="
           position: absolute;
           top: 10px;
           right: 10px;
@@ -92,10 +48,9 @@
           color: white;
           font-size: 12px;
           text-align: center;
-        "
-      >
-        <div>Waiting for webcam feed...</div>
-      </div>
+        ">
+            <div>Waiting for webcam feed...</div>
+        </div>
     </div>
 
     <!-- Remove debug panel -->
@@ -114,5 +69,6 @@
     <script src="/face-api/face-api.min.js"></script>
     <!-- Client-side script for screen -->
     <script src="screen.js"></script>
-  </body>
+</body>
+
 </html>

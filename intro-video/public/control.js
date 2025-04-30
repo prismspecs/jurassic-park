@@ -8,6 +8,7 @@ const toggleFaceOverlayButton = document.getElementById('toggleFaceOverlayButton
 // Add new UI element references
 const webcamSelect = document.getElementById('webcamSelect');
 const resolutionSelect = document.getElementById('resolutionSelect');
+const qualitySelect = document.getElementById('qualitySelect');
 const applySettingsButton = document.getElementById('applySettingsButton');
 
 // Add canvas for frame capture
@@ -24,6 +25,11 @@ let currentStream = null;
 function getSelectedResolution() {
     const [width, height] = resolutionSelect.value.split('x').map(Number);
     return { width, height };
+}
+
+// Get selected quality
+function getSelectedQuality() {
+    return parseFloat(qualitySelect.value);
 }
 
 // Populate webcam device list
@@ -81,8 +87,9 @@ function captureAndSendFrame() {
     // Draw the current frame to canvas
     captureContext.drawImage(webcamVideo, 0, 0);
     
-    // Get frame as data URL (JPEG for smaller size)
-    const frameDataUrl = captureCanvas.toDataURL('image/jpeg', 0.5); // 50% quality
+    // Get frame as data URL with selected quality
+    const quality = getSelectedQuality();
+    const frameDataUrl = captureCanvas.toDataURL('image/jpeg', quality);
     
     // Send to server
     socket.emit('webcamFrame', frameDataUrl);

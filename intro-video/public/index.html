@@ -1,83 +1,62 @@
 <!DOCTYPE html>
 <html>
-  <head>
+
+<head>
     <title>Jurassic Park Intro - Control Panel</title>
-    <style>
-      body {
-        font-family: sans-serif;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 20px;
-      }
+    <link rel="stylesheet" href="style.css">
+</head>
 
-      #webcamContainer {
-        width: 320px;
-        height: 240px;
-        border: 1px solid blue;
-        margin-top: 10px;
-        margin-bottom: 20px;
-      }
-
-      #webcamVideo {
-        width: 100%;
-        height: 100%;
-        transform: scaleX(-1);
-        /* Mirror the webcam feed */
-      }
-
-      #controls {
-        margin-top: 20px;
-      }
-
-      #controls button {
-        padding: 10px;
-        font-size: 16px;
-      }
-    </style>
-  </head>
-
-  <body>
-    <h1>Control Panel</h1>
+<body class="control-panel">
+    <!-- <h1>Control Panel</h1> -->
 
     <!-- Webcam Settings -->
     <div style="width: 320px; margin-bottom: 15px; text-align: left">
-      <h3>Webcam Settings</h3>
-      <div style="margin-bottom: 10px">
-        <label for="webcamSelect">Select Camera: </label>
-        <select id="webcamSelect" style="margin-left: 5px; width: 200px">
-          <option value="">Loading cameras...</option>
-        </select>
-      </div>
-      <div style="margin-bottom: 10px">
-        <label for="resolutionSelect">Resolution: </label>
-        <select id="resolutionSelect" style="margin-left: 5px; width: 200px">
-          <option value="320x240">320x240 (Low)</option>
-          <option value="640x480">640x480 (Standard)</option>
-          <option value="1280x720">1280x720 (HD)</option>
-          <option value="1920x1080" selected>1920x1080 (Full HD)</option>
-        </select>
-      </div>
-      <button id="applySettingsButton" style="margin-top: 5px">
-        Apply Settings
-      </button>
+        <h3>Webcam Settings</h3>
+        <div style="margin-bottom: 10px">
+            <label for="webcamSelect">Select Camera: </label>
+            <select id="webcamSelect" style="margin-left: 5px; width: 200px">
+                <option value="">Loading cameras...</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 10px">
+            <label for="resolutionSelect">Resolution: </label>
+            <select id="resolutionSelect" style="margin-left: 5px; width: 200px">
+                <option value="320x240">320x240 (Low)</option>
+                <option value="640x480">640x480 (Standard)</option>
+                <option value="1280x720">1280x720 (HD)</option>
+                <option value="1920x1080" selected>1920x1080 (Full HD)</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 10px">
+            <label for="qualitySelect">Quality: </label>
+            <select id="qualitySelect" style="margin-left: 5px; width: 200px">
+                <option value="0.6">Medium - Faster</option>
+                <option value="0.8">High</option>
+                <option value="0.9" selected>Very High</option>
+                <option value="1.0">Maximum - Slower</option>
+            </select>
+        </div>
+        <button id="applySettingsButton" style="margin-top: 5px">
+            Apply Settings
+        </button>
     </div>
 
     <!-- Restore webcam container -->
     <div id="webcamContainer">
-      <video id="webcamVideo" autoplay muted playsinline></video>
+        <video id="webcamVideo" autoplay muted playsinline></video>
     </div>
 
     <div id="controls">
-      <button id="startButton">Start Video on Screen</button>
-      <button id="toggleFaceOverlayButton" style="margin-left: 10px">
-        Toggle Face Overlay
-      </button>
+        <button id="startButton">Start Video on Screen</button>
+        <button id="toggleFaceOverlayButton" style="margin-left: 10px">
+            Toggle Face Overlay
+        </button>
     </div>
 
     <!-- Include Socket.IO client library -->
     <script src="/socket.io/socket.io.js"></script>
     <!-- Client-side script for control panel -->
     <script src="control.js"></script>
-  </body>
+</body>
+
 </html>
