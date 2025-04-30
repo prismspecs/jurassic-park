@@ -711,18 +711,11 @@ function drawDifferenceLayer(ctx) {
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
     
-    console.log("Drawing difference layer...");
-    
     // Clear the canvas first
     ctx.clearRect(0, 0, width, height);
     
-    // Draw a visible debug marker to confirm the function is being called
-    ctx.fillStyle = "rgba(255, 0, 0, 0.2)";  // Semi-transparent red
-    ctx.fillRect(0, 0, 50, 50);
-    
     // If difference layer is disabled or mask isn't loaded, just return
     if (!settings.showDifference) {
-        console.log("Difference layer disabled in settings");
         return;
     }
     
@@ -733,7 +726,6 @@ function drawDifferenceLayer(ctx) {
     
     // Make sure we have the latest mask image data at the current dimensions
     if (!maskImageData) {
-        console.log("No mask image data - regenerating");
         updateMaskImageData();
         
         // If still no mask data, we can't proceed
@@ -743,12 +735,28 @@ function drawDifferenceLayer(ctx) {
         }
     }
     
-    console.log(`Mask dimensions: ${maskImageData.width}x${maskImageData.height}, Canvas: ${width}x${height}`);
-    
     try {
-        // Get the silhouette data from its canvas
-        const silhouetteData = silhouetteCtx.getImageData(0, 0, width, height);
-        console.log(`Got silhouette data: ${silhouetteData.width}x${silhouetteData.height}`);
+        // Create a temporary canvas to generate the silhouette data
+        // This way we can get silhouette data even if silhouette layer is hidden
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = width;
+        tempCanvas.height = height;
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        // Use the current pose data from the main detection loop
+        if (currentPose) {
+            // Draw the silhouette to the temp canvas
+            drawSilhouette(currentPose, tempCtx);
+        } else {
+            // Draw a simple debug circle if no pose is detected
+            tempCtx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+            tempCtx.beginPath();
+            tempCtx.arc(width / 2, height / 2, 20, 0, Math.PI * 2);
+            tempCtx.fill();
+        }
+        
+        // Get the silhouette data from the temp canvas
+        const silhouetteData = tempCtx.getImageData(0, 0, width, height);
         
         // Direct pixel manipulation for maximum performance and reliability
         const diffImageData = ctx.createImageData(width, height);
@@ -756,7 +764,7 @@ function drawDifferenceLayer(ctx) {
         const maskData = maskImageData.data;
         const silData = silhouetteData.data;
         
-        // Pixel count for logging
+        // Pixel count for scoring
         let overlapCount = 0;
         let maskCount = 0;
         let silhouetteCount = 0;
@@ -792,24 +800,26 @@ function drawDifferenceLayer(ctx) {
         // Put the difference data directly onto the canvas
         ctx.putImageData(diffImageData, 0, 0);
         
-        // Log stats for debugging
-        console.log(`Difference detection: ${overlapCount} overlap pixels, ${maskCount} mask pixels, ${silhouetteCount} silhouette pixels`);
-        
-        // Draw another visible marker to confirm we got this far
-        ctx.fillStyle = "rgba(0, 0, 255, 0.2)";  // Semi-transparent blue
-        ctx.fillRect(width - 50, 0, 50, 50);
+        // Calculate and update score (if mask has any pixels)
+        if (maskCount > 0 && silhouetteCount > 0) {
+            // Calculate how much of the mask is covered by silhouette
+            const coverageScore = Math.round((overlapCount / maskCount) * 100);
+            scoreElement.textContent = `Score: ${coverageScore}%`;
+            
+            // Debug output
+            console.log(`Score: ${coverageScore}% (Overlap: ${overlapCount}, Mask: ${maskCount}, Silhouette: ${silhouetteCount})`);
+        } else {
+            scoreElement.textContent = `Score: 0%`;
+        }
         
     } catch (err) {
         console.error("Error drawing difference layer:", err);
-        
-        // If there was an error, at least draw something visible for debugging
-        ctx.fillStyle = "rgba(255, 0, 255, 0.5)";  // Semi-transparent magenta
-        ctx.fillRect(0, 0, width, height);
-        ctx.fillStyle = "white";
-        ctx.font = "16px sans-serif";
-        ctx.fillText("Error in difference layer", 10, 30);
+        scoreElement.textContent = `Score: Error`;
     }
 }
+
+// Variable to store the current pose data for sharing between functions
+let currentPose = null;
 
 /**
  * Updates UI controls to match current settings.
@@ -1056,37 +1066,28 @@ async function detectionLoop() {
         });
         
         // Get the first detected pose (if any)
-        const pose = poses && poses.length > 0 ? poses[0] : null;
+        currentPose = poses && poses.length > 0 ? poses[0] : null;
         
         // Draw on each canvas layer
         drawBaseLayer(baseCtx);
-        drawSilhouette(pose, silhouetteCtx);
-        drawSkeleton(pose, skeletonCtx);
         
-        // Make sure difference layer gets drawn last
+        if (settings.showSilhouette && currentPose) {
+            drawSilhouette(currentPose, silhouetteCtx);
+        } else {
+            silhouetteCtx.clearRect(0, 0, actualWidth, actualHeight);
+        }
+        
+        if (settings.showSkeleton && currentPose) {
+            drawSkeleton(currentPose, skeletonCtx);
+        } else {
+            skeletonCtx.clearRect(0, 0, actualWidth, actualHeight);
+        }
+        
+        // Make sure difference layer gets drawn last and independently
         if (settings.showDifference) {
             drawDifferenceLayer(differenceCtx);
-        }
-
-        // Calculate score if we have a pose
-        if (pose && pose.keypoints.length > 0) {
-            // Create a temporary canvas to combine all layers for scoring
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = actualWidth;
-            tempCanvas.height = actualHeight;
-            const tempCtx = tempCanvas.getContext('2d');
-            
-            // Draw only the silhouette on black background for scoring
-            tempCtx.fillStyle = '#000000';
-            tempCtx.fillRect(0, 0, actualWidth, actualHeight);
-            tempCtx.drawImage(silhouetteCanvas, 0, 0);
-            
-            // Get combined image data for score calculation
-            const combinedImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-
-            // Calculate score
-            const score = calculateOverlapScore(combinedImageData);
-            scoreElement.textContent = `Score: ${score}%`;
+        } else {
+            differenceCtx.clearRect(0, 0, actualWidth, actualHeight);
         }
     } catch (error) {
         console.error('Error in detection loop:', error);
