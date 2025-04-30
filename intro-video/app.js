@@ -41,6 +41,18 @@ io.on('connection', (socket) => {
     console.log('Received toggleFaceOverlay command from control panel');
     io.emit('toggleFaceOverlay');
   });
+
+  // Add listener for webcamReady command
+  socket.on('webcamReady', () => {
+    console.log('Received webcamReady notification from control panel');
+    io.emit('webcamReady'); // Broadcast to all clients (specifically the screen)
+  });
+
+  // Add listener for webcam frames (don't log each frame to avoid console spam)
+  socket.on('webcamFrame', (frameData) => {
+    // Relay frame to all other clients without logging
+    socket.broadcast.emit('webcamFrame', frameData); // Use broadcast to avoid sending back to sender
+  });
 });
 
 // Server listen

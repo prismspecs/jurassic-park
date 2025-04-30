@@ -49,20 +49,17 @@
         max-height: 100%;
       }
 
-      #webcamVideo {
-        /* display: none; */ /* Removed to make it visible */
-        /* Hidden video element for webcam stream processing */
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        width: 160px; /* Smaller size */
-        height: 120px;
-        border: 1px solid red;
-        z-index: 10; /* Ensure it's above the main video */
-        transform: scaleX(-1); /* Mirror the feed for natural view */
-        background-color: black;
-      }
+      /* Remove webcamVideo CSS rules - no longer needed */
     </style>
+
+    <script>
+      // Check if page is loaded in an iframe
+      window.addEventListener("load", function () {
+        if (window.self !== window.top) {
+          document.body.classList.add("in-iframe");
+        }
+      });
+    </script>
   </head>
 
   <body>
@@ -72,47 +69,40 @@
       <div id="faceOverlay">
         <canvas id="faceCanvas"></canvas>
       </div>
-      <!-- Keep hidden webcam video for processing -->
-      <video id="webcamVideo" autoplay muted playsinline></video>
-    </div>
 
-    <!-- Add debug panel for face detection testing -->
-    <div
-      style="
-        position: absolute;
-        bottom: 10px;
-        right: 10px;
-        z-index: 10;
-        background: rgba(0, 0, 0, 0.7);
-        padding: 10px;
-        color: white;
-        font-size: 12px;
-      "
-    >
-      <button id="detectFaceButton" style="margin-bottom: 5px">
-        Test Face Detection
-      </button>
-      <button
-        id="toggleDebugButton"
-        style="margin-bottom: 5px; margin-left: 5px"
-      >
-        Toggle Debug Info
-      </button>
+      <!-- Remove webcam video element as it's not needed anymore -->
+      <!-- <video id=\"webcamVideo\" autoplay muted playsinline></video> -->
+
+      <!-- Add face detection indicator -->
       <div
-        id="debugInfo"
+        id="faceIndicator"
         style="
-          max-width: 300px;
-          max-height: 200px;
-          overflow: auto;
-          margin-top: 5px;
-          display: none;
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          width: 160px;
+          height: 120px;
+          border: 2px solid green;
+          background-color: black;
+          z-index: 10;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          overflow: hidden;
+          color: white;
+          font-size: 12px;
+          text-align: center;
         "
-      ></div>
+      >
+        <div>Waiting for webcam feed...</div>
+      </div>
     </div>
 
-    <!-- Remove debug button -->
-    <!-- <div style=\"position: absolute; top: 10px; left: 10px; z-index: 10;\">
-        <button id=\"toggleFaceOverlayButton\" style=\"padding: 5px; background: rgba(255,255,255,0.8); border: 1px solid black;\">Toggle Face Overlay</button>
+    <!-- Remove debug panel -->
+    <!-- <div style="position: absolute; bottom: 10px; right: 10px; z-index: 10; background: rgba(0,0,0,0.7); padding: 10px; color: white; font-size: 12px;">
+      <button id="detectFaceButton" style="margin-bottom: 5px;">Test Face Detection</button>
+      <button id="toggleDebugButton" style="margin-bottom: 5px; margin-left: 5px;">Toggle Debug Info</button>
+      <div id="debugInfo" style="max-width: 300px; max-height: 200px; overflow: auto; margin-top: 5px; display: none;"></div>
     </div> -->
 
     <!-- Remove controls -->
