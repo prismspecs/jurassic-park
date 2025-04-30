@@ -103,6 +103,42 @@ h3 {
     margin-bottom: 15px;
 }
 
+.camera-controls {
+    background-color: #383838;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-left: 3px solid #0f0;
+}
+
+.full-width-control {
+    width: 100%;
+    padding: 6px;
+    background-color: #444;
+    color: #fff;
+    border: 1px solid #555;
+    border-radius: 4px;
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+#apply-camera-settings {
+    background-color: #555;
+    color: #fff;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+    width: 100%;
+    margin-top: 10px;
+}
+
+#apply-camera-settings:hover {
+    background-color: #0c0;
+}
+
 .control-group {
     margin-bottom: 12px;
     display: flex;

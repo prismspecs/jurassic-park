@@ -39,12 +39,35 @@
     <div id="skeleton-controls" class="control-panel">
       <h2>Skeleton Controls</h2>
 
+      <!-- Camera controls -->
+      <div class="camera-controls">
+        <h3>Camera Setup</h3>
+        <div class="control-group">
+          <label for="camera-select">Camera:</label>
+          <select id="camera-select" class="full-width-control">
+            <option value="">Loading cameras...</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label for="resolution-select">Resolution:</label>
+          <select id="resolution-select" class="full-width-control">
+            <option value="640x480">640x480 (Default)</option>
+            <option value="1280x720">1280x720 (HD)</option>
+            <option value="1920x1080">1920x1080 (Full HD)</option>
+            <option value="320x240">320x240 (Low)</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <button id="apply-camera-settings">Apply Camera Settings</button>
+        </div>
+      </div>
+
       <!-- Layer controls -->
       <div class="layer-controls">
         <h3>Layers</h3>
         <div class="control-group">
           <label>
-            <input type="checkbox" id="show-webcam" checked />
+            <input type="checkbox" id="show-webcam" />
             Show Webcam
           </label>
         </div>
@@ -56,8 +79,8 @@
         </div>
         <div class="control-group">
           <label for="mask-opacity">Mask Opacity:</label>
-          <input type="range" id="mask-opacity" min="0" max="100" value="20" />
-          <span id="mask-opacity-value">20%</span>
+          <input type="range" id="mask-opacity" min="0" max="100" value="100" />
+          <span id="mask-opacity-value">100%</span>
         </div>
         <div class="control-group">
           <label>
@@ -67,7 +90,7 @@
         </div>
         <div class="control-group">
           <label>
-            <input type="checkbox" id="show-skeleton" checked />
+            <input type="checkbox" id="show-skeleton" />
             Show Skeleton
           </label>
         </div>

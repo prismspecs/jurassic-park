@@ -10,15 +10,19 @@ const skeletonCtx = skeletonCanvas.getContext('2d');
 const loadingElement = document.getElementById('loading');
 const mainElement = document.getElementById('main');
 const scoreElement = document.getElementById('score');
+const cameraSelect = document.getElementById('camera-select');
+const resolutionSelect = document.getElementById('resolution-select');
+const applyCameraButton = document.getElementById('apply-camera-settings');
 
 const maskImage = new Image();
 let maskImageData = null;
 let poseDetector = null;
 let animationFrameId = null;
+let currentStream = null;
 
 // Configuration (adjust as needed)
-const videoWidth = 640;
-const videoHeight = 480;
+let videoWidth = 640;
+let videoHeight = 480;
 const maskPath = 'mask.jpg'; // Ensure this file exists in public/
 const DEFAULT_SETTINGS = {
     scoreThreshold: 0.1,
@@ -34,13 +38,16 @@ const DEFAULT_SETTINGS = {
     silhouettePixelation: 16, // Default to chunky pixelation (16x)
     silhouetteHeadSize: 1.0, // Head size multiplier (1.0 = normal)
     // Mask settings
-    maskOpacity: 0.2, // Default mask overlay opacity
+    maskOpacity: 1.0, // Default mask overlay opacity (100%)
     // Layer visibility
-    showWebcam: true,
+    showWebcam: false,
     showMaskOverlay: true,
     showSilhouette: true,
-    showSkeleton: true,
-    showDifference: true
+    showSkeleton: false,
+    showDifference: true,
+    // Camera settings
+    selectedCamera: '', // Will be populated with default camera
+    selectedResolution: '640x480' // Default resolution
 };
 
 // Current settings (will be controlled by UI)
@@ -79,13 +86,7 @@ async function loadMask() {
     return new Promise((resolve, reject) => {
         maskImage.onload = () => {
             console.log('Mask image loaded.');
-            // Draw mask to a temporary canvas to get its imageData
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = videoWidth;
-            tempCanvas.height = videoHeight;
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.drawImage(maskImage, 0, 0, videoWidth, videoHeight);
-            maskImageData = tempCtx.getImageData(0, 0, videoWidth, videoHeight);
+            updateMaskImageData();
             resolve();
         };
         maskImage.onerror = (err) => {
@@ -98,23 +99,176 @@ async function loadMask() {
 }
 
 /**
- * Sets up the webcam stream.
+ * Updates the mask image data to match current canvas dimensions.
+ * Call this whenever the canvas size changes.
+ */
+function updateMaskImageData() {
+    if (!maskImage.complete || maskImage.naturalWidth === 0) {
+        console.warn('Cannot update mask image data: mask not loaded');
+        return;
+    }
+    
+    // Get current canvas dimensions
+    const canvasWidth = baseCanvas.width;
+    const canvasHeight = baseCanvas.height;
+    
+    // Draw mask to a temporary canvas to get its imageData
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvasWidth;
+    tempCanvas.height = canvasHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.drawImage(maskImage, 0, 0, canvasWidth, canvasHeight);
+    maskImageData = tempCtx.getImageData(0, 0, canvasWidth, canvasHeight);
+    
+    console.log(`Mask image data updated to ${canvasWidth}x${canvasHeight}`);
+}
+
+/**
+ * Enumerates available video input devices and populates the camera selection dropdown.
+ */
+async function enumerateVideoDevices() {
+    try {
+        // Check if mediaDevices API is available
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+            console.error('MediaDevices API not supported in this browser.');
+            cameraSelect.innerHTML = '<option value="">Camera selection not supported</option>';
+            return [];
+        }
+
+        // Get the list of all media devices
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        
+        // Filter for video input devices (cameras)
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        
+        // Clear the select element
+        cameraSelect.innerHTML = '';
+        
+        // Add option for each video device
+        if (videoDevices.length === 0) {
+            cameraSelect.innerHTML = '<option value="">No cameras detected</option>';
+        } else {
+            videoDevices.forEach((device, index) => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                
+                // Use device label if available, otherwise use generic name with index
+                option.text = device.label || `Camera ${index + 1}`;
+                
+                cameraSelect.appendChild(option);
+            });
+            
+            // Set the first camera as default if none is set
+            if (!settings.selectedCamera && videoDevices.length > 0) {
+                settings.selectedCamera = videoDevices[0].deviceId;
+                cameraSelect.value = settings.selectedCamera;
+            }
+        }
+        
+        return videoDevices;
+    } catch (error) {
+        console.error('Error enumerating video devices:', error);
+        cameraSelect.innerHTML = '<option value="">Error loading cameras</option>';
+        return [];
+    }
+}
+
+/**
+ * Parses a resolution string (e.g., "640x480") and returns width and height.
+ */
+function parseResolution(resolutionStr) {
+    const [width, height] = resolutionStr.split('x').map(num => parseInt(num, 10));
+    return { width, height };
+}
+
+/**
+ * Sets up the webcam stream with the specified constraints.
  */
 async function setupWebcam() {
+    // Stop any existing stream
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+    }
+    
     return new Promise((resolve, reject) => {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ video: { width: videoWidth, height: videoHeight } })
+            // Parse the selected resolution
+            const { width, height } = parseResolution(settings.selectedResolution);
+            
+            // Build constraints based on settings
+            const constraints = {
+                video: {
+                    width: { ideal: width },
+                    height: { ideal: height }
+                }
+            };
+            
+            // Add device ID if one is selected
+            if (settings.selectedCamera) {
+                constraints.video.deviceId = { exact: settings.selectedCamera };
+            }
+            
+            navigator.mediaDevices.getUserMedia(constraints)
                 .then(stream => {
+                    currentStream = stream;
                     videoElement.srcObject = stream;
+                    
+                    // Make sure video element is properly configured
+                    videoElement.width = width;
+                    videoElement.height = height;
+                    videoElement.style.display = 'none'; // Hide original video but allow it to play
+                    
                     videoElement.addEventListener('loadeddata', () => {
                         console.log('Webcam stream loaded.');
-                        resolve();
+                        console.log(`Actual video dimensions: ${videoElement.videoWidth}x${videoElement.videoHeight}`);
+                        
+                        // Ensure video is playing
+                        videoElement.play()
+                            .then(() => {
+                                console.log('Video playback started');
+                                resolve();
+                            })
+                            .catch(err => {
+                                console.error('Error starting video playback:', err);
+                                reject(err);
+                            });
                     });
                 })
                 .catch(err => {
                     console.error('Error accessing webcam:', err);
-                    loadingElement.textContent = 'Error accessing webcam. Please grant permission.';
-                    reject(err);
+                    loadingElement.textContent = 'Error accessing webcam. Please grant permission or try a different camera.';
+                    
+                    // If the error is due to constraints, try again with default constraints
+                    if (err.name === 'ConstraintNotSatisfiedError' || err.name === 'OverconstrainedError') {
+                        console.log('Retrying with default constraints...');
+                        navigator.mediaDevices.getUserMedia({ video: true })
+                            .then(stream => {
+                                currentStream = stream;
+                                videoElement.srcObject = stream;
+                                videoElement.style.display = 'none';
+                                
+                                videoElement.addEventListener('loadeddata', () => {
+                                    console.log('Webcam stream loaded with default constraints.');
+                                    
+                                    // Ensure video is playing
+                                    videoElement.play()
+                                        .then(() => {
+                                            console.log('Video playback started with fallback constraints');
+                                            resolve();
+                                        })
+                                        .catch(playErr => {
+                                            console.error('Error starting video playback with fallback:', playErr);
+                                            reject(playErr);
+                                        });
+                                });
+                            })
+                            .catch(fallbackErr => {
+                                console.error('Error accessing webcam with fallback constraints:', fallbackErr);
+                                reject(fallbackErr);
+                            });
+                    } else {
+                        reject(err);
+                    }
                 });
         } else {
             reject('getUserMedia not supported');
@@ -151,23 +305,26 @@ async function loadPoseDetector() {
  * Draws the base layer with webcam and mask overlay
  */
 function drawBaseLayer(ctx) {
+    // Get the actual canvas dimensions
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+    
     // Clear the canvas
-    ctx.clearRect(0, 0, videoWidth, videoHeight);
+    ctx.clearRect(0, 0, width, height);
     
     // Draw black background if webcam is hidden
     if (!settings.showWebcam) {
         ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, videoWidth, videoHeight);
-        return;
+        ctx.fillRect(0, 0, width, height);
+    } else {
+        // Draw webcam frame
+        ctx.drawImage(videoElement, 0, 0, width, height);
     }
     
-    // Draw webcam frame
-    ctx.drawImage(videoElement, 0, 0, videoWidth, videoHeight);
-    
-    // Draw mask overlay if enabled
+    // Draw mask overlay if enabled (regardless of webcam visibility)
     if (settings.showMaskOverlay && maskImage.complete && maskImage.naturalWidth > 0) {
         ctx.globalAlpha = settings.maskOpacity; // Use the mask opacity setting
-        ctx.drawImage(maskImage, 0, 0, videoWidth, videoHeight);
+        ctx.drawImage(maskImage, 0, 0, width, height);
         ctx.globalAlpha = 1.0; // Reset alpha
     }
 }
@@ -176,21 +333,25 @@ function drawBaseLayer(ctx) {
  * Draws the human silhouette based on pose data
  */
 function drawSilhouette(pose, ctx) {
+    // Get actual canvas dimensions
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+    
     if (!pose || !pose.keypoints || !settings.showSilhouette) {
-        ctx.clearRect(0, 0, videoWidth, videoHeight);
+        ctx.clearRect(0, 0, width, height);
         return;
     }
     
     // Clear the canvas first
-    ctx.clearRect(0, 0, videoWidth, videoHeight);
+    ctx.clearRect(0, 0, width, height);
     
     // If pixelation is enabled, use a scaled-down canvas
     if (settings.silhouettePixelation > 1) {
         // Create a smaller temporary canvas for pixelation
         const tempCanvas = document.createElement('canvas');
         const pixelSize = settings.silhouettePixelation;
-        const smallWidth = Math.floor(videoWidth / pixelSize);
-        const smallHeight = Math.floor(videoHeight / pixelSize);
+        const smallWidth = Math.floor(width / pixelSize);
+        const smallHeight = Math.floor(height / pixelSize);
         
         tempCanvas.width = smallWidth;
         tempCanvas.height = smallHeight;
@@ -204,20 +365,19 @@ function drawSilhouette(pose, ctx) {
         tempCtx.imageSmoothingEnabled = false;
         
         // Draw the scaled-down silhouette
-        drawSilhouetteToContext(pose, tempCtx, smallWidth / videoWidth, smallHeight / videoHeight);
+        drawSilhouetteToContext(pose, tempCtx, smallWidth / videoElement.videoWidth, smallHeight / videoElement.videoHeight);
         
         // Now draw the pixelated silhouette back to the main canvas
         // Turn OFF image smoothing to keep the chunky pixelated look
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(tempCanvas, 0, 0, smallWidth, smallHeight, 0, 0, videoWidth, videoHeight);
+        ctx.drawImage(tempCanvas, 0, 0, smallWidth, smallHeight, 0, 0, width, height);
         
         // Reset alpha
         ctx.globalAlpha = 1.0;
     } else {
         // Regular drawing with no pixelation
-        const keypoints = pose.keypoints;
-        const scaleX = videoWidth / videoElement.videoWidth;
-        const scaleY = videoHeight / videoElement.videoHeight;
+        const scaleX = width / videoElement.videoWidth;
+        const scaleY = height / videoElement.videoHeight;
         
         // Set silhouette style
         ctx.fillStyle = settings.silhouetteColor;
@@ -436,17 +596,21 @@ function drawBodySegment(ctx, points, thickness) {
  * Draws the skeleton on the top canvas layer
  */
 function drawSkeleton(pose, ctx) {
+    // Get the actual canvas dimensions
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+    
     if (!pose || !pose.keypoints || !settings.showSkeleton) {
-        ctx.clearRect(0, 0, videoWidth, videoHeight);
+        ctx.clearRect(0, 0, width, height);
         return;
     }
     
     // Clear the canvas
-    ctx.clearRect(0, 0, videoWidth, videoHeight);
+    ctx.clearRect(0, 0, width, height);
     
     const keypoints = pose.keypoints;
-    const scaleX = videoWidth / videoElement.videoWidth;
-    const scaleY = videoHeight / videoElement.videoHeight;
+    const scaleX = width / videoElement.videoWidth;
+    const scaleY = height / videoElement.videoHeight;
     
     // Draw the skeleton connections
     ctx.strokeStyle = settings.lineColor;
@@ -535,16 +699,20 @@ function calculateOverlapScore(bodyShapeImageData) {
  * Draws the difference layer showing where the silhouette overlaps with the mask
  */
 function drawDifferenceLayer(ctx) {
+    // Get the actual canvas dimensions
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+    
     if (!settings.showDifference || !maskImageData) {
-        ctx.clearRect(0, 0, videoWidth, videoHeight);
+        ctx.clearRect(0, 0, width, height);
         return;
     }
     
     // Get the silhouette data
-    const silhouetteData = silhouetteCtx.getImageData(0, 0, videoWidth, videoHeight);
+    const silhouetteData = silhouetteCtx.getImageData(0, 0, width, height);
     
     // Create a new ImageData for the difference layer
-    const differenceData = new ImageData(videoWidth, videoHeight);
+    const differenceData = new ImageData(width, height);
     
     // Compare each pixel to find overlaps
     for (let i = 0; i < maskImageData.data.length; i += 4) {
@@ -613,9 +781,70 @@ function updateControlsUI() {
 }
 
 /**
+ * Applies the camera settings (device and resolution).
+ */
+async function applyCameraSettings() {
+    // Show loading state
+    loadingElement.textContent = 'Applying camera settings...';
+    loadingElement.style.display = 'block';
+    mainElement.style.display = 'none';
+    
+    // Cancel the animation frame to pause rendering
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+    }
+    
+    try {
+        // Update settings from UI
+        settings.selectedCamera = cameraSelect.value;
+        settings.selectedResolution = resolutionSelect.value;
+        
+        // Restart webcam with new settings
+        await setupWebcam();
+        
+        // Update canvas dimensions if resolution changed
+        const { width, height } = parseResolution(settings.selectedResolution);
+        updateCanvasDimensions(width, height);
+        
+        // Restart detection loop
+        detectionLoop();
+        
+        // Hide loading screen
+        loadingElement.style.display = 'none';
+        mainElement.style.display = 'block';
+    } catch (error) {
+        console.error('Error applying camera settings:', error);
+        loadingElement.textContent = `Error: ${error.message}. Please try different settings.`;
+    }
+}
+
+/**
+ * Updates canvas dimensions to match the new resolution.
+ */
+function updateCanvasDimensions(width, height) {
+    const canvases = [baseCanvas, silhouetteCanvas, differenceCanvas, skeletonCanvas];
+    canvases.forEach(canvas => {
+        canvas.width = width;
+        canvas.height = height;
+    });
+    
+    // Update global variables
+    videoWidth = width;
+    videoHeight = height;
+    
+    // Recreate mask image data (since dimensions might have changed)
+    updateMaskImageData();
+}
+
+/**
  * Initialize control panel event listeners.
  */
 function setupControlListeners() {
+    // Camera controls
+    applyCameraButton.addEventListener('click', () => {
+        applyCameraSettings();
+    });
+    
     // Layer visibility toggles
     document.getElementById('show-webcam').addEventListener('change', (e) => {
         settings.showWebcam = e.target.checked;
@@ -714,14 +943,36 @@ async function detectionLoop() {
         return;
     }
 
+    // Ensure video is playing
+    if (videoElement.paused || videoElement.ended) {
+        try {
+            await videoElement.play();
+            console.log("Restarted video playback in detection loop");
+        } catch (err) {
+            console.error("Failed to play video in detection loop:", err);
+        }
+    }
+
+    // Get dimensions from video element if available
+    const actualWidth = videoElement.videoWidth || videoWidth;
+    const actualHeight = videoElement.videoHeight || videoHeight;
+    
     // Set canvas dimensions for all canvases
     const canvases = [baseCanvas, silhouetteCanvas, differenceCanvas, skeletonCanvas];
+    let dimensionsChanged = false;
+    
     canvases.forEach(canvas => {
-        if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
-            canvas.width = videoWidth;
-            canvas.height = videoHeight;
+        if (canvas.width !== actualWidth || canvas.height !== actualHeight) {
+            canvas.width = actualWidth;
+            canvas.height = actualHeight;
+            dimensionsChanged = true;
         }
     });
+    
+    // If dimensions changed, update the mask data
+    if (dimensionsChanged) {
+        updateMaskImageData();
+    }
 
     try {
         // Get pose estimation - explicitly set options for MoveNet
@@ -733,6 +984,13 @@ async function detectionLoop() {
         // Get the first detected pose (if any)
         const pose = poses && poses.length > 0 ? poses[0] : null;
         
+        // Log for debugging
+        if (pose) {
+            console.log("Pose detected with", pose.keypoints.length, "keypoints");
+        } else {
+            console.log("No pose detected");
+        }
+        
         // Draw on each canvas layer
         drawBaseLayer(baseCtx);
         drawSilhouette(pose, silhouetteCtx);
@@ -743,13 +1001,13 @@ async function detectionLoop() {
         if (pose && pose.keypoints.length > 0) {
             // Create a temporary canvas to combine all layers for scoring
             const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = videoWidth;
-            tempCanvas.height = videoHeight;
+            tempCanvas.width = actualWidth;
+            tempCanvas.height = actualHeight;
             const tempCtx = tempCanvas.getContext('2d');
             
             // Draw only the silhouette on black background for scoring
             tempCtx.fillStyle = '#000000';
-            tempCtx.fillRect(0, 0, videoWidth, videoHeight);
+            tempCtx.fillRect(0, 0, actualWidth, actualHeight);
             tempCtx.drawImage(silhouetteCanvas, 0, 0);
             
             // Get combined image data for score calculation
@@ -784,6 +1042,10 @@ async function main() {
         setupControlListeners();
         updateControlsUI();
         
+        // Enumerate available cameras
+        loadingElement.textContent = 'Detecting cameras...';
+        const videoDevices = await enumerateVideoDevices();
+        
         // Initialize TensorFlow.js and load pose detector
         loadingElement.textContent = 'Initializing TensorFlow.js...';
         const detectorLoaded = await loadPoseDetector();
@@ -796,19 +1058,22 @@ async function main() {
         await loadMask();
         console.log('Mask image loaded successfully.');
 
-        // Setup webcam
+        // Setup webcam with current settings
         loadingElement.textContent = 'Accessing webcam...';
         await setupWebcam();
         
-        // Set video element properties
-        videoElement.width = videoWidth;
-        videoElement.height = videoHeight;
-        videoElement.style.display = 'none'; // Hide original video but allow it to play
+        // Set resolution dropdown to match actual video dimensions
+        const actualResolution = `${videoElement.videoWidth}x${videoElement.videoHeight}`;
+        const resolutionExists = Array.from(resolutionSelect.options).some(option => option.value === actualResolution);
+        if (!resolutionExists) {
+            const option = document.createElement('option');
+            option.value = actualResolution;
+            option.text = `${actualResolution} (Current)`;
+            resolutionSelect.add(option, 0);
+        }
+        resolutionSelect.value = actualResolution;
+        settings.selectedResolution = actualResolution;
         
-        // Start playing the video
-        await videoElement.play(); // Ensure video is playing
-        console.log('Webcam activated successfully.');
-
         // Start detection loop
         loadingElement.style.display = 'none';
         mainElement.style.display = 'block';
