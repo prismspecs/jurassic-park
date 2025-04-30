@@ -75,23 +75,23 @@ async function detectFaces() {
             // Create an image element for detection
             const img = new Image();
             img.src = latestFrameDataUrl;
-            
+
             // Wait for image to load
             await new Promise(resolve => {
                 img.onload = resolve;
             });
-            
+
             // Use a lower threshold to increase detection chances
             const detectionOptions = new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.1 });
             const detections = await faceapi.detectAllFaces(img, detectionOptions);
             console.log(`Detected ${detections.length} faces.`);
-            
+
             // Store all detected faces
             allDetectedFaces = detections.map(detection => detection.box);
-            
+
             // Should we show a face? Either we're in an interval or forced visible
             const shouldShowFace = (currentFaceInterval !== null) || isOverlayForcedVisible;
-            
+
             if (allDetectedFaces.length > 0 && shouldShowFace) {
                 // If we don't have a current face or it's time to switch, pick a new one
                 const now = Date.now();
@@ -101,7 +101,7 @@ async function detectFaces() {
                     lastFaceSwitchTime = now;
                     console.log(`Switched to face ${randomIndex + 1} of ${allDetectedFaces.length}`);
                 }
-                
+
                 // Don't draw here - we'll draw in the updateFaceDisplay function
                 // that runs on every frame update
                 faceOverlay.style.display = 'flex';
@@ -126,43 +126,43 @@ function updateFaceDisplay() {
         const img = new Image();
         img.onload = () => {
             const faceCtx = faceCanvas.getContext('2d');
-            
+
             // Ensure canvas size matches video player size dynamically
             if (faceCanvas.width !== videoPlayer.clientWidth || faceCanvas.height !== videoPlayer.clientHeight) {
                 faceCanvas.width = videoPlayer.clientWidth;
                 faceCanvas.height = videoPlayer.clientHeight;
             }
-            
+
             faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
-            
+
             // Calculate scaling to fill the canvas - we'll use the larger dimension
             // to ensure face completely fills the screen
             const scaleWidth = faceCanvas.width / currentFaceBox.width;
             const scaleHeight = faceCanvas.height / currentFaceBox.height;
-            
+
             // Use the larger scale factor to ensure the face fills the entire canvas
             const scaleFactor = Math.max(scaleWidth, scaleHeight) * 1.2; // Add 20% extra zoom for more dramatic effect
-            
+
             // Calculate dimensions
             const drawWidth = currentFaceBox.width * scaleFactor;
             const drawHeight = currentFaceBox.height * scaleFactor;
-            
+
             // Center the face in the canvas
             const drawX = (faceCanvas.width - drawWidth) / 2;
             const drawY = (faceCanvas.height - drawHeight) / 2;
-            
+
             // Draw the face with nice smooth scaling
             faceCtx.imageSmoothingEnabled = true;
             faceCtx.imageSmoothingQuality = 'high';
-            
+
             // Draw from the latest image instead of a saved one
             faceCtx.drawImage(
                 img,
-                currentFaceBox.x, currentFaceBox.y, 
+                currentFaceBox.x, currentFaceBox.y,
                 currentFaceBox.width, currentFaceBox.height,  // Source rectangle
                 drawX, drawY, drawWidth, drawHeight           // Destination rectangle
             );
-            
+
             // Apply a subtle vignette effect
             const gradient = faceCtx.createRadialGradient(
                 faceCanvas.width / 2, faceCanvas.height / 2, faceCanvas.height * 0.3,
@@ -170,12 +170,12 @@ function updateFaceDisplay() {
             );
             gradient.addColorStop(0, 'rgba(0,0,0,0)');
             gradient.addColorStop(1, 'rgba(0,0,0,0.7)');
-            
+
             faceCtx.fillStyle = gradient;
             faceCtx.globalCompositeOperation = 'source-over';
             faceCtx.fillRect(0, 0, faceCanvas.width, faceCanvas.height);
         };
-        
+
         // Set the source to the latest frame
         img.src = latestFrameDataUrl;
     }
@@ -185,17 +185,17 @@ function updateFaceDisplay() {
 function updateWebcamPreview(frameDataUrl) {
     // Update latest frame data URL
     latestFrameDataUrl = frameDataUrl;
-    
+
     // Update the face display with the new frame
     updateFaceDisplay();
-    
+
     // Display the frame in the faceIndicator element 
     const faceIndicator = document.getElementById('faceIndicator');
     if (faceIndicator) {
         faceIndicator.style.backgroundImage = `url(${frameDataUrl})`;
         faceIndicator.style.backgroundSize = 'cover';
         faceIndicator.style.backgroundPosition = 'center';
-        
+
         // Clear any text in the indicator
         faceIndicator.innerHTML = '';
     }
@@ -228,7 +228,7 @@ function checkFaceOverlayTime() {
         console.log('In face interval - attempting immediate detection');
         detectFaces(); // Try to detect and show face immediately
     }
-    
+
     // If we're not in an interval and the overlay is visible (and not forced)
     if (!shouldShowFace && faceOverlay.style.display !== 'none' && !isOverlayForcedVisible) {
         faceOverlay.style.display = 'none';
@@ -292,14 +292,14 @@ videoPlayer.addEventListener('ended', () => {
 // Socket.IO listeners
 socket.on('playVideoOnScreen', async () => {
     console.log('Received request to play video on screen.');
-    
+
     // Wait for webcam to be ready on control panel
     if (!isControlPanelWebcamReady) {
         console.log("Waiting for control panel webcam to be ready...");
         // Will proceed when webcamReady event is received
         return;
     }
-    
+
     // Load models first
     await loadModels();
     // Then play the video
@@ -312,7 +312,7 @@ socket.on('playVideoOnScreen', async () => {
 socket.on('webcamReady', () => {
     console.log('Control panel webcam is ready');
     isControlPanelWebcamReady = true;
-    
+
     // If loadModels has been called but video hasn't started, start it now
     if (faceapi.nets.tinyFaceDetector.params && videoPlayer.paused) {
         console.log("Starting video now that webcam is ready");
@@ -331,7 +331,7 @@ socket.on('toggleFaceOverlay', () => {
         faceOverlay.style.display = 'none';
         isOverlayForcedVisible = false;
         // Re-run time check in case it should be on due to video time
-        checkFaceOverlayTime(); 
+        checkFaceOverlayTime();
     }
 });
 
@@ -342,10 +342,10 @@ console.log("Waiting for control panel to set up webcam...");
 socket.on('webcamFrame', (frameDataUrl) => {
     // Don't log this to prevent console spam
     updateWebcamPreview(frameDataUrl);
-    
+
     // Increment frame counter
     frameCounter++;
-    
+
     // Run face detection periodically even if not in an interval
     // This helps ensure we have an updated face position 
     if (frameCounter % DETECTION_INTERVAL === 0) {

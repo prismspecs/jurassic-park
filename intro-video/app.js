@@ -42,6 +42,12 @@ io.on('connection', (socket) => {
     io.emit('toggleFaceOverlay');
   });
 
+  // Add listener for toggle preview command
+  socket.on('togglePreview', (data) => {
+    console.log(`Received togglePreview command from control panel: ${data.show ? 'show' : 'hide'}`);
+    io.emit('togglePreview', data);
+  });
+
   // Add listener for webcamReady command
   socket.on('webcamReady', () => {
     console.log('Received webcamReady notification from control panel');

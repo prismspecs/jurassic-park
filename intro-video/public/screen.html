@@ -1,38 +1,39 @@
 <!DOCTYPE html>
 <html>
-
-<head>
+  <head>
     <title>Jurassic Park Intro - Screen</title>
     <!-- Remove style block -->
     <!-- <style> ... </style> -->
     <!-- Add link to external stylesheet -->
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css" />
 
     <script>
-        // Check if page is loaded in an iframe
-        window.addEventListener("load", function () {
-            if (window.self !== window.top) {
-                document.body.classList.add("in-iframe");
-            }
-        });
+      // Check if page is loaded in an iframe
+      window.addEventListener("load", function () {
+        if (window.self !== window.top) {
+          document.body.classList.add("in-iframe");
+        }
+      });
     </script>
-</head>
+  </head>
 
-<!-- Add class to body -->
+  <!-- Add class to body -->
 
-<body class="screen-display">
+  <body class="screen-display">
     <div id="videoContainer">
-        <video id="videoPlayer" src="movie.mp4"></video>
-        <!-- Remove controls attribute -->
-        <div id="faceOverlay">
-            <canvas id="faceCanvas"></canvas>
-        </div>
+      <video id="videoPlayer" src="movie.mp4"></video>
+      <!-- Remove controls attribute -->
+      <div id="faceOverlay">
+        <canvas id="faceCanvas"></canvas>
+      </div>
 
-        <!-- Remove webcam video element as it's not needed anymore -->
-        <!-- <video id=\"webcamVideo\" autoplay muted playsinline></video> -->
+      <!-- Remove webcam video element as it's not needed anymore -->
+      <!-- <video id=\"webcamVideo\" autoplay muted playsinline></video> -->
 
-        <!-- Add face detection indicator -->
-        <div id="faceIndicator" style="
+      <!-- Add face detection indicator -->
+      <div
+        id="faceIndicator"
+        style="
           position: absolute;
           top: 10px;
           right: 10px;
@@ -48,9 +49,29 @@
           color: white;
           font-size: 12px;
           text-align: center;
-        ">
-            <div>Waiting for webcam feed...</div>
-        </div>
+        "
+      >
+        <div>Waiting for webcam feed...</div>
+      </div>
+
+      <!-- Add status message -->
+      <div
+        id="statusMessage"
+        style="
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          padding: 10px;
+          background-color: rgba(0, 0, 0, 0.7);
+          color: white;
+          z-index: 10;
+          display: none;
+          font-size: 14px;
+          border-radius: 5px;
+        "
+      >
+        Status: Ready
+      </div>
     </div>
 
     <!-- Remove debug panel -->
@@ -69,6 +90,5 @@
     <script src="/face-api/face-api.min.js"></script>
     <!-- Client-side script for screen -->
     <script src="screen.js"></script>
-</body>
-
+  </body>
 </html>

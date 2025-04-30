@@ -5,6 +5,8 @@ const socket = io();
 const webcamVideo = document.getElementById('webcamVideo');
 const startButton = document.getElementById('startButton');
 const toggleFaceOverlayButton = document.getElementById('toggleFaceOverlayButton');
+const togglePreviewButton = document.getElementById('togglePreviewButton');
+const resyncButton = document.getElementById('resyncButton');
 // Add new UI element references
 const webcamSelect = document.getElementById('webcamSelect');
 const resolutionSelect = document.getElementById('resolutionSelect');
@@ -175,6 +177,28 @@ startButton.addEventListener('click', () => {
 toggleFaceOverlayButton.addEventListener('click', () => {
     console.log('Toggle Face Overlay button clicked on control panel');
     socket.emit('toggleFaceOverlay');
+});
+
+// Add listener for the preview toggle button
+togglePreviewButton.addEventListener('click', () => {
+    console.log('Toggle Preview button clicked on control panel');
+    // Toggle button text between "Show Preview" and "Hide Preview"
+    const isShowing = togglePreviewButton.textContent === 'Hide Preview';
+    togglePreviewButton.textContent = isShowing ? 'Show Preview' : 'Hide Preview';
+    socket.emit('togglePreview', { show: !isShowing });
+});
+
+// Add listener for the resync button
+resyncButton.addEventListener('click', () => {
+    console.log('Resync button clicked on control panel');
+    // Notify the screen page that the webcam is ready (forced resync)
+    socket.emit('webcamReady');
+    // Briefly change button text to provide feedback
+    const originalText = resyncButton.textContent;
+    resyncButton.textContent = 'Resync Sent!';
+    setTimeout(() => {
+        resyncButton.textContent = originalText;
+    }, 2000);
 });
 
 // Add apply settings button listener
