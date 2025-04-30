@@ -2,9 +2,9 @@
 
 ### Interface
 
-### Functional
+- When hovering over an element, press F to fullscreen that particular element. ??
 
-- Add props to the character/actor/QR display. As you can see in the scenes.json file, each character also has a "prop" assigned. When the actor is called up to play the character, it currently displays the actor's headshot, the name of the character, and a QR code. In addition to this, it should also display the prop. Currently the prop image files are stored in database/props. If the prop lists "sunglasses" it should find the associated sunglasses.png file in that directory.
+### Functional
 
 - The ability to simply play a video on the main teleprompter
 
