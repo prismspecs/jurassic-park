@@ -133,8 +133,8 @@ body {
 
 .actor-grid {
     display: grid;
-    /* Responsive grid: columns are at least 180px wide, fit as many as possible */
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    /* Responsive grid: columns are at least 270px wide, fit as many as possible */
+    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
     gap: 20px;
     /* Spacing between cards */
     width: 100%;
@@ -159,23 +159,22 @@ body {
 }
 
 .actor-card .message-image.headshot {
-    width: 80px;
-    height: 80px;
+    width: 120px;
+    height: 120px;
     object-fit: cover;
     border: 1px solid #ccc;
 }
 
 .actor-card .message-image.qrcode {
-    max-width: 80px;
-    max-height: 80px;
+    max-width: 120px;
+    max-height: 120px;
     border: 1px solid #eee;
 }
 
 /* Add styling for the prop image */
 .actor-card .message-image.prop-image {
-    max-width: 60px;
-    /* Slightly smaller than QR/Headshot */
-    max-height: 60px;
+    max-width: 90px;
+    max-height: 90px;
     margin-top: 5px;
     /* Add some space above */
     object-fit: contain;
@@ -184,7 +183,7 @@ body {
 }
 
 .actor-card-text {
-    font-size: 0.9rem;
+    font-size: 1.3rem;
     line-height: 1.3;
     margin-bottom: 10px;
     color: #fff;
