@@ -676,6 +676,18 @@ video {
   color: var(--color-text);
 }
 
+/* Add +/- icons for collapsible headers */
+.collapsible-header::before {
+  content: '+ ';
+  display: inline-block;
+  font-weight: bold;
+  /* Optional: make icon bolder */
+}
+
+.collapsible-header.expanded::before {
+  content: '- ';
+}
+
 .collapsible-header:hover {
   background-color: var(--color-bg);
 }

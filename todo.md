@@ -10,7 +10,6 @@
 
 ### Functional
 
-
 - 3,2,1 count down before recording, after Action (this will be a video played on all teleprompters)
 
 - The third time the scene is run, the audience hums along

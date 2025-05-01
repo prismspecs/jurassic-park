@@ -212,28 +212,27 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- Initialize Collapsible Sections ---
 function initializeCollapsibleSections() {
   document.querySelectorAll('.collapsible-header').forEach(header => {
-    header.addEventListener('click', () => {
-      const section = header.closest('.collapsible-section');
-      const content = section.querySelector('.collapsible-content');
-      const isCollapsed = section.classList.toggle('collapsed');
-      header.innerHTML = header.innerHTML.replace(isCollapsed ? /&#9662;$/ : /&#9656;$/, isCollapsed ? ' &#9656;' : ' &#9662;'); // Toggle arrow icon
-
-      if (content) {
-        content.style.display = isCollapsed ? 'none' : '';
-      }
-    });
-
-    // Initialize state (optional: start collapsed)
     const section = header.closest('.collapsible-section');
     const content = section.querySelector('.collapsible-content');
-    if (section.classList.contains('start-collapsed')) { // Check for a specific class to start collapsed
-      section.classList.add('collapsed');
-      header.innerHTML = header.innerHTML.replace(/&#9662;$/, ' &#9656;');
-      if (content) content.style.display = 'none';
-    } else if (content) {
-      content.style.display = ''; // Ensure it's visible if not starting collapsed
+
+    // Determine initial state (assume expanded unless 'start-collapsed' class is present)
+    const startCollapsed = section.classList.contains('start-collapsed');
+    if (!startCollapsed) {
+      header.classList.add('expanded'); // Add 'expanded' class if not starting collapsed
+      if (content) content.style.display = ''; // Ensure content is shown
+    } else {
+      if (content) content.style.display = 'none'; // Ensure content is hidden
     }
 
+    header.addEventListener('click', () => {
+      // Toggle 'expanded' class directly on the header
+      const isExpanding = !header.classList.contains('expanded');
+      header.classList.toggle('expanded', isExpanding);
+
+      if (content) {
+        content.style.display = isExpanding ? '' : 'none'; // Toggle content display
+      }
+    });
   });
 }
 
