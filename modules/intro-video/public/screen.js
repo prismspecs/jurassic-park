@@ -14,7 +14,7 @@ const faceCanvas = document.getElementById('faceCanvas');
 const faceApiModelsPath = '/weights';
 let faceDetectionInterval;
 let showFaceIntervals = [
-    { start: 1, end: 3 },
+    { start: 1, end: 5 },
     { start: 10, end: 15 }, // 1:25 to 1:30
     { start: 128, end: 142 } // 2:08 to 2:22
 ];
