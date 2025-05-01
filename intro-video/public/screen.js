@@ -14,8 +14,8 @@ const faceCanvas = document.getElementById('faceCanvas');
 const faceApiModelsPath = '/weights';
 let faceDetectionInterval;
 let showFaceIntervals = [
-    { start: 1, end: 35 },
-    { start: 85, end: 90 }, // 1:25 to 1:30
+    { start: 1, end: 3 },
+    { start: 10, end: 15 }, // 1:25 to 1:30
     { start: 128, end: 142 } // 2:08 to 2:22
 ];
 let currentFaceInterval = null;
@@ -59,15 +59,15 @@ async function loadModels() {
 
 // Function to potentially start video/detection if ready
 function tryStartVideoAndDetection() {
-    if (isControlPanelWebcamReady && faceapi.nets.tinyFaceDetector.params && videoPlayer.paused) {
-        console.log("Conditions met (webcam ready, models loaded, video paused), attempting to play video.");
-        videoPlayer.play().catch(e => console.error("Error playing video in tryStartVideoAndDetection:", e));
-        // Detection will start via the 'play' event listener
+    // Only start detection if video is already playing, do NOT call videoPlayer.play() here
+    if (isControlPanelWebcamReady && faceapi.nets.tinyFaceDetector.params && !videoPlayer.paused) {
+        console.log("Conditions met (webcam ready, models loaded, video playing), starting detection.");
+        startFaceDetection();
     } else {
-        console.log("Conditions not yet met for starting video/detection.");
+        console.log("Conditions not yet met for starting detection.");
         if (!isControlPanelWebcamReady) console.log("- Webcam not ready");
         if (!faceapi.nets.tinyFaceDetector.params) console.log("- Models not loaded");
-        if (!videoPlayer.paused) console.log("- Video not paused");
+        if (videoPlayer.paused) console.log("- Video is paused");
     }
 }
 
@@ -83,15 +83,24 @@ async function startFaceDetection() {
     console.log("Starting face detection interval.");
 
     faceDetectionInterval = setInterval(async () => {
-        detectFaces();
-    }, 100);
+        // Only run detection if we are supposed to be showing a face
+        if (currentFaceInterval) {
+            detectFaces(); // Update face position
+        } else {
+            // Explicitly hide overlay if not in an interval
+            if (faceOverlay.style.display !== 'none') {
+                // console.log('Hiding face overlay (detection interval)'); // Optional: for debugging
+                faceOverlay.style.display = 'none';
+            }
+        }
+    }, 100); // Check ~10 times per second
 }
 
 // Separate function for the actual face detection to allow manual triggering
 async function detectFaces() {
     // Ensure models are loaded before trying to use them
     if (!faceapi.nets.tinyFaceDetector.params || !videoPlayer) {
-        console.log("Detection check: Models not ready or video player not found.");
+        // console.log("Detection check: Models not ready or video player not found."); // Less verbose
         return;
     }
 
@@ -100,17 +109,18 @@ async function detectFaces() {
         if (latestFrameDataUrl) {
             const img = new Image();
             img.src = latestFrameDataUrl;
-            await new Promise(resolve => { img.onload = resolve; });
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject; // Add error handling for image load
+            });
 
             const detectionOptions = new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.1 });
             const detections = await faceapi.detectAllFaces(img, detectionOptions);
             allDetectedFaces = detections.map(detection => detection.box); // Update all detected faces
 
-            const shouldShowFace = (currentFaceInterval !== null);
+            // --- Face Tracking Logic ---
             let trackedFaceBox = null;
             const trackingThreshold = (videoPlayer?.clientWidth || 640) * FACE_TRACKING_THRESHOLD_PERCENT; // Use video width for threshold
-
-            // --- Face Tracking Logic ---
             if (currentFaceBox && allDetectedFaces.length > 0) {
                 const currentCenter = getBoxCenter(currentFaceBox);
                 let closestDistance = Infinity;
@@ -124,95 +134,60 @@ async function detectFaces() {
                         closestFace = box;
                     }
                 });
-
-                if (closestFace) {
-                    trackedFaceBox = closestFace; // Found the same face nearby
-                    // console.log("Tracking face, distance:", closestDistance.toFixed(2));
-                } else {
-                    // console.log("Lost track of the face.");
-                    currentFaceBox = null; // Lost track, clear current box
-                }
+                trackedFaceBox = closestFace; // Will be null if no close face found
             }
             // --- End Tracking Logic ---
 
             const now = Date.now();
-            // Decide if it's time to switch:
-            // 1. We lost track (currentFaceBox is null after tracking attempt)
-            // 2. It's been longer than FACE_SWITCH_INTERVAL and there's more than one face
-            const shouldSwitch = currentFaceBox === null || (allDetectedFaces.length > 1 && now - lastFaceSwitchTime > FACE_SWITCH_INTERVAL);
+            const shouldSwitch = !trackedFaceBox || (allDetectedFaces.length > 1 && now - lastFaceSwitchTime > FACE_SWITCH_INTERVAL);
 
-            if (shouldShowFace) {
-                if (trackedFaceBox && !shouldSwitch) {
-                    // Continue tracking the same face
-                    currentFaceBox = trackedFaceBox;
-                } else if (allDetectedFaces.length > 0) {
-                    // Time to switch or pick a new face
-                    let faceToSelect = null;
-                    if (shouldSwitch && allDetectedFaces.length > 1) {
-                        // Try to pick a *different* face than the one we were just tracking (if possible)
-                        const otherFaces = allDetectedFaces.filter(box => box !== trackedFaceBox);
-                        if (otherFaces.length > 0) {
-                            faceToSelect = otherFaces[Math.floor(Math.random() * otherFaces.length)];
-                            console.log(`Switched to a different face.`);
-                        } else {
-                            // Only one face detected, or trackedFaceBox was null, pick randomly
-                            faceToSelect = allDetectedFaces[Math.floor(Math.random() * allDetectedFaces.length)];
-                            console.log(`Switching face (only one option or random).`);
-                        }
-                    } else {
-                        // Pick any available face if not switching or only one face exists
-                        faceToSelect = allDetectedFaces[Math.floor(Math.random() * allDetectedFaces.length)];
-                        if (!currentFaceBox) console.log(`Picked initial face.`); // Log only if we didn't have one
-                    }
-
-                    currentFaceBox = faceToSelect;
-                    lastFaceSwitchTime = now;
+            if (trackedFaceBox && !shouldSwitch) {
+                // Continue tracking the same face
+                currentFaceBox = trackedFaceBox;
+            } else if (allDetectedFaces.length > 0) {
+                // Time to switch or pick a new face
+                let faceToSelect = null;
+                if (shouldSwitch && allDetectedFaces.length > 1) {
+                    const otherFaces = allDetectedFaces.filter(box => box !== trackedFaceBox); // Use trackedFaceBox here
+                    faceToSelect = otherFaces.length > 0
+                        ? otherFaces[Math.floor(Math.random() * otherFaces.length)]
+                        : allDetectedFaces[Math.floor(Math.random() * allDetectedFaces.length)]; // Fallback if only one face or same face is closest
                 } else {
-                    // No faces detected at all
-                    currentFaceBox = null;
+                    // Pick any available face if not switching or only one face exists
+                    faceToSelect = allDetectedFaces[Math.floor(Math.random() * allDetectedFaces.length)];
                 }
-
-                // Update overlay visibility based on whether we have a face
-                if (currentFaceBox) {
-                    if (faceOverlay.style.display === 'none') {
-                        console.log("Showing face overlay.");
-                        faceOverlay.style.display = 'flex';
-                    }
-                } else if (faceOverlay.style.display !== 'none') {
-                    console.log(`Hiding face overlay (no face found/tracked).`);
-                    faceOverlay.style.display = 'none';
-                }
-
-            } else { // Not in interval
-                if (faceOverlay.style.display !== 'none') {
-                    console.log(`Hiding face overlay (interval ended).`);
-                    faceOverlay.style.display = 'none';
-                    currentFaceBox = null; // Clear face when hiding
-                }
-            }
-
-        } else {
-            // console.log("No frame data available yet.");
-            if (faceOverlay.style.display !== 'none') {
-                faceOverlay.style.display = 'none'; // Hide if no frame data
+                currentFaceBox = faceToSelect;
+                lastFaceSwitchTime = now;
+            } else {
+                // No faces detected at all
                 currentFaceBox = null;
             }
+
+            // REMOVED overlay display logic from here
+
+        } else {
+            // No frame data available yet
+            currentFaceBox = null; // Ensure face box is cleared if no frame data
         }
     } catch (err) {
         console.error("Face detection error:", err);
         currentFaceBox = null; // Clear face on error
-        if (faceOverlay.style.display !== 'none') {
-            faceOverlay.style.display = 'none';
-        }
+        // REMOVED overlay display logic from here
     }
 }
 
 // New function to update face display with latest frame
 function updateFaceDisplay() {
-    // Only update if we have a face box and frame data
-    if (currentFaceBox && latestFrameDataUrl && faceOverlay.style.display !== 'none') {
+    // Only update if the overlay is supposed to be visible
+    if (faceOverlay.style.display === 'none') {
+        return; // Don't draw if overlay is hidden
+    }
+
+    // Only draw if we have a face box and frame data
+    if (currentFaceBox && latestFrameDataUrl) {
         const img = new Image();
         img.onload = () => {
+            // ... existing drawing logic ...
             const faceCtx = faceCanvas.getContext('2d');
 
             // Ensure canvas size matches video player size dynamically
@@ -285,6 +260,10 @@ function updateFaceDisplay() {
         };
         // Set the source to the latest frame
         img.src = latestFrameDataUrl;
+    } else {
+        // If no face box, clear the canvas (optional, but good practice)
+        const faceCtx = faceCanvas.getContext('2d');
+        faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
     }
 }
 
@@ -313,7 +292,7 @@ function checkFaceOverlayTime() {
     const currentTime = videoPlayer.currentTime;
     let shouldShowFace = false;
     let previousInterval = currentFaceInterval;
-    currentFaceInterval = null;
+    currentFaceInterval = null; // Reset before checking
 
     for (const interval of showFaceIntervals) {
         if (currentTime >= interval.start && currentTime <= interval.end) {
@@ -330,15 +309,20 @@ function checkFaceOverlayTime() {
         console.log('Exited face interval');
     }
 
-    // If we're in an interval but not showing a face yet, trigger face detection
-    if (shouldShowFace && faceOverlay.style.display === 'none') {
-        console.log('In face interval - attempting immediate detection');
-        detectFaces(); // Try to detect and show face immediately
-    }
-
-    // If we're not in an interval and the overlay is visible
-    if (!shouldShowFace && faceOverlay.style.display !== 'none') {
-        faceOverlay.style.display = 'none';
+    // Directly control overlay visibility based on time interval
+    if (shouldShowFace) {
+        if (faceOverlay.style.display === 'none') {
+            console.log('Showing face overlay (checkFaceOverlayTime)');
+            faceOverlay.style.display = 'flex';
+            // Optionally trigger an immediate detection when interval starts
+            // detectFaces(); 
+        }
+    } else {
+        if (faceOverlay.style.display !== 'none') {
+            console.log('Hiding face overlay (checkFaceOverlayTime)');
+            faceOverlay.style.display = 'none';
+            currentFaceBox = null; // Clear face box when hiding
+        }
     }
 }
 
@@ -405,8 +389,9 @@ socket.on('playVideoOnScreen', async () => {
         console.log("Models already loaded.");
     }
 
-    // Now check if we can play
-    tryStartVideoAndDetection();
+    // Start video playback
+    videoPlayer.play().catch(e => console.error("Error playing video:", e));
+    // Detection will start via the 'play' event listener
 });
 
 // Listen for status update from server on connect or later
@@ -466,14 +451,12 @@ socket.on('webcamFrame', (frameDataUrl) => {
     // Increment frame counter
     frameCounter++;
 
-    // Run face detection periodically even if not in an interval
-    // This helps ensure we have an updated face position 
-    if (frameCounter % DETECTION_INTERVAL === 0) {
-        // Only trigger detection if in an interval
-        if (currentFaceInterval !== null) {
-            detectFaces();
-        }
-    }
+    // REMOVED periodic detectFaces call from here - it's handled by startFaceDetection interval
+    // if (frameCounter % DETECTION_INTERVAL === 0) {
+    //     if (currentFaceInterval !== null) {
+    //         detectFaces();
+    //     }
+    // }
 });
 
 // Listen for face padding updates
