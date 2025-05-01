@@ -54,6 +54,7 @@ body {
   gap: 20px;
   position: relative;
   box-sizing: border-box;
+  overflow-y: auto;
   /* For positioning the button */
   min-width: 150px;
   /* Ensure it doesn't collapse too much */
@@ -757,8 +758,10 @@ body.color-scheme-inverted {
   --color-surface: #555555;
   --color-border: #888888;
   --color-text: #ffffff;
-  --color-accent: #00ff00; /* Keep accent */
-  --color-error: #ff6b6b; /* Lighter red for dark bg */
+  --color-accent: #00ff00;
+  /* Keep accent */
+  --color-error: #ff6b6b;
+  /* Lighter red for dark bg */
 
   /* RGB versions for rgba() */
   --rgb-bg: 51, 51, 51;
@@ -771,8 +774,10 @@ body.color-scheme-inverted {
 
 /* Adjust console specifically for inverted mode if needed */
 body.color-scheme-inverted #console-output {
-  background: var(--color-surface); /* Darker surface */
-  color: var(--color-text); /* White text */
+  background: var(--color-surface);
+  /* Darker surface */
+  color: var(--color-text);
+  /* White text */
 }
 
 body.color-scheme-inverted #console-output .timestamp {
@@ -780,11 +785,13 @@ body.color-scheme-inverted #console-output .timestamp {
 }
 
 body.color-scheme-inverted #console-output .error {
-  color: var(--color-error); /* Use the inverted error color */
+  color: var(--color-error);
+  /* Use the inverted error color */
 }
 
 body.color-scheme-inverted #console-output .info {
-  color: var(--color-text); /* White info text */
+  color: var(--color-text);
+  /* White info text */
 }
 
 /* Make sure cryptic button text is visible in inverted */
@@ -852,8 +859,10 @@ body.color-scheme-inverted .fullscreen-toggle-btn:hover {
 /* Adjust text inputs/selects */
 body.color-scheme-inverted select,
 body.color-scheme-inverted input[type="text"],
-body.color-scheme-inverted input[type="file"] /* Add other inputs as needed */
-{
+body.color-scheme-inverted input[type="file"]
+
+/* Add other inputs as needed */
+  {
   background-color: var(--color-surface);
   border-color: var(--color-border);
   color: var(--color-text);
@@ -861,57 +870,61 @@ body.color-scheme-inverted input[type="file"] /* Add other inputs as needed */
 
 /* Adjust PTZ Placeholder */
 body.color-scheme-inverted .ptz-placeholder {
-    color: var(--color-border);
+  color: var(--color-border);
 }
 
 /* Adjust remove button */
 body.color-scheme-inverted .remove-btn {
-    background-color: var(--color-surface);
-    border-color: var(--color-error);
-    color: var(--color-error);
+  background-color: var(--color-surface);
+  border-color: var(--color-error);
+  color: var(--color-error);
 }
+
 body.color-scheme-inverted .remove-btn:hover {
-    background-color: var(--color-bg);
-    border-color: var(--color-error);
+  background-color: var(--color-bg);
+  border-color: var(--color-error);
 }
 
 /* Adjust status */
 body.color-scheme-inverted #status {
-    background: var(--color-surface);
-    color: var(--color-text);
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 
 /* Adjust scene/shot cards */
 body.color-scheme-inverted .scene-card,
 body.color-scheme-inverted .shot-card {
-    background: var(--color-surface);
-    border-color: var(--color-border);
-    color: var(--color-text);
-    box-shadow: 0 2px 4px rgba(var(--rgb-text), 0.2); /* Use inverted text color for shadow base */
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+  box-shadow: 0 2px 4px rgba(var(--rgb-text), 0.2);
+  /* Use inverted text color for shadow base */
 }
 
 body.color-scheme-inverted .scene-card:hover,
 body.color-scheme-inverted .shot-card:hover {
-    border-color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 /* Adjust sidebar */
 body.color-scheme-inverted .sidebar {
-    background: var(--color-bg);
-    border-left-color: var(--color-border);
+  background: var(--color-bg);
+  border-left-color: var(--color-border);
 }
 
 /* Adjust main content */
 body.color-scheme-inverted .main-content {
-    background: var(--color-surface); /* Or --color-bg depending on desired look */
+  background: var(--color-surface);
+  /* Or --color-bg depending on desired look */
 }
 
 /* Adjust controls section */
 body.color-scheme-inverted .controls-section {
-    background: var(--color-surface);
-    box-shadow: 0 2px 4px rgba(var(--rgb-text), 0.1);
-    color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: 0 2px 4px rgba(var(--rgb-text), 0.1);
+  color: var(--color-text);
 }
+
 body.color-scheme-inverted .controls-section h2 {
-    color: var(--color-text);
+  color: var(--color-text);
 }
