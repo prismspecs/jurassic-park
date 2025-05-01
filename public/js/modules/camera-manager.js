@@ -306,66 +306,14 @@ export class CameraManager {
     const div = document.createElement("div");
     div.className = "camera-control";
 
-    // --- Associative Lookup for Preview Device ---
-    const configuredPreviewPath = camera.previewDevice; // e.g., "/dev/video2"
-    let targetBrowserDeviceId = null;
-    let currentPreviewDisplayLabel = "No device selected";
-    let initialPreviewCallNeeded = false;
-
-    if (configuredPreviewPath) {
-      // 1. Find server device info using the configured path
-      const matchedServerDevice = this.serverDevices.find(sd => sd.id === configuredPreviewPath);
-
-      if (matchedServerDevice?.name) {
-        // 2. Use server device name to find matching browser device (heuristic)
-        // console.log(`[Camera: ${camera.name}] Searching for match for server name '${matchedServerDevice.name}' within these browser devices:`);
-        // this.availableDevices.forEach((bd, index) => {
-        //   console.log(`  Browser Device ${index}: label='${bd.label}', deviceId='${bd.deviceId}', kind='${bd.kind}', groupId='${bd.groupId}'`);
-        // });
-        const matchedBrowserDevice = this.availableDevices.find(bd =>
-          bd.label && matchedServerDevice.name &&
-          bd.label.startsWith(matchedServerDevice.name.split(' (')[0])
-        );
-
-        if (matchedBrowserDevice) {
-          // 3. Get the actual browser device ID (hex string)
-          targetBrowserDeviceId = matchedBrowserDevice.deviceId;
-          currentPreviewDisplayLabel = matchedBrowserDevice.label || targetBrowserDeviceId;
-          initialPreviewCallNeeded = true;
-          // console.log(`[Camera: ${camera.name}] Associated config path '${configuredPreviewPath}' to browser deviceId '${targetBrowserDeviceId}' via name '${matchedServerDevice.name}' / label '${matchedBrowserDevice.label}'`);
-        } else {
-          // console.warn(`[Camera: ${camera.name}] Could not find matching browser device for server device named '${matchedServerDevice.name}' (path: ${configuredPreviewPath})`);
-          currentPreviewDisplayLabel = `Browser device not found for ${configuredPreviewPath}`;
-        }
-      } else {
-        // console.warn(`[Camera: ${camera.name}] Could not find server device info for configured path: ${configuredPreviewPath}`);
-        currentPreviewDisplayLabel = `Server device info not found for ${configuredPreviewPath}`;
-      }
-    } else {
-      // console.log(`[Camera: ${camera.name}] No previewDevice path configured.`);
-    }
-    // --- End Associative Lookup ---
-
-    // Dynamically build the options for preview devices
+    // Dynamically build the options for preview devices using server devices
     let previewOptionsHtml = '<option value="">Select Preview Device</option>';
-    this.availableDevices.forEach(browserDevice => {
-      // --- Refined Label Logic (using existing serverDevices list) ---
-      const serverDevice = this.serverDevices.find(sd =>
-        browserDevice.label && sd.name?.startsWith(browserDevice.label)
-      );
-      let displayLabel = browserDevice.label || `Device ID: ${browserDevice.deviceId.substring(0, 8)}...`;
-      if (serverDevice) {
-        displayLabel += ` (${serverDevice.id})`; // Append server path if found
-      }
-      // --- End Refined Label Logic ---
-
-      // --- Use the LOOKED UP targetBrowserDeviceId for selection ---
-      const selected = browserDevice.deviceId === targetBrowserDeviceId ? "selected" : "";
-      // if (selected) {
-      //   console.log(`[Camera: ${camera.name}] MATCH FOUND for selected preview option! Target Device:`, browserDevice);
-      // }
-      // --- End Selection Logic ---
-      previewOptionsHtml += `<option value="${browserDevice.deviceId}" ${selected}>${displayLabel}</option>`;
+    this.serverDevices.forEach(serverDevice => {
+      // The value of the option will be the server device ID (e.g., /dev/video2)
+      // Check if this server device is the currently configured preview device
+      const selected = serverDevice.id === camera.previewDevice ? "selected" : "";
+      const displayLabel = serverDevice.name || serverDevice.id; // Use the name from the server
+      previewOptionsHtml += `<option value="${serverDevice.id}" ${selected}>${displayLabel}</option>`;
     });
 
     // Dynamically build the options for recording devices
@@ -400,7 +348,7 @@ export class CameraManager {
           <div class="camera-preview">
             <video id="preview-${camera.name}" autoplay playsinline></video>
             <canvas id="skeleton-canvas-${camera.name}" class="skeleton-overlay"></canvas> <!-- Add canvas for overlay -->
-            <div class="device-info">Using: ${currentPreviewDisplayLabel}</div>
+            <div class="device-info">Using: No device selected</div>
           </div>
           <div class="camera-settings">
             <div class="setting-group">
@@ -457,89 +405,101 @@ export class CameraManager {
         // Optionally, retry later or wait for detector load event
       }
     }, 150);
-
-    // Initialize preview if a browser device was successfully associated
-    if (initialPreviewCallNeeded && targetBrowserDeviceId) {
-      logToConsole(`Initializing preview for ${camera.name} using associated browserId: ${targetBrowserDeviceId}`, "info");
-      // console.log(`[Camera: ${camera.name}] Calling updatePreviewDevice with associated browserDeviceId:`, targetBrowserDeviceId);
-      // Use setTimeout to ensure the element is fully in the DOM and getUserMedia doesn't block
+ 
+    // --- ADDED: Automatically start preview if a device is pre-selected ---
+    if (camera.previewDevice) {
+      logToConsole(`[Auto Preview] Triggering preview for ${camera.name} with default device: ${camera.previewDevice}`, "info");
+      // Use setTimeout to ensure the element is in the DOM and async operations don't block rendering
       setTimeout(() => {
-        // Pass the LOOKED UP targetBrowserDeviceId
-        this.updatePreviewDevice(camera.name, targetBrowserDeviceId);
-      }, 100);
-    } else {
-      // console.log(`[Camera: ${camera.name}] Skipping initial preview call. initialPreviewCallNeeded=${initialPreviewCallNeeded}, targetBrowserDeviceId=${targetBrowserDeviceId}`);
+         this.updatePreviewDevice(camera.name, camera.previewDevice);
+      }, 100); // Small delay 
     }
+    // --- END ADDED ---
 
     return div;
   }
 
-  async updatePreviewDevice(cameraName, browserDeviceId) {
-    logToConsole(`Updating preview device for ${cameraName} with browser device ID: ${browserDeviceId}`, "info");
-    // console.log(`[Camera: ${cameraName}] Entered updatePreviewDevice with browserDeviceId:`, browserDeviceId); 
-    try {
-      // Update server - send browserDeviceId 
-      // NOTE: Server needs to store this browserDeviceId now!
-      const response = await fetch("/camera/preview-device", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cameraName, deviceId: browserDeviceId }),
-      });
+  async updatePreviewDevice(cameraName, serverDeviceId) {
+    logToConsole(`Updating preview device for ${cameraName} using server path: ${serverDeviceId}`, "info");
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        logToConsole(`Error saving preview device selection: ${errorText}`, "error");
-        // Optionally, revert the dropdown selection if saving failed?
-      }
+    const videoElement = document.getElementById(`preview-${cameraName}`);
+    // Find the sibling device-info div MORE reliably
+    let deviceInfoElement = null;
+    const previewContainer = videoElement.closest('.preview-container');
+    if (previewContainer) {
+      deviceInfoElement = previewContainer.querySelector('.device-info');
+    }
 
-      const videoElement = document.getElementById(`preview-${cameraName}`);
-      if (!videoElement) {
-        logToConsole(`Video element for ${cameraName} not found`, "error");
-        return;
-      }
-
-      // Stop any existing stream
-      if (videoElement.srcObject) {
+    // Stop any existing stream
+    if (videoElement.srcObject) {
         const tracks = videoElement.srcObject.getTracks();
         tracks.forEach(track => track.stop());
         videoElement.srcObject = null;
-      }
+        if (deviceInfoElement) deviceInfoElement.textContent = 'Using: No device selected';
+    }
 
-      // Use browserDeviceId directly for getUserMedia
-      if (browserDeviceId) {
-        try {
-          // console.log(`[Camera: ${cameraName}] Attempting getUserMedia with deviceId:`, browserDeviceId); 
-          const stream = await navigator.mediaDevices.getUserMedia({
+    if (!serverDeviceId) {
+        logToConsole(`No preview device selected for ${cameraName}. Clearing preview.`, "info");
+        // Update the camera object state locally
+        const cam = this.cameras.find(c => c.name === cameraName);
+        if (cam) cam.previewDevice = '';
+        // We should also notify the server, but there's no endpoint for *clearing* preview yet
+        return;
+    }
+
+    try {
+        // 1. Find the full server device info (mainly for the name) using the selected path
+        const selectedServerDevice = this.serverDevices.find(sd => sd.id === serverDeviceId);
+        if (!selectedServerDevice) {
+            throw new Error(`Could not find server device info for path: ${serverDeviceId}`);
+        }
+        const serverDeviceName = selectedServerDevice.name?.split(' (')[0]; // Get the name part, e.g., "HD Pro Webcam C920"
+
+        // 2. Find the matching browser device using the server device name (heuristic)
+        // Ensure browser devices are enumerated again if needed (labels might appear after permission)
+        let browserDevices = await navigator.mediaDevices.enumerateDevices();
+        browserDevices = browserDevices.filter(d => d.kind === 'videoinput');
+
+        const matchedBrowserDevice = browserDevices.find(bd =>
+            bd.label && serverDeviceName && bd.label.startsWith(serverDeviceName)
+        );
+
+        if (!matchedBrowserDevice) {
+             // Fallback: If name matching fails, try finding *any* device if only one is present?
+             // Or, more robustly, log an error. For now, we log error.
+            throw new Error(`Could not find a matching browser device for server device named '${serverDeviceName}' (path: ${serverDeviceId}). Browser labels might be missing or don't match.`);
+        }
+
+        const browserDeviceId = matchedBrowserDevice.deviceId; // This is the ID needed for getUserMedia
+        const browserDeviceLabel = matchedBrowserDevice.label || browserDeviceId; // Label for display
+
+        // 3. Request the stream using the found browser device ID
+        logToConsole(`Requesting getUserMedia for ${cameraName} with browser device ID: ${browserDeviceId} (Matched from server: ${serverDeviceId})`, "info");
+        const stream = await navigator.mediaDevices.getUserMedia({
             video: { deviceId: { exact: browserDeviceId } }
-          });
-          // console.log(`[Camera: ${cameraName}] getUserMedia SUCCESSFUL. Stream:`, stream); 
-          videoElement.srcObject = stream;
+        });
 
-          const browserDevice = this.availableDevices.find(d => d.deviceId === browserDeviceId);
-          const displayLabel = browserDevice ? (browserDevice.label || browserDeviceId) : 'Unknown';
-          const deviceInfoElement = videoElement.nextElementSibling;
-          if (deviceInfoElement && deviceInfoElement.classList.contains('device-info')) { // Check class
-            deviceInfoElement.textContent = `Using: ${displayLabel}`;
-          }
-          logToConsole(`Preview for ${cameraName} started with device: ${displayLabel}`, "success");
-        } catch (err) {
-          logToConsole(`Error starting camera preview: ${err.message}`, "error");
-          // console.error(`[Camera: ${cameraName}] getUserMedia FAILED:`, err); 
-          // Clear label if getUserMedia fails
-          const deviceInfoElement = videoElement.nextElementSibling;
-          if (deviceInfoElement && deviceInfoElement.classList.contains('device-info')) {
-            deviceInfoElement.textContent = `Error: ${err.message}`;
-          }
-        }
-      } else {
-        // No device selected, just update the info text
-        const deviceInfoElement = videoElement.nextElementSibling;
-        if (deviceInfoElement && deviceInfoElement.classList.contains('device-info')) {
-          deviceInfoElement.textContent = "No device selected";
-        }
-      }
+        // 4. Assign stream to video element
+        videoElement.srcObject = stream;
+        videoElement.play().catch(e => logToConsole(`Error playing preview video: ${e.message}`, "error"));
+        if (deviceInfoElement) deviceInfoElement.textContent = `Using: ${browserDeviceLabel} (${serverDeviceId})`;
+
+
+        // 5. Update server (Optional - currently sends browserDeviceId, should send serverDeviceId?)
+        // The current /camera/preview-device endpoint expects a browserDeviceId, which isn't ideal for persistence.
+        // For now, we'll *not* send an update to the server when just selecting a preview.
+        // Saving the selection should be a separate "Save Settings" action.
+        // console.log(`Server update for preview device selection is currently disabled.`);
+
+
+        // Update the camera object state locally
+        const cam = this.cameras.find(c => c.name === cameraName);
+        if (cam) cam.previewDevice = serverDeviceId; // Store the selected server path
+
     } catch (err) {
-      logToConsole(`Error updating preview device: ${err.message}`, "error");
+        logToConsole(`Error updating preview device for ${cameraName}: ${err.message}`, "error");
+        if (deviceInfoElement) deviceInfoElement.textContent = `Error: ${err.message}`;
+        // Optionally clear the dropdown selection or show an error state
     }
   }
 
