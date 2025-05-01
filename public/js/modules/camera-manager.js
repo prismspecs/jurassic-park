@@ -553,7 +553,10 @@ export class CameraManager {
       // 1. Request the stream using the BROWSER device ID
       logToConsole(`Requesting getUserMedia for ${cameraName} with browser device ID: ${browserDeviceId}`, "info");
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: browserDeviceId } }
+        video: {
+            deviceId: { exact: browserDeviceId },
+            frameRate: { ideal: 30 } // Add ideal frameRate
+         }
       });
 
       // 2. Assign stream to video element
