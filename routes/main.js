@@ -16,6 +16,7 @@ const cameraRouter = require('./camera');
 const authMiddleware = require('../middleware/auth');
 const AudioRecorder = require('../services/audioRecorder');
 const audioRecorder = AudioRecorder.getInstance();
+const os = require('os');
 
 // Middleware for parsing application/x-www-form-urlencoded
 router.use(express.urlencoded({ extended: true }));
@@ -254,10 +255,24 @@ router.post('/testConsole', (req, res) => {
     res.json({ success: true, message: 'Test message sent' });
 });
 
-// Home route - protected by authentication
+// Home route - protected by authentication (Needs its own IP fetch now)
 router.get('/', authMiddleware, async (req, res) => {
     try {
-        const html = await buildHomeHTML(scenes);
+        // Define IP getter locally or import if moved to utils
+        function getHomeLocalIpAddress() {
+            const interfaces = os.networkInterfaces();
+            for (const name of Object.keys(interfaces)) {
+                for (const net of interfaces[name]) {
+                    if (net.family === 'IPv4' && !net.internal) {
+                        return net.address;
+                    }
+                }
+            }
+            return 'localhost';
+        }
+        const ipAddress = getHomeLocalIpAddress();
+        const port = config.port || 3000;
+        const html = await buildHomeHTML(scenes, ipAddress, port);
         res.send(html);
     } catch (error) {
         console.error('Error rendering home page:', error);
@@ -306,12 +321,12 @@ router.post('/setVoiceBypass', express.json(), (req, res) => {
 });
 
 // --- NEW: Initialize a specific shot within a scene ---
-router.get('/initShot/:sceneDir/:shotName', (req, res) => {
+router.get('/initShot/:sceneDir/:shotName', async (req, res) => {
     const sceneDir = decodeURIComponent(req.params.sceneDir);
     const shotName = decodeURIComponent(req.params.shotName);
     try {
-        // Call the controller function (which should be synchronous for now or return status)
-        const result = initShot(sceneDir, shotName); // Assuming initShot exists in sceneController
+        // Call the controller function, NO LONGER PASSING REQ
+        const result = await initShot(sceneDir, shotName); // Remove req
         res.json({
             success: true,
             message: `Shot '${shotName}' in scene '${sceneDir}' initialized.`,

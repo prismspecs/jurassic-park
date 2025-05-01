@@ -13,6 +13,7 @@ const { Worker } = require('worker_threads');
 const { mapPanDegreesToValue, mapTiltDegreesToValue } = require('../utils/ptzMapper'); // Import mapping functions
 const AudioRecorder = require('../services/audioRecorder');
 const audioRecorder = AudioRecorder.getInstance();
+const os = require('os');
 
 // Encapsulated stage state
 const currentStageState = {
@@ -20,6 +21,21 @@ const currentStageState = {
     shotIdentifier: null,
     shotIndex: 0
 };
+
+// Helper function to get local IP (moved here)
+function getLocalIpAddress() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        for (const net of interfaces[name]) {
+            // Skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses
+            if (net.family === 'IPv4' && !net.internal) {
+                return net.address;
+            }
+        }
+    }
+    console.warn('[getLocalIpAddress] Could not find non-internal IPv4 address, falling back to localhost.');
+    return 'localhost'; // Fallback
+}
 
 /** Get the current scene - Minimal usage, consider removing if not used externally */
 function getCurrentScene() {
@@ -29,6 +45,13 @@ function getCurrentScene() {
 
 async function initShot(sceneDirectory, shotIdentifier) {
     broadcastConsole(`Attempting to initialize Scene: '${sceneDirectory}', Shot: '${shotIdentifier}'`, 'info');
+
+    // --- Generate baseUrl using Server's Detected IP ---
+    const serverIp = getLocalIpAddress();
+    const port = config.port || 3000;
+    const baseUrl = `http://${serverIp}:${port}`; // Use http protocol
+    console.log(`[sceneController][initShot] Using server's detected IP for QR code baseUrl: ${baseUrl}`);
+    // --- End baseUrl generation ---
 
     // Reset PTZ cameras to home position before starting the shot
     try {
@@ -116,13 +139,14 @@ async function initShot(sceneDirectory, shotIdentifier) {
     // We need to decide if actors are called per-scene or per-shot.
     // Assuming per-shot for now based on the refactor goal.
     setTimeout(() => {
-        callActorsForShot(scene, shotIndex);
-    }, config.waitTime / 2); // Maybe shorter wait time?
+        // Pass the generated baseUrl to callActorsForShot
+        callActorsForShot(scene, shotIndex, baseUrl);
+    }, config.waitTime / 2);
 
     return { scene: sceneDirectory, shot: shotIdentifier, shotIndex: shotIndex }; // Return status
 }
 
-async function callActorsForShot(scene, shotIndex) {
+async function callActorsForShot(scene, shotIndex, baseUrl) {
     if (!scene || !scene.shots || !scene.shots[shotIndex]) {
         broadcastConsole(`Cannot call actors: Invalid scene or shot index ${shotIndex}`, 'error');
         return;
@@ -150,8 +174,10 @@ async function callActorsForShot(scene, shotIndex) {
     // Get actors from callsheet service
     const actorsToCall = callsheetService.getActorsForScene(actorsNeeded);
 
-    // Use appUrl from config for the base URL
-    const baseUrl = config.appUrl || `http://localhost:${config.port || 3000}`; // Fallback just in case
+    // --- REMOVE baseUrl generation logic from here ---
+    // It is now passed as an argument
+    // console.log(`[sceneController][callActorsForShot] Using passed base URL for QR codes: ${baseUrl}`); // Optional log
+    // --- End REMOVAL ---
 
     const actorCallData = []; // Array to hold data for the consolidated message
 

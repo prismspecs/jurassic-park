@@ -89,7 +89,7 @@
                                 "time-out": 4
                             }
                         ],
-                        "props": "sunglasses",
+                        "props": "alan",
                         "capture-camera": [
                             {
                                 "in": 1,
@@ -217,153 +217,57 @@
                         "sequence": 2
                     }
                 ],
-                "camera": {
-                    "movements": [
-                        {
-                            "pan": 5,
-                            "tilt": 2,
-                            "zoom": 3,
-                            "height": 1.4,
-                            "time": 2
-                        },
-                        {
-                            "pan": -3,
-                            "tilt": 0,
-                            "zoom": 2,
-                            "height": 1.2,
-                            "time": 3
-                        }
-                    ]
-                },
+                "cameras": [
+                    {
+                        "name": "Camera_1",
+                        "description": "Front-facing main camera",
+                        "position": "F",
+                        "direction": "front",
+                        "movements": [
+                            {
+                                "pan": 0,
+                                "tilt": 0,
+                                "zoom": 0,
+                                "height": 1.4,
+                                "time": 0
+                            },
+                            {
+                                "pan": -30,
+                                "tilt": -10,
+                                "zoom": 100,
+                                "height": 1.2,
+                                "time": 3
+                            }
+                        ]
+                    },
+                    {
+                        "name": "Camera_2",
+                        "description": "Rear camera",
+                        "position": "B",
+                        "direction": "back",
+                        "movements": [
+                            {
+                                "pan": 0,
+                                "tilt": 0,
+                                "zoom": 0,
+                                "height": 1.4,
+                                "time": 0
+                            }
+                        ]
+                    }
+                ],
                 "characters": {
                     "alan": {
                         "full-name": "Dr. Alan Grant",
-                        "grid-position": "A2",
-                        "directions": [
-                            {
-                                "text": "*You sit in the car and look to Blue*",
-                                "time-in": 0,
-                                "time-out": 2
-                            },
-                            {
-                                "text": "*Something catches your attention at yellow*",
-                                "time-in": 2,
-                                "time-out": 3
-                            },
-                            {
-                                "text": "*You are getting more and more surprised*",
-                                "time-in": 3,
-                                "time-out": 9
-                            },
-                            {
-                                "text": "*You can’t believe it and take your head off*",
-                                "time-in": 9,
-                                "time-out": 11
-                            },
-                            {
-                                "text": "*You get up and stand in the car*",
-                                "time-in": 11,
-                                "time-out": 15
-                            },
-                            {
-                                "text": "*You are so surprised that you take your glasses off and just stun*",
-                                "time-in": 15,
-                                "time-out": 18
-                            },
-                            {
-                                "text": "*You reach next to you to touch Dr. Ellie Sattler’s head, put your hand on her head, and turn it towards yellow*",
-                                "time-in": 18,
-                                "time-out": 37
-                            },
-                            {
-                                "text": "*You jump off the car and start walking slowly, almost stumbling towards Middle Right, but keep looking at what happened at red and yellow*",
-                                "time-in": 37,
-                                "time-out": 52
-                            },
-                            {
-                                "text": "*You stop at Middle Right, point up in the air towards red/blue, and turn around to Dr. Sattler*",
-                                "time-in": 52,
-                                "time-out": 55
-                            },
-                            {
-                                "text": "_It’s… it’s a dinosaur._",
-                                "time-in": 55,
-                                "time-out": 57
-                            },
-                            {
-                                "text": "*You freeze*",
-                                "time-in": 57,
-                                "time-out": 66
-                            },
-                            {
-                                "text": "*You look up and hold your hands as protection against the sun in front of your eyes*",
-                                "time-in": 66,
-                                "time-out": 85
-                            },
-                            {
-                                "text": "*You stumble* _We could tear up the rule book on cold-bloodedness. It doesn't apply. They're wrong. This is a warm-blooded creature._",
-                                "time-in": 85,
-                                "time-out": 105
-                            },
-                            {
-                                "text": "*You put your arms in the air to greet the dinosaur in front of you but are surprised and stumble backwards when it comes closer*",
-                                "time-in": 105,
-                                "time-out": 121
-                            },
-                            {
-                                "text": "*You turn around to John Hammond* _How fast are they?_",
-                                "time-in": 121,
-                                "time-out": 132
-                            },
-                            {
-                                "text": "*You grab John Hammond’s arm and look at him, deeply confused and excited*",
-                                "time-in": 132,
-                                "time-out": 135
-                            },
-                            {
-                                "text": "_Say again._",
-                                "time-in": 135,
-                                "time-out": 138
-                            },
-                            {
-                                "text": "*You almost faint, lean over, and stumble in the direction of back right while looking at red/blue back until you take a seat on the ground*",
-                                "time-in": 138,
-                                "time-out": 152
-                            },
-                            {
-                                "text": "*You hear a dino roar and look up in the direction of red/blue back. You are in absolute confusion and awe. You almost cry a bit.*",
-                                "time-in": 152,
-                                "time-out": 175
-                            },
-                            {
-                                "text": "_They're moving in herds._",
-                                "time-in": 175,
-                                "time-out": 179
-                            },
-                            {
-                                "text": "_They do move in herds._",
-                                "time-in": 179,
-                                "time-out": 188
-                            },
-                            {
-                                "text": "_How did you do this?_",
-                                "time-in": 188,
-                                "time-out": null
-                            }
-                        ],
-                        "props": "sunglasses"
+                        "props": "alan"
                     },
                     "ellie": {
                         "full-name": "Dr. Ellie Sattler",
-                        "grid-position": "B3",
-                        "directions": [
-                            {
-                                "text": "*Puts hand on Alan’s shoulder*",
-                                "time-in": 114,
-                                "time-out": 116
-                            }
-                        ],
-                        "props": "none"
+                        "props": "ellie"
+                    },
+                    "hammond": {
+                        "full-name": "John Hammond",
+                        "props": "hammond"
                     }
                 }
             }

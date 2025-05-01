@@ -325,7 +325,8 @@ export class CameraManager {
     // console.log(`[Camera: ${camera.name}] Building PTZ options. Saved PTZ Device:`, camera.ptzDevice);
     // console.log(`[Camera: ${camera.name}] Available PTZ Devices:`, this.ptzDevices);
     this.ptzDevices.forEach(device => {
-      const value = device.id || device.path;
+      // Ensure we use the ID if it exists (even if 0), otherwise fallback to path
+      const value = device.id !== undefined ? device.id : device.path;
       const selected = value === camera.ptzDevice ? "selected" : "";
       // if (selected) {
       //   console.log(`[Camera: ${camera.name}] MATCH FOUND! Setting selected for PTZ device:`, device);

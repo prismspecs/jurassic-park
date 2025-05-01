@@ -8,7 +8,7 @@ const sessionService = require('../services/sessionService');
  * Returns the entire HTML for the main page as a string.
  * We dynamically insert "shots" into the shot cards.
  *******************************************************/
-function buildHomeHTML(scenes) {
+function buildHomeHTML(scenes, ipAddress, port) {
   const currentSessionId = sessionService.getCurrentSessionId();
   const existingSessions = sessionService.listExistingSessions();
 
@@ -18,7 +18,9 @@ function buildHomeHTML(scenes) {
       {
         scenes,
         currentSessionId,
-        existingSessions
+        existingSessions,
+        ipAddress,
+        port
       },
       (err, html) => {
         if (err) {

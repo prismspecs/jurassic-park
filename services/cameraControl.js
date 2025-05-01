@@ -260,6 +260,67 @@ class CameraControl {
                 if (zoom !== null) {
                     await setPTZControl('zoom_absolute', zoom);
                 }
+            } else if (this.platform === 'darwin') {
+                // Use uvc-util for macOS
+
+                const executeUVCCommand = (command) => {
+                    console.log(`[macOS PTZ] Executing: ${command}`);
+                    return new Promise((resolve, reject) => {
+                        exec(command, (error, stdout, stderr) => {
+                            if (error) {
+                                console.error(`[macOS PTZ Error] Command failed: ${command}`, error);
+                                console.error(`[macOS PTZ Error] stderr: ${stderr}`);
+                                reject(error);
+                            } else {
+                                console.log(`[macOS PTZ Success] stdout: ${stdout}`);
+                                resolve(stdout);
+                            }
+                        });
+                    });
+                };
+
+                const deviceIndex = device; // Assuming 'device' holds the numerical index for darwin
+                const cameraInstance = this.getCamera(cameraName); // Get the specific camera instance
+
+                if (!cameraInstance) {
+                    console.error(`[macOS PTZ Error] Could not find camera instance for ${cameraName} to get/set cached state.`);
+                    return; // Cannot proceed without the instance
+                }
+
+                // Determine values to send, using cache as fallback
+                const currentPan = cameraInstance.getCurrentPan();
+                const currentTilt = cameraInstance.getCurrentTilt();
+
+                const panToSend = pan !== null ? pan : currentPan;
+                const tiltToSend = tilt !== null ? tilt : currentTilt;
+
+                // Pan/Tilt command - always send both components
+                if (pan !== null || tilt !== null) { // Only send if at least one changed
+                    // Use -s and add quotes around the value, matching user's working CLI command
+                    const cmd = `${this.uvcUtilPath} -I ${deviceIndex} -s pan-tilt-abs="{${panToSend},${tiltToSend}}"`;
+                    try {
+                        await executeUVCCommand(cmd);
+                        // Update cache on success
+                        if (pan !== null) cameraInstance.setCurrentPan(panToSend);
+                        if (tilt !== null) cameraInstance.setCurrentTilt(tiltToSend);
+                    } catch (ptError) {
+                        console.error(`[macOS PTZ Error] Failed to set pan/tilt. Error: ${ptError.message}`);
+                        // Avoid updating cache if command failed
+                    }
+                }
+
+                // Separate Zoom command (assuming control name 'zoom-abs')
+                if (zoom !== null) {
+                    // Also use -s and add quotes for zoom value
+                    const cmd = `${this.uvcUtilPath} -I ${deviceIndex} -s zoom-abs="${zoom}"`; // Guessed control name
+                    try {
+                        await executeUVCCommand(cmd);
+                        // Note: Zoom caching not implemented yet
+                    } catch (zoomError) {
+                        console.error(`[macOS PTZ Error] Failed to set zoom. Error: ${zoomError.message}`);
+                    }
+                }
+
             }
         } catch (err) {
             console.error('Error setting PTZ:', err);

@@ -2,9 +2,21 @@
 
 ### Interface
 
++ Make all the content in the actor-cards bigger: Name as Character, profile pic, prop, and QR code.
+
++ Display the App's IP address/maybe just use it for the config.appUrl.
+
++ When I add a new Camera device, it should not reset the existing camera(s) preferences to defaults, or change them at all.
+
++ I have 2 identical cameras. They are both showing up with exactly the same names in the dropdown menus. It would be nice to have some sort of device ID to distinguish them listed in the dropdowns.
+
++ When Johannes tried to access my server from IP:3000/ it said it was not a safe connection. How can we deal with that?
+
 - When hovering over an element, press F to fullscreen that particular element. ??
 
 ### Functional
+
++ PTZ stopped working for MacOS
 
 - The ability to simply play a video on the main teleprompter
 

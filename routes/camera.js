@@ -55,6 +55,7 @@ router.get('/cameras', (req, res) => {
 
 // Add a new camera
 router.post('/add', async (req, res) => {
+    console.log(`[Route /add] Received request body:`, req.body); // Log the incoming request body
     const { name, previewDevice, recordingDevice, ptzDevice } = req.body;
     if (!name) {
         return res.status(400).json({ success: false, message: 'Camera name is required' });
@@ -151,6 +152,7 @@ router.post('/recording-device', (req, res) => {
 
 // Set PTZ device for a camera
 router.post('/ptz-device', (req, res) => {
+    console.log(`[Route /ptz-device] Received request body:`, req.body); // Log the incoming request body
     const { cameraName, deviceId } = req.body;
     if (!cameraName || !deviceId) {
         return res.status(400).json({ success: false, message: 'Camera name and device ID are required' });

@@ -7,6 +7,8 @@ class Camera {
         this.previewStream = null;
         this.previewElement = null;
         this.showSkeleton = false; // Add state for skeleton tracking
+        this.currentPan = 0; // Cache last known pan value
+        this.currentTilt = 0; // Cache last known tilt value
     }
 
     async startPreview(videoElement) {
@@ -95,6 +97,22 @@ class Camera {
     setShowSkeleton(show) {
         this.showSkeleton = !!show; // Ensure boolean
         console.log(`[Camera Instance ${this.name}] showSkeleton set to: ${this.showSkeleton}`);
+    }
+
+    setCurrentPan(pan) {
+        this.currentPan = pan;
+    }
+
+    getCurrentPan() {
+        return this.currentPan;
+    }
+
+    setCurrentTilt(tilt) {
+        this.currentTilt = tilt;
+    }
+
+    getCurrentTilt() {
+        return this.currentTilt;
     }
 }
 
