@@ -1,294 +1,262 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Director Control Panel</title>
-    <link rel="stylesheet" href="/views/styles/home.css" />
-    <link rel="icon" href="/favicon.ico" type="image/x-icon" />
 
-    <!-- TensorFlow.js Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.10.0/dist/tf-core.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.10.0/dist/tf-converter.min.js"></script>
-    <!-- Added Converter -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.10.0/dist/tf-backend-webgl.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@0.0.6/dist/pose-detection.min.js"></script>
-  </head>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Director Control Panel</title>
+  <link rel="stylesheet" href="/views/styles/home.css" />
+  <link rel="icon" href="/favicon.ico" type="image/x-icon" />
 
-  <body>
-    <!-- Display Server IP Address -->
-    <div class="server-address">
-      Server running at: <strong>http://<%= ipAddress %>:<%= port %>/</strong>
-    <div class="page-layout">
-      <!-- NEW Left Sidebar -->
-      <div class="left-sidebar" id="left-sidebar-panel">
-        <div class="panel-header">
-          <button
-            class="fullscreen-toggle-btn"
-            data-target="left-sidebar-panel"
-          >
-            □
-          </button>
-        </div>
-        <div class="controls-section card">
-          <!-- NEW Session Controls -->
-          <div class="session-controls">
-            <h2>Session Management</h2>
+  <!-- TensorFlow.js Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.10.0/dist/tf-core.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.10.0/dist/tf-converter.min.js"></script>
+  <!-- Added Converter -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.10.0/dist/tf-backend-webgl.min.js"></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@0.0.6/dist/pose-detection.min.js"></script>
+</head>
 
-            <!-- Display Current Session -->
-            <div class="current-session">
-              <strong>Current Session:</strong>
-              <span id="current-session-id">Loading...</span>
-              <span
-                id="no-session-warning"
-                style="color: orange; display: none"
-              >
-                (No session selected)</span
-              >
-            </div>
-
-            <!-- Select Existing Session -->
-            <div class="session-select">
-              <label for="session-list">Select Existing Session:</label>
-              <select id="session-list">
-                <option value="">Loading sessions...</option>
-              </select>
-              <button id="select-session-btn">Load Session</button>
-            </div>
-
-            <!-- Create New Session -->
-            <div class="session-create">
-              <label for="new-session-name">Create New Session:</label>
-              <input
-                type="text"
-                id="new-session-name"
-                placeholder="Enter session name"
-              />
-              <button id="create-session-btn">Create & Load</button>
-            </div>
-
-            <div
-              id="session-error"
-              class="error-message"
-              style="display: none; color: red; margin-top: 10px"
-            ></div>
-          </div>
-          <!-- End NEW Session Controls -->
-
-          <!-- Add Secret Panel Toggle Button -->
-          <button id="secret-panel-toggle-btn" class="cryptic-btn">
-            S3CR37 P4N31
-          </button>
-        </div>
-
-        <!-- MOVED Teleprompter Preview Here -->
-        <div class="controls-section card">
-          <h2>Teleprompter Preview</h2>
-          <div class="teleprompter-container">
-            <iframe id="teleprompter-frame" src="/teleprompter"></iframe>
-          </div>
-        </div>
-        <!-- End Teleprompter Preview -->
-
-        <!-- MOVED Status and Controls HERE -->
-        <div id="status"></div>
-
-        <div class="controls-section card">
-          <h2>Controls</h2>
-          <div id="buttons">
-            <div class="recording-options">
-              <label for="recording-pipeline">Recording Pipeline:</label>
-              <select id="recording-pipeline" class="form-control">
-                <option value="ffmpeg" selected>FFmpeg (Default)</option>
-                <option value="gstreamer">GStreamer</option>
-              </select>
-            </div>
-            <div class="recording-options">
-              <label for="recording-resolution">Recording Resolution:</label>
-              <select id="recording-resolution" class="form-control">
-                <option value="1920x1080" selected>1920x1080 (1080p)</option>
-                <option value="3840x2160">3840x2160 (4K)</option>
-                <option value="1280x720">1280x720 (720p)</option>
-                <option value="640x480">640x480 (VGA)</option>
-              </select>
-            </div>
-            <button
-              id="actionBtn"
-              style="
-                display: none;
-                background-color: #e8f5e9;
-                border-color: #4caf50;
-                color: #2e7d32;
-              "
-            >
-              Action!
-            </button>
-            <button
-              id="actorsReadyBtn"
-              style="
-                display: none;
-                background-color: #e8f5e9;
-                border-color: #4caf50;
-                color: #2e7d32;
-              "
-            >
-              Actors are Ready
-            </button>
-            <button id="testRecordBtn">Test Record Video & Process Pose</button>
-            <button id="voiceBypassBtn">Enable Voice Bypass</button>
-            <button id="testConsoleBtn">Test Console</button>
-
-            <div class="actor-loading">
-              <label for="actorFiles">Load Actors:</label>
-              <input
-                type="file"
-                id="actorFiles"
-                multiple
-                accept=".json, .jpg, .jpeg, .png"
-              />
-              <button id="loadActorsBtn">Load Selected</button>
-              <p id="loadActorsStatus"></p>
-            </div>
-
-            <!-- Collapsible Teleprompter Controls -->
-            <div class="collapsible-section" id="teleprompter-controls-section">
-              <h3 class="collapsible-header">Teleprompter Controls &#9662;</h3>
-              <div class="teleprompter-button-group collapsible-content">
-                <button id="openTeleprompterBtn">Open Teleprompter</button>
-                <button id="openAlanTeleprompterBtn">
-                  Open Alan's Teleprompter
-                </button>
-                <button id="openEllieTeleprompterBtn">
-                  Open Ellie's Teleprompter
-                </button>
-                <button id="testTeleprompterBtn">Test Teleprompter</button>
-                <button id="testTeleprompterVideoBtn">
-                  Test Teleprompter Video
-                </button>
-                <button id="clearTeleprompterBtn">Clear Teleprompter</button>
-                <button id="pauseTeleprompterBtn" class="warning-btn">
-                  ⏸️ Pause All Teleprompters
-                </button>
-                <button id="playTeleprompterBtn" class="success-btn">
-                  ▶️ Resume All Teleprompters
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <!-- End MOVED Controls -->
-
-        <!-- Secret Panel (Initially Hidden) -->
-        <div id="secret-panel" class="card">
-          <h2>S3CR37 C0NTR0LS</h2>
-          <div class="secret-controls">
-            <label for="hideHeadersToggle">Hide Headers:</label>
-            <input type="checkbox" id="hideHeadersToggle" />
-          </div>
-          <div class="secret-controls">
-            <button id="invertColorsBtn" class="cryptic-btn">
-              Invert Colors
-            </button>
-          </div>
-        </div>
-        <!-- End Secret Panel -->
+<body>
+  <div class="page-layout">
+    <!-- NEW Left Sidebar -->
+    <div class="left-sidebar" id="left-sidebar-panel">
+      <div class="panel-header">
+        <button class="fullscreen-toggle-btn" data-target="left-sidebar-panel">
+          □
+        </button>
       </div>
-      <!-- End Left Sidebar -->
+      <div class="controls-section card">
+        <!-- Display Server IP Address -->
+        <div class="server-address">
+          Server running at: <strong>http://<%= ipAddress %>:<%= port %>/</strong>
+        </div>
 
-      <!-- ADD Resizer Handle -->
-      <div class="resizer-handle" id="resizer-left-main"></div>
+        <!-- NEW Session Controls -->
+        <div class="session-controls">
+          <h2>Session Management</h2>
 
-      <!-- Main Content Area -->
-      <div class="main-content" id="main-content-panel">
-        <div class="panel-header">
-          <button
-            class="fullscreen-toggle-btn"
-            data-target="main-content-panel"
-          >
-            □
+          <!-- Display Current Session -->
+          <div class="current-session">
+            <strong>Current Session:</strong>
+            <span id="current-session-id">Loading...</span>
+            <span id="no-session-warning" style="color: orange; display: none">
+              (No session selected)</span>
+          </div>
+
+          <!-- Select Existing Session -->
+          <div class="session-select">
+            <label for="session-list">Select Existing Session:</label>
+            <select id="session-list">
+              <option value="">Loading sessions...</option>
+            </select>
+            <button id="select-session-btn">Load Session</button>
+          </div>
+
+          <!-- Create New Session -->
+          <div class="session-create">
+            <label for="new-session-name">Create New Session:</label>
+            <input type="text" id="new-session-name" placeholder="Enter session name" />
+            <button id="create-session-btn">Create & Load</button>
+          </div>
+
+          <div id="session-error" class="error-message" style="display: none; color: red; margin-top: 10px"></div>
+        </div>
+        <!-- End NEW Session Controls -->
+
+        <!-- Add Secret Panel Toggle Button -->
+        <button id="secret-panel-toggle-btn" class="cryptic-btn">
+          S3CR37 P4N31
+        </button>
+      </div>
+
+      <!-- MOVED Teleprompter Preview Here -->
+      <div class="controls-section card">
+        <h2>Teleprompter Preview</h2>
+        <div class="teleprompter-container">
+          <iframe id="teleprompter-frame" src="/teleprompter"></iframe>
+        </div>
+      </div>
+      <!-- End Teleprompter Preview -->
+
+      <!-- MOVED Status and Controls HERE -->
+      <div id="status"></div>
+
+      <div class="controls-section card">
+        <h2>Controls</h2>
+        <div id="buttons">
+          <div class="recording-options">
+            <label for="recording-pipeline">Recording Pipeline:</label>
+            <select id="recording-pipeline" class="form-control">
+              <option value="ffmpeg" selected>FFmpeg (Default)</option>
+              <option value="gstreamer">GStreamer</option>
+            </select>
+          </div>
+          <div class="recording-options">
+            <label for="recording-resolution">Recording Resolution:</label>
+            <select id="recording-resolution" class="form-control">
+              <option value="1920x1080" selected>1920x1080 (1080p)</option>
+              <option value="3840x2160">3840x2160 (4K)</option>
+              <option value="1280x720">1280x720 (720p)</option>
+              <option value="640x480">640x480 (VGA)</option>
+            </select>
+          </div>
+          <button id="actionBtn" style="
+                display: none;
+                background-color: #e8f5e9;
+                border-color: #4caf50;
+                color: #2e7d32;
+              ">
+            Action!
+          </button>
+          <button id="actorsReadyBtn" style="
+                display: none;
+                background-color: #e8f5e9;
+                border-color: #4caf50;
+                color: #2e7d32;
+              ">
+            Actors are Ready
+          </button>
+          <button id="testRecordBtn">Test Record Video & Process Pose</button>
+          <button id="voiceBypassBtn">Enable Voice Bypass</button>
+          <button id="testConsoleBtn">Test Console</button>
+
+          <div class="actor-loading">
+            <label for="actorFiles">Load Actors:</label>
+            <input type="file" id="actorFiles" multiple accept=".json, .jpg, .jpeg, .png" />
+            <button id="loadActorsBtn">Load Selected</button>
+            <p id="loadActorsStatus"></p>
+          </div>
+
+          <!-- Collapsible Teleprompter Controls -->
+          <div class="collapsible-section" id="teleprompter-controls-section">
+            <h3 class="collapsible-header">Teleprompter Controls &#9662;</h3>
+            <div class="teleprompter-button-group collapsible-content">
+              <button id="openTeleprompterBtn">Open Teleprompter</button>
+              <button id="openAlanTeleprompterBtn">
+                Open Alan's Teleprompter
+              </button>
+              <button id="openEllieTeleprompterBtn">
+                Open Ellie's Teleprompter
+              </button>
+              <button id="testTeleprompterBtn">Test Teleprompter</button>
+              <button id="testTeleprompterVideoBtn">
+                Test Teleprompter Video
+              </button>
+              <button id="clearTeleprompterBtn">Clear Teleprompter</button>
+              <button id="pauseTeleprompterBtn" class="warning-btn">
+                ⏸️ Pause All Teleprompters
+              </button>
+              <button id="playTeleprompterBtn" class="success-btn">
+                ▶️ Resume All Teleprompters
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- End MOVED Controls -->
+
+      <!-- Secret Panel (Initially Hidden) -->
+      <div id="secret-panel" class="card">
+        <h2>S3CR37 C0NTR0LS</h2>
+        <div class="secret-controls">
+          <label for="hideHeadersToggle">Hide Headers:</label>
+          <input type="checkbox" id="hideHeadersToggle" />
+        </div>
+        <div class="secret-controls">
+          <button id="invertColorsBtn" class="cryptic-btn">
+            Invert Colors
           </button>
         </div>
-        <h1>AI Director Shots</h1>
-        <div class="shot-container">
-          <% scenes.forEach((scene, sceneIdx)=> { if (scene.shots &&
+      </div>
+      <!-- End Secret Panel -->
+    </div>
+    <!-- End Left Sidebar -->
+
+    <!-- ADD Resizer Handle -->
+    <div class="resizer-handle" id="resizer-left-main"></div>
+
+    <!-- Main Content Area -->
+    <div class="main-content" id="main-content-panel">
+      <div class="panel-header">
+        <button class="fullscreen-toggle-btn" data-target="main-content-panel">
+          □
+        </button>
+      </div>
+      <h1>AI Director Shots</h1>
+      <div class="shot-container">
+        <% scenes.forEach((scene, sceneIdx)=> { if (scene.shots &&
           scene.shots.length > 0) { scene.shots.forEach((shot, shotIdx) => {
           const shotIdentifier = shot.name || `shot_${shotIdx + 1}`; const
           thumbnailPath =
           `./database/scenes/${encodeURIComponent(scene.directory)}/${encodeURIComponent(shotIdentifier)}/thumbnail.jpg`;
           %>
-          <div
-            class="shot-card"
-            data-scene-dir="<%= encodeURIComponent(scene.directory) %>"
-            data-shot-id="<%= encodeURIComponent(shotIdentifier) %>"
-          >
+          <div class="shot-card" data-scene-dir="<%= encodeURIComponent(scene.directory) %>"
+            data-shot-id="<%= encodeURIComponent(shotIdentifier) %>">
             <div class="shot-title">
               Scene #<%= sceneIdx + 1 %>: <%= scene.description %><br />
-              Shot #<%= shotIdx + 1 %>: <%= shot.description || shotIdentifier
-              %>
+                  Shot #<%= shotIdx + 1 %>: <%= shot.description || shotIdentifier %>
             </div>
-            <img
-              src="<%= thumbnailPath %>"
+            <img src="<%= thumbnailPath %>"
               alt="Shot thumbnail for <%= scene.description %> - <%= shot.description || shotIdentifier %>"
-              onerror="this.style.display='none'"
-            />
+              onerror="this.style.display='none'" />
           </div>
           <% }); } else { %>
-          <p>Scene '<%= scene.description %>' has no defined shots.</p>
-          <% } }); %>
-        </div>
-
-        <!-- MOVED Console Output First -->
-        <div class="controls-section card">
-          <h2>Console Output</h2>
-          <div id="console-output"></div>
-        </div>
-        <!-- End Console Output -->
-
-        <!-- MOVED Video Display Below Console -->
-        <div id="videos"></div>
-        <!-- End Video Display -->
+            <p>Scene '<%= scene.description %>' has no defined shots.</p>
+            <% } }); %>
       </div>
-      <!-- End Main Content Area -->
 
-      <!-- ADD Resizer Handle -->
-      <div class="resizer-handle" id="resizer-main-right"></div>
-
-      <!-- Right Sidebar -->
-      <div class="sidebar" id="right-sidebar-panel">
-        <div class="panel-header">
-          <button
-            class="fullscreen-toggle-btn"
-            data-target="right-sidebar-panel"
-          >
-            □
-          </button>
-        </div>
-        <!-- REVISED AUDIO DEVICE SECTION -->
-        <div class="controls-section card">
-          <h2>Audio Recording Devices (Server-Side)</h2>
-          <p>
-            Select which server-connected microphones should record during
-            'Action!'
-          </p>
-          <div id="audioDeviceControls">
-            <!-- Audio device cards will be populated here -->
-          </div>
-          <button id="addAudioDeviceBtn">+ Add Recording Device</button>
-        </div>
-        <!-- END REVISED Audio Device Controls -->
-
-        <div class="controls-section card">
-          <h2>Camera Controls</h2>
-          <div id="cameraControls">
-            <!-- Camera controls will be populated by CameraManager -->
-          </div>
-          <button id="addCameraBtn">Add Camera</button>
-        </div>
+      <!-- MOVED Console Output First -->
+      <div class="controls-section card">
+        <h2>Console Output</h2>
+        <div id="console-output"></div>
       </div>
-      <!-- End Right Sidebar -->
+      <!-- End Console Output -->
+
+      <!-- MOVED Video Display Below Console -->
+      <div id="videos"></div>
+      <!-- End Video Display -->
     </div>
-    <!-- End Page Layout -->
+    <!-- End Main Content Area -->
 
-    <script src="/js/home.js" type="module" defer></script>
-  </body>
+    <!-- ADD Resizer Handle -->
+    <div class="resizer-handle" id="resizer-main-right"></div>
+
+    <!-- Right Sidebar -->
+    <div class="sidebar" id="right-sidebar-panel">
+      <div class="panel-header">
+        <button class="fullscreen-toggle-btn" data-target="right-sidebar-panel">
+          □
+        </button>
+      </div>
+      <!-- REVISED AUDIO DEVICE SECTION -->
+      <div class="controls-section card">
+        <h2>Audio Recording Devices (Server-Side)</h2>
+        <p>
+          Select which server-connected microphones should record during
+          'Action!'
+        </p>
+        <div id="audioDeviceControls">
+          <!-- Audio device cards will be populated here -->
+        </div>
+        <button id="addAudioDeviceBtn">+ Add Recording Device</button>
+      </div>
+      <!-- END REVISED Audio Device Controls -->
+
+      <div class="controls-section card">
+        <h2>Camera Controls</h2>
+        <div id="cameraControls">
+          <!-- Camera controls will be populated by CameraManager -->
+        </div>
+        <button id="addCameraBtn">Add Camera</button>
+      </div>
+    </div>
+    <!-- End Right Sidebar -->
+  </div>
+  <!-- End Page Layout -->
+
+  <script src="/js/home.js" type="module" defer></script>
+</body>
+
 </html>

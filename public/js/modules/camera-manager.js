@@ -163,23 +163,78 @@ export class CameraManager {
 
     try {
       logToConsole(`Adding new camera: ${name}...`, "info");
-      const response = await fetch("/camera/add", {
+      // Step 1: Send POST request to add the camera on the server
+      const addResponse = await fetch("/camera/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
-          previewDevice: defaults.previewDevice, // Use the determined path/ID
+          previewDevice: defaults.previewDevice,
           recordingDevice: defaults.recordingDevice,
           ptzDevice: defaults.ptzDevice,
         }),
       });
 
-      if (response.ok) {
-        logToConsole(`Camera ${name} added successfully`, "success");
-        await this.initialize(); // Refresh the camera list
+      if (addResponse.ok) {
+        logToConsole(`Camera ${name} added on server. Fetching updated list...`, "success");
+
+        // --- MODIFICATION START ---
+        // Step 2: Fetch the complete updated list of cameras
+        const camerasResponse = await fetch("/camera/cameras");
+        if (!camerasResponse.ok) {
+          throw new Error(`Failed to fetch updated camera list: ${camerasResponse.status}`);
+        }
+        const updatedCameras = await camerasResponse.json();
+
+        // Step 3: Identify the newly added camera
+        const existingNames = new Set(this.cameras.map(cam => cam.name));
+        const newCamera = updatedCameras.find(cam => !existingNames.has(cam.name));
+
+        if (!newCamera) {
+          logToConsole("Could not identify the newly added camera in the updated list.", "error");
+          // Optional: Fallback to full re-render?
+          // await this.initialize(); // Or handle error differently
+          return;
+        }
+        logToConsole(`Identified new camera: ${newCamera.name}`, "info");
+
+        // Get the container
+        const container = document.getElementById("cameraControls");
+        if (!container) {
+          logToConsole("Error: Camera controls container missing from DOM.", "error");
+          return;
+        }
+
+        // Clear "No cameras" message if necessary
+        if (this.cameras.length === 0 && container.querySelector('p')) {
+          container.innerHTML = '';
+        }
+
+        // Step 4 & 5: Create and append the element for ONLY the new camera
+        newCamera.showSkeleton = false; // Initialize client-side state for new camera
+        const cameraElement = this.createCameraElement(newCamera);
+        container.appendChild(cameraElement);
+        this.cameraElements.set(newCamera.name, cameraElement); // Add to map
+
+        // Render PTZ controls for the new camera if needed
+        if (newCamera.ptzDevice) {
+          this.renderPTZControlsForCamera(newCamera.name, newCamera.ptzDevice);
+        }
+
+        // Step 6: Update the internal list to match the server state
+        this.cameras = updatedCameras.map(cam => ({
+          ...cam, // Keep server data
+          // Preserve existing client-side state (like showSkeleton) if camera already existed
+          showSkeleton: this.cameras.find(c => c.name === cam.name)?.showSkeleton ?? false
+        }));
+
+        logToConsole(`Camera ${newCamera.name} UI added incrementally.`, "success");
+        // --- MODIFICATION END ---
+
       } else {
-        const error = await response.json();
-        throw new Error(error.message || `HTTP error ${response.status}`);
+        // Handle error from the initial POST request
+        const error = await addResponse.json();
+        throw new Error(error.message || `HTTP error ${addResponse.status}`);
       }
     } catch (err) {
       logToConsole(`Error adding camera: ${err.message}`, "error");
