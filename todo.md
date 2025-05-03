@@ -10,6 +10,8 @@
 
 ### Functional
 
++ I have created a module in modules/dinosaur-game. It takes webcam input, does some processing and analysis, then outputs a new video. Right now that is working on its own, as in I can host a live server from that module directory via npm start and see the result in my browser. What I want to do with it ultimately is to use dinosaur-game as a module. If I start a shot which is of type "dinosaur" (in scenes.json) then the webcam should send video/frames to that module, and then it should receive back video/frames. For now it should use Camera 1 preview device as the input, and it should output/show the video in the center column.
+
 - 3,2,1 count down before recording, after Action (this will be a video played on all teleprompters)
 
 - The third time the scene is run, the audience hums along
