@@ -1,0 +1,22 @@
+{
+    "scoreThreshold": 0.1,
+    "lineWidth": 5,
+    "lineColor": "#FF0000",
+    "keypointSize": 5,
+    "keypointColor": "#00FF00",
+    "silhouetteColor": "#FFFFFF",
+    "silhouetteThickness": 50,
+    "silhouetteOpacity": 1.0,
+    "silhouettePixelation": 16,
+    "silhouetteHeadSize": 1.0,
+    "maskOpacity": 1.0,
+    "showWebcam": false,
+    "showMaskOverlay": true,
+    "showSilhouette": true,
+    "showSkeleton": false,
+    "showDifference": true,
+    "selectedCamera": "",
+    "selectedResolution": "1920x1080",
+    "processResolution": "640x480",
+    "flipWebcam": true
+}

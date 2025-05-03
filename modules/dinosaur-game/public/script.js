@@ -22,42 +22,16 @@ let maskImageData = null;
 let poseDetector = null;
 let animationFrameId = null;
 let currentStream = null;
+let defaultConfig = {}; // To store loaded config
 
 // Configuration (adjust as needed)
 let videoWidth = 640;
 let videoHeight = 480;
 let displayWidth = 1920;  // Output/display resolution width
 let displayHeight = 1080; // Output/display resolution height
-const DEFAULT_SETTINGS = {
-    scoreThreshold: 0.1,
-    // Skeleton settings
-    lineWidth: 5,
-    lineColor: '#FF0000',
-    keypointSize: 5,
-    keypointColor: '#00FF00',
-    // Silhouette settings
-    silhouetteColor: '#FFFFFF',
-    silhouetteThickness: 50,
-    silhouetteOpacity: 1.0,
-    silhouettePixelation: 16, // Default to chunky pixelation (16x)
-    silhouetteHeadSize: 1.0, // Head size multiplier (1.0 = normal)
-    // Mask settings
-    maskOpacity: 1.0, // Default mask overlay opacity (100%)
-    // Layer visibility
-    showWebcam: false,
-    showMaskOverlay: true,
-    showSilhouette: true,
-    showSkeleton: false,
-    showDifference: true,
-    // Camera settings
-    selectedCamera: '', // Will be populated with default camera
-    selectedResolution: '1920x1080', // Default resolution
-    processResolution: '640x480',    // Default processing resolution for CV
-    flipWebcam: true // Flip webcam horizontally by default
-};
 
 // Current settings (will be controlled by UI)
-let settings = { ...DEFAULT_SETTINGS };
+let settings = {}; // Initialize as empty, will be populated from config
 
 // Define connections between keypoints for drawing lines (using COCO keypoint indices)
 const POSE_CONNECTIONS = [
@@ -165,56 +139,6 @@ function checkVideoDimensions() {
 }
 
 /**
- * Enumerates available video input devices and populates the camera selection dropdown.
- */
-async function enumerateVideoDevices() {
-    try {
-        // Check if mediaDevices API is available
-        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-            console.error('MediaDevices API not supported in this browser.');
-            cameraSelect.innerHTML = '<option value="">Camera selection not supported</option>';
-            return [];
-        }
-
-        // Get the list of all media devices
-        const devices = await navigator.mediaDevices.enumerateDevices();
-
-        // Filter for video input devices (cameras)
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
-
-        // Clear the select element
-        cameraSelect.innerHTML = '';
-
-        // Add option for each video device
-        if (videoDevices.length === 0) {
-            cameraSelect.innerHTML = '<option value="">No cameras detected</option>';
-        } else {
-            videoDevices.forEach((device, index) => {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-
-                // Use device label if available, otherwise use generic name with index
-                option.text = device.label || `Camera ${index + 1}`;
-
-                cameraSelect.appendChild(option);
-            });
-
-            // Set the first camera as default if none is set
-            if (!settings.selectedCamera && videoDevices.length > 0) {
-                settings.selectedCamera = videoDevices[0].deviceId;
-                cameraSelect.value = settings.selectedCamera;
-            }
-        }
-
-        return videoDevices;
-    } catch (error) {
-        console.error('Error enumerating video devices:', error);
-        cameraSelect.innerHTML = '<option value="">Error loading cameras</option>';
-        return [];
-    }
-}
-
-/**
  * Parses a resolution string (e.g., "640x480") and returns width and height.
  */
 function parseResolution(resolutionStr) {
@@ -233,10 +157,10 @@ async function setupWebcam() {
 
     return new Promise((resolve, reject) => {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            // Parse the selected resolution
+            // Parse the selected resolution from config
             const { width, height } = parseResolution(settings.selectedResolution);
 
-            // Build constraints based on settings
+            // Build constraints based on settings from config
             const constraints = {
                 video: {
                     width: { ideal: width },
@@ -244,9 +168,13 @@ async function setupWebcam() {
                 }
             };
 
-            // Add device ID if one is selected
+            // Add device ID if one is specified in the config
             if (settings.selectedCamera) {
                 constraints.video.deviceId = { exact: settings.selectedCamera };
+            } else {
+                // If no camera is specified in config, log a warning
+                console.warn("No 'selectedCamera' specified in config.json. Attempting default camera.");
+                // Let the browser choose the default camera by not specifying deviceId
             }
 
             navigator.mediaDevices.getUserMedia(constraints)
@@ -948,40 +876,14 @@ let currentPose = null;
  * Updates UI controls to match current settings.
  */
 function updateControlsUI() {
-    // Update color pickers
-    document.getElementById('line-color').value = settings.lineColor;
-    document.getElementById('keypoint-color').value = settings.keypointColor;
-    document.getElementById('silhouette-color').value = settings.silhouetteColor;
-
-    // Update range inputs
-    document.getElementById('line-width').value = settings.lineWidth;
-    document.getElementById('line-width-value').textContent = settings.lineWidth;
-
-    document.getElementById('keypoint-size').value = settings.keypointSize;
-    document.getElementById('keypoint-size-value').textContent = settings.keypointSize;
-
-    document.getElementById('silhouette-thickness').value = settings.silhouetteThickness;
-    document.getElementById('silhouette-thickness-value').textContent = settings.silhouetteThickness;
-
-    document.getElementById('silhouette-opacity').value = Math.round(settings.silhouetteOpacity * 100);
-    document.getElementById('silhouette-opacity-value').textContent = `${Math.round(settings.silhouetteOpacity * 100)}%`;
-
-    document.getElementById('silhouette-pixelation').value = settings.silhouettePixelation;
-    document.getElementById('silhouette-pixelation-value').textContent = `${settings.silhouettePixelation}x`;
-
-    document.getElementById('silhouette-head-size').value = settings.silhouetteHeadSize;
-    document.getElementById('silhouette-head-size-value').textContent = `${settings.silhouetteHeadSize.toFixed(1)}x`;
-
-    document.getElementById('mask-opacity').value = Math.round(settings.maskOpacity * 100);
-    document.getElementById('mask-opacity-value').textContent = `${Math.round(settings.maskOpacity * 100)}%`;
-
-    // Update checkboxes
-    document.getElementById('show-webcam').checked = settings.showWebcam;
-    document.getElementById('show-mask-overlay').checked = settings.showMaskOverlay;
-    document.getElementById('show-silhouette').checked = settings.showSilhouette;
-    document.getElementById('show-skeleton').checked = settings.showSkeleton;
-    document.getElementById('show-difference').checked = settings.showDifference;
-    document.getElementById('flip-webcam').checked = settings.flipWebcam; // Update flip checkbox
+    // Keep updates for controls that still exist (if any)
+    // Example: Update flip checkbox if it remains
+    // Ensure element exists before accessing .checked
+    const flipWebcamCheckbox = document.getElementById('flip-webcam');
+    if (flipWebcamCheckbox) {
+        flipWebcamCheckbox.checked = settings.flipWebcam;
+    }
+    // Update camera/resolution selects if needed (though typically done on load/apply)
 }
 
 /**
@@ -1069,7 +971,8 @@ function setupControlListeners() {
         fullscreenButton.addEventListener('click', toggleFullscreen);
     }
     
-    // Camera controls
+    // REMOVED: Camera controls listeners
+    /*
     applyCameraButton.addEventListener('click', () => {
         applyCameraSettings();
     });
@@ -1079,8 +982,10 @@ function setupControlListeners() {
         // Just store the value, it will be applied when the Apply button is clicked
         console.log(`Process resolution selection changed to: ${e.target.value}`);
     });
+    */
 
-    // Layer visibility toggles
+    // Layer visibility toggles - REMOVED
+    /*
     document.getElementById('show-webcam').addEventListener('change', (e) => {
         settings.showWebcam = e.target.checked;
     });
@@ -1106,20 +1011,29 @@ function setupControlListeners() {
         // Update canvas visibility
         differenceCanvas.style.display = e.target.checked ? 'block' : 'none';
     });
+    */
 
-    // Flip webcam toggle
-    document.getElementById('flip-webcam').addEventListener('change', (e) => {
-        settings.flipWebcam = e.target.checked;
-        // No immediate redraw needed, loop will handle it
-    });
+    // Flip webcam toggle - REMOVED as element is gone
+    /*
+    const flipWebcamCheckbox = document.getElementById('flip-webcam');
+    if (flipWebcamCheckbox) {
+        flipWebcamCheckbox.addEventListener('change', (e) => {
+            settings.flipWebcam = e.target.checked;
+            // No immediate redraw needed, loop will handle it
+        });
+    }
+    */
 
-    // Mask opacity control
+    // Mask opacity control - REMOVED
+    /*
     document.getElementById('mask-opacity').addEventListener('input', (e) => {
         settings.maskOpacity = parseInt(e.target.value) / 100;
         document.getElementById('mask-opacity-value').textContent = `${e.target.value}%`;
     });
+    */
 
-    // Skeleton style controls
+    // Skeleton style controls - REMOVED
+    /*
     document.getElementById('line-color').addEventListener('input', (e) => {
         settings.lineColor = e.target.value;
     });
@@ -1137,8 +1051,10 @@ function setupControlListeners() {
         settings.keypointSize = parseInt(e.target.value);
         document.getElementById('keypoint-size-value').textContent = settings.keypointSize;
     });
+    */
 
-    // Silhouette style controls
+    // Silhouette style controls - REMOVED
+    /*
     document.getElementById('silhouette-color').addEventListener('input', (e) => {
         settings.silhouetteColor = e.target.value;
     });
@@ -1163,16 +1079,19 @@ function setupControlListeners() {
         settings.silhouetteHeadSize = parseFloat(e.target.value);
         document.getElementById('silhouette-head-size-value').textContent = `${settings.silhouetteHeadSize.toFixed(1)}x`;
     });
+    */
 
-    // Reset button
+    // Reset button - REMOVED
+    /*
     document.getElementById('reset-controls').addEventListener('click', () => {
-        settings = { ...DEFAULT_SETTINGS };
+        settings = { ...defaultConfig }; // Reset to the loaded default config
         updateControlsUI();
         // Update canvas visibility for all layers
         silhouetteCanvas.style.display = settings.showSilhouette ? 'block' : 'none';
         skeletonCanvas.style.display = settings.showSkeleton ? 'block' : 'none';
         differenceCanvas.style.display = settings.showDifference ? 'block' : 'none';
     });
+    */
 }
 
 /**
@@ -1326,13 +1245,17 @@ async function main() {
             throw new Error('TensorFlow.js is not loaded. Check script includes in HTML.');
         }
 
+        // Load configuration first
+        loadingElement.textContent = 'Loading configuration...';
+        const configLoaded = await loadConfig();
+        if (!configLoaded) {
+            // Stop initialization if config fails to load
+            return;
+        }
+
         // Setup control panel
         setupControlListeners();
         updateControlsUI();
-
-        // Enumerate available cameras
-        loadingElement.textContent = 'Detecting cameras...';
-        const videoDevices = await enumerateVideoDevices();
 
         // Initialize TensorFlow.js and load pose detector
         loadingElement.textContent = 'Initializing TensorFlow.js...';
@@ -1346,15 +1269,16 @@ async function main() {
         await waitForMaskVideoReady(); // Add this new helper function
         console.log('Mask video ready.');
 
-        // Setup webcam with current settings
-        loadingElement.textContent = 'Accessing webcam...';
+        // Setup webcam with current settings (now loaded from config)
+        loadingElement.textContent = 'Accessing webcam using config settings...';
         await setupWebcam();
 
-        // Set process resolution dropdown to 640x480 default
-        processResolutionSelect.value = '640x480';
-        settings.processResolution = '640x480';
+        // REMOVED: UI dropdown setup logic
+        /*
+        // Set process resolution dropdown from config
+        processResolutionSelect.value = settings.processResolution;
         
-        // Set resolution dropdown to match actual video dimensions
+        // Set resolution dropdown to match actual video dimensions or config default
         const actualResolution = `${videoElement.videoWidth}x${videoElement.videoHeight}`;
         const resolutionExists = Array.from(resolutionSelect.options).some(option => option.value === actualResolution);
         if (!resolutionExists) {
@@ -1362,11 +1286,38 @@ async function main() {
             option.value = actualResolution;
             option.text = `${actualResolution} (Current)`;
             resolutionSelect.add(option, 0);
+            // Use actual resolution if it's different from config and wasn't listed
+            resolutionSelect.value = actualResolution;
+            settings.selectedResolution = actualResolution;
+        } else {
+            // If actual resolution exists, use it; otherwise, use config value
+            resolutionSelect.value = actualResolution;
+            if (resolutionSelect.value !== actualResolution) {
+                 resolutionSelect.value = settings.selectedResolution;
+            }
+            settings.selectedResolution = resolutionSelect.value;
         }
-        resolutionSelect.value = actualResolution;
-        settings.selectedResolution = actualResolution;
         
-        // Ensure canvas dimensions are set to display resolution
+        // Ensure initial camera selection matches config or first available
+        if (settings.selectedCamera && Array.from(cameraSelect.options).some(opt => opt.value === settings.selectedCamera)) {
+            cameraSelect.value = settings.selectedCamera;
+        } else if (cameraSelect.options.length > 0) {
+            settings.selectedCamera = cameraSelect.value; // Update setting if config value wasn't valid
+        }
+
+        // Update UI controls to reflect loaded config/initial state
+        updateControlsUI();
+        */
+        
+        // Ensure canvas dimensions are set to display resolution (from config)
+        const { width: displayWidthConf, height: displayHeightConf } = parseResolution(settings.selectedResolution);
+        displayWidth = displayWidthConf;
+        displayHeight = displayHeightConf;
+
+        // Update videoWidth/Height based on processResolution from config
+        const { width: processWidth, height: processHeight } = parseResolution(settings.processResolution);
+        videoWidth = processWidth;
+        videoHeight = processHeight;
         updateCanvasDimensions(videoWidth, videoHeight);
 
         // Start detection loop
@@ -1550,4 +1501,23 @@ function toggleFullscreen() {
     
     // Force a resize event to make sure canvas dimensions update
     window.dispatchEvent(new Event('resize'));
+}
+
+async function loadConfig() {
+    try {
+        const response = await fetch('config.json');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        defaultConfig = await response.json();
+        settings = { ...defaultConfig }; // Initialize current settings with defaults
+        console.log('Configuration loaded:', defaultConfig);
+        return true;
+    } catch (error) {
+        console.error('Failed to load config.json:', error);
+        loadingElement.textContent = 'Error: Could not load configuration file (config.json).';
+        // Optionally: fallback to some hardcoded minimal settings
+        settings = { /* provide minimal fallback settings here if needed */ };
+        return false;
+    }
 }
