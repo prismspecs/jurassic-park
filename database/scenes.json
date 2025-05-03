@@ -2,12 +2,32 @@
     {
         "directory": "000 - test",
         "description": "This is a test scene",
+        "assembly": [
+            {
+                "shot": "main",
+                "camera": "Camera_1",
+                "in": 1,
+                "out": 5
+            },
+            {
+                "shot": "dinosaur",
+                "camera": "Camera_1",
+                "in": 1,
+                "out": 3
+            },
+            {
+                "shot": "dinosaur",
+                "camera": "Camera_2",
+                "in": 3,
+                "out": 5
+            }
+        ],
         "shots": [
             {
                 "name": "main",
                 "type": "normal",
                 "number": 0,
-                "duration": "0:05",
+                "duration": "0:10",
                 "description": "This is a test description",
                 "setup": "This is a test setup",
                 "cameras": [
@@ -59,13 +79,7 @@
                                 "time-out": 4
                             }
                         ],
-                        "props": "alan",
-                        "capture-camera": [
-                            {
-                                "in": 1,
-                                "out": 5
-                            }
-                        ]
+                        "props": "alan"
                     },
                     "alan2": {
                         "full-name": "Dr. Alan Grant",
@@ -76,7 +90,7 @@
                                 "time-out": 4
                             }
                         ],
-                        "props": "sunglasses"
+                        "props": "alan"
                     },
                     "alan3": {
                         "full-name": "Dr. Alan Grant",
@@ -87,7 +101,7 @@
                                 "time-out": 4
                             }
                         ],
-                        "props": "sunglasses"
+                        "props": "alan"
                     },
                     "alan4": {
                         "full-name": "Dr. Alan Grant",
