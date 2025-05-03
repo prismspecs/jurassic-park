@@ -7,22 +7,25 @@ const sessionService = require('./sessionService'); // Added
 module.exports = {
     /**
      * captureVideo: Records video using GStreamer
-     * @param {string} outVideoName - Relative path within session/camera dir
+     * @param {string} outVideoName - Relative path within the output base path (e.g., Camera_1/original.mp4)
      * @param {number} durationSec - Duration in seconds
      * @param {string|number} serverDeviceId - Camera device path (Linux) or index (macOS)
      * @param {object} [resolution={width: 1920, height: 1080}] - Optional resolution object
-     * @param {string} [baseSessionDir] - Optional: Absolute path to the session dir (for workers)
+     * @param {string} basePath - Absolute path to the base directory for this specific take (e.g., .../recordings/session_id/scene_dir/shot_take_1)
      * @returns {Promise} - Resolves when recording is complete
      */
-    captureVideo(outVideoName, durationSec, serverDeviceId, resolution = { width: 1920, height: 1080 }, baseSessionDir = null) {
+    captureVideo(outVideoName, durationSec, serverDeviceId, resolution = { width: 1920, height: 1080 }, basePath = null) {
         return new Promise((resolve, reject) => {
             const platform = os.platform();
             let fullOutVideoName;
 
             try {
-                const sessionDir = baseSessionDir || sessionService.getSessionDirectory();
-                fullOutVideoName = path.join(sessionDir, outVideoName);
-                 // Ensure the full output directory exists (including camera sub-dir)
+                // Use provided basePath. Fallback removed.
+                if (!basePath) {
+                    throw new Error("basePath is required for GStreamer video capture.");
+                }
+                fullOutVideoName = path.join(basePath, outVideoName);
+                // Ensure the full output directory exists (including camera sub-dir)
                 const outputDir = path.dirname(fullOutVideoName);
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -50,7 +53,7 @@ module.exports = {
                     return reject(new Error(`Invalid Linux device path provided to GStreamer: ${serverDeviceId}`));
                 }
                 // Add capsfilter for resolution
-                const caps = `video/x-raw,width=${resWidth},height=${resHeight}`; 
+                const caps = `video/x-raw,width=${resWidth},height=${resHeight}`;
                 pipelineElements = [
                     `${sourceElementName} device=${serverDeviceId}`,
                     '!',
@@ -86,7 +89,7 @@ module.exports = {
                     serverDeviceId = potentialIndex;
                 }
                 // Add capsfilter for resolution
-                const caps = `video/x-raw,width=${resWidth},height=${resHeight}`; 
+                const caps = `video/x-raw,width=${resWidth},height=${resHeight}`;
                 pipelineElements = [
                     `${sourceElementName} device-index=${serverDeviceId}`,
                     '!',
@@ -159,4 +162,4 @@ module.exports = {
             }, durationSec * 1000);
         });
     }
-}; 
+};

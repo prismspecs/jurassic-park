@@ -21,23 +21,25 @@ module.exports = {
      *   -c:v libx264, -pix_fmt yuv420p => standard h264
      *   -c:a aac => audio codec
      *   -b:a 192k => audio bitrate
-     * @param {string} outVideoName - Relative path within session/camera dir
+     * @param {string} outVideoName - Relative path within the output base path (e.g., Camera_1/original.mp4)
      * @param {number} durationSec
      * @param {string|number} devicePath
      * @param {object} [resolution]
-     * @param {string} [baseSessionDir] - Optional: Absolute path to the session dir (for workers)
+     * @param {string} basePath - Absolute path to the base directory for this specific take (e.g., .../recordings/session_id/scene_dir/shot_take_1)
      * @returns {Promise} - Resolves when recording is complete
      */
-    captureVideo(outVideoName, durationSec, devicePath = null, resolution = null, baseSessionDir = null) {
+    captureVideo(outVideoName, durationSec, devicePath = null, resolution = null, basePath = null) {
         // Note: The resolution parameter is accepted for consistency with gstreamerHelper 
         // but is not currently used in the ffmpeg commands below.
         // The video_size is hardcoded for Linux.
         return new Promise((resolve, reject) => {
             let fullOutVideoName;
             try {
-                // Use provided baseSessionDir if available (from worker), otherwise use sessionService
-                const sessionDir = baseSessionDir || sessionService.getSessionDirectory();
-                fullOutVideoName = path.join(sessionDir, outVideoName);
+                // Use provided basePath. Fallback to sessionService is removed as basePath is now required.
+                if (!basePath) {
+                    throw new Error("basePath is required for video capture.");
+                }
+                fullOutVideoName = path.join(basePath, outVideoName);
                 // Ensure the full output directory exists (including camera sub-dir)
                 const outputDir = path.dirname(fullOutVideoName);
                 if (!fs.existsSync(outputDir)) {
@@ -205,18 +207,20 @@ module.exports = {
 
     /**
      * extractFrames: from the input MP4 => outDir/frame_%03d.jpg
-     * @param {string} inVideoName - Relative path within session/camera dir
-     * @param {string} outDir - Relative path within session/camera dir
-     * @param {string} [baseSessionDir] - Optional: Absolute path to the session dir (for workers)
+     * @param {string} inVideoName - Relative path within the base path
+     * @param {string} outDir - Relative path within the base path
+     * @param {string} basePath - Absolute path to the base directory for this specific take
      */
-    extractFrames(inVideoName, outDir, baseSessionDir = null) {
+    extractFrames(inVideoName, outDir, basePath = null) {
         return new Promise((resolve, reject) => {
             let fullInVideoName, fullOutDir;
             try {
-                // Use provided baseSessionDir if available (from worker), otherwise use sessionService
-                const sessionDir = baseSessionDir || sessionService.getSessionDirectory();
-                fullInVideoName = path.join(sessionDir, inVideoName);
-                fullOutDir = path.join(sessionDir, outDir);
+                // Use provided basePath. Fallback removed.
+                if (!basePath) {
+                    throw new Error("basePath is required for frame extraction.");
+                }
+                fullInVideoName = path.join(basePath, inVideoName);
+                fullOutDir = path.join(basePath, outDir);
                 // Ensure the frame extraction directory exists
                 if (!fs.existsSync(fullOutDir)) {
                     fs.mkdirSync(fullOutDir, { recursive: true });
@@ -263,18 +267,20 @@ module.exports = {
 
     /**
      * encodeVideo: from frames => outVideoName
-     * @param {string} framesDir - Relative path within session/camera dir
-     * @param {string} outVideoName - Relative path within session/camera dir
-     * @param {string} [baseSessionDir] - Optional: Absolute path to the session dir (for workers)
+     * @param {string} framesDir - Relative path within the base path
+     * @param {string} outVideoName - Relative path within the base path
+     * @param {string} basePath - Absolute path to the base directory for this specific take
      */
-    encodeVideo(framesDir, outVideoName, baseSessionDir = null) {
+    encodeVideo(framesDir, outVideoName, basePath = null) {
         return new Promise((resolve, reject) => {
             let fullFramesDir, fullOutVideoName;
             try {
-                // Use provided baseSessionDir if available (from worker), otherwise use sessionService
-                const sessionDir = baseSessionDir || sessionService.getSessionDirectory();
-                fullFramesDir = path.join(sessionDir, framesDir);
-                fullOutVideoName = path.join(sessionDir, outVideoName);
+                // Use provided basePath. Fallback removed.
+                if (!basePath) {
+                    throw new Error("basePath is required for video encoding.");
+                }
+                fullFramesDir = path.join(basePath, framesDir);
+                fullOutVideoName = path.join(basePath, outVideoName);
                 // Ensure the final video output directory exists
                 const outputDir = path.dirname(fullOutVideoName);
                 if (!fs.existsSync(outputDir)) {

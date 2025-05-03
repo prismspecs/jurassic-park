@@ -15,28 +15,49 @@ async function runRecordingCapture() { // Renamed function for clarity
         useFfmpeg,
         resolution,
         devicePath,
-        sessionDirectory, // Base directory for the session
+        // sessionDirectory, // OLD: Base directory for the session
+        outputBasePath, // NEW: Base path for this specific scene/shot/take
         durationSec
     } = workerData;
+
+    // Validate outputBasePath
+    if (!outputBasePath) {
+        const errorMsg = `[Worker ${cameraName}] Error: outputBasePath is missing in workerData.`;
+        console.error(errorMsg);
+        parentPort.postMessage({ status: 'error', camera: cameraName, message: errorMsg });
+        return; // Stop execution
+    }
 
     const recordingMethod = useFfmpeg ? 'ffmpeg' : 'gstreamer';
     const recordingHelper = useFfmpeg ? ffmpegHelper : gstreamerHelper;
     const effectiveDuration = durationSec || config.testRecordingDuration || 10; // Default duration
 
-    console.log(`[Worker ${cameraName}] Starting CAPTURE ONLY: ${recordingMethod}, ${resolution.width}x${resolution.height}, Device: ${devicePath}, Duration: ${effectiveDuration}s`);
+    console.log(`[Worker ${cameraName}] Starting CAPTURE ONLY: ${recordingMethod}, ${resolution.width}x${resolution.height}, Device: ${devicePath}, Duration: ${effectiveDuration}s, BasePath: ${outputBasePath}`);
     parentPort.postMessage({ status: 'starting', camera: cameraName, message: `Capture (${recordingMethod})...` });
 
     // Define the relative path for the *original* video within the camera's subdirectory
-    const VIDEO_ORIGINAL_REL = path.join(cameraName, config.videoOriginal || 'original.mp4');
+    // The filename itself comes from config
+    const videoFilename = config.videoOriginal || 'original.mp4';
+    const videoRelativePath = path.join(cameraName, videoFilename);
+    // The absolute path is now base path + relative path
+    const videoAbsolutePath = path.join(outputBasePath, videoRelativePath);
 
     try {
+        // Ensure the specific output directory for this camera exists within the base path
+        const cameraOutputDir = path.dirname(videoAbsolutePath);
+        if (!fs.existsSync(cameraOutputDir)) {
+            fs.mkdirSync(cameraOutputDir, { recursive: true });
+            console.log(`[Worker ${cameraName}] Created camera output directory: ${cameraOutputDir}`);
+        }
+
         // 1. Capture Video
         parentPort.postMessage({ status: 'capture_start', camera: cameraName });
-        console.log(`[Worker ${cameraName}] Capturing video to ${VIDEO_ORIGINAL_REL}`);
-        // Pass the absolute session directory and the relative output path
-        await recordingHelper.captureVideo(VIDEO_ORIGINAL_REL, effectiveDuration, devicePath, resolution, sessionDirectory);
-        console.log(`[Worker ${cameraName}] ✅ Video capture complete: ${VIDEO_ORIGINAL_REL}`);
-        parentPort.postMessage({ status: 'capture_complete', camera: cameraName, resultPath: VIDEO_ORIGINAL_REL });
+        console.log(`[Worker ${cameraName}] Capturing video to ${videoAbsolutePath}`);
+        // Pass the relative path (including camera name) and the base path to the helper
+        await recordingHelper.captureVideo(videoRelativePath, effectiveDuration, devicePath, resolution, outputBasePath);
+        console.log(`[Worker ${cameraName}] ✅ Video capture complete: ${videoAbsolutePath}`);
+        // Report the absolute path back
+        parentPort.postMessage({ status: 'capture_complete', camera: cameraName, resultPath: videoAbsolutePath });
 
         // --- Steps removed --- 
         // 2. Extract Frames (REMOVED)
@@ -51,4 +72,4 @@ async function runRecordingCapture() { // Renamed function for clarity
     }
 }
 
-runRecordingCapture(); 
+runRecordingCapture();

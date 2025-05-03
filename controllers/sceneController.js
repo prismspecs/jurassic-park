@@ -14,6 +14,7 @@ const { mapPanDegreesToValue, mapTiltDegreesToValue } = require('../utils/ptzMap
 const AudioRecorder = require('../services/audioRecorder');
 const audioRecorder = AudioRecorder.getInstance();
 const os = require('os');
+const fs = require('fs'); // Ensure fs is required
 
 // Encapsulated stage state
 const currentStageState = {
@@ -322,7 +323,10 @@ async function action(req, res) {
     const shot = scene.shots[currentStageState.shotIndex]; // Safe to access now
 
     // Ensure shot has a name or number for logging/reference
-    const shotRef = shot.name || `Shot #${shot.number || currentStageState.shotIndex}`;
+    // Use sanitize-filename for the shot part of the path
+    const sanitize = require('sanitize-filename');
+    const safeShotName = sanitize(shot.name || `shot_${currentStageState.shotIndex + 1}`);
+    const shotRef = shot.name || `Shot #${shot.number || currentStageState.shotIndex}`; // For logging
 
     broadcastConsole(`Initiating ACTION for Scene: '${currentStageState.scene}', Shot: '${shotRef}' (Index: ${currentStageState.shotIndex})`);
 
@@ -336,6 +340,89 @@ async function action(req, res) {
         if (res) return res.status(500).json({ success: false, message: errorMsg });
         return;
     }
+
+    // --- Determine Take Number by checking filesystem --- 
+    const sceneDirectory = currentStageState.scene; // e.g., "000 - test"
+    const scenePathForTakes = path.join(sessionDir, sceneDirectory);
+    let highestTake = 0;
+
+    try {
+        // Ensure the scene directory exists before trying to read it
+        if (!fs.existsSync(scenePathForTakes)) {
+            fs.mkdirSync(scenePathForTakes, { recursive: true });
+            broadcastConsole(`Created scene directory for takes: ${scenePathForTakes}`, 'info');
+        }
+
+        const entries = fs.readdirSync(scenePathForTakes, { withFileTypes: true });
+        // Regex needs to match the *beginning* of the directory name exactly
+        // FIX: Escape the backslash in \d+ correctly
+        const shotTakeRegex = new RegExp(`^${safeShotName}_(\\d+)$`); // Regex to match shotname_number
+        // --- DEBUG LOGS START ---
+        console.log(`[TakeCheck] Checking path: ${scenePathForTakes}`);
+        console.log(`[TakeCheck] Regex: ${shotTakeRegex}`);
+        console.log(`[TakeCheck] Found entries: ${entries.map(e => e.name).join(', ')}`);
+        // --- DEBUG LOGS END ---
+
+        entries.forEach(entry => {
+            // --- DEBUG LOGS START ---
+            console.log(`[TakeCheck] Examining entry: ${entry.name}, isDirectory: ${entry.isDirectory()}`);
+            // --- DEBUG LOGS END ---
+            if (entry.isDirectory()) {
+                const match = entry.name.match(shotTakeRegex);
+                // --- DEBUG LOGS START ---
+                console.log(`[TakeCheck] Match result for ${entry.name}:`, match);
+                // --- DEBUG LOGS END ---
+                if (match) {
+                    const takeNum = parseInt(match[1], 10);
+                    // --- DEBUG LOGS START ---
+                    console.log(`[TakeCheck] Matched takeNum: ${takeNum}`);
+                    // --- DEBUG LOGS END ---
+                    if (!isNaN(takeNum) && takeNum > highestTake) {
+                        // --- DEBUG LOGS START ---
+                        console.log(`[TakeCheck] Updating highestTake from ${highestTake} to ${takeNum}`);
+                        // --- DEBUG LOGS END ---
+                        highestTake = takeNum;
+                    }
+                }
+            }
+        });
+        broadcastConsole(`Highest existing take for ${safeShotName} found: ${highestTake}`, 'info');
+    } catch (readError) {
+        // Log error but proceed assuming take 1 if directory couldn't be read/created
+        console.error(`Error reading directory for take calculation ${scenePathForTakes}:`, readError);
+        broadcastConsole(`Error checking existing takes for ${safeShotName}. Assuming Take 1. Error: ${readError.message}`, 'warn');
+        highestTake = 0; // Reset to 0 on error
+    }
+
+    const takeNumber = highestTake + 1;
+    broadcastConsole(`Recording Take #${takeNumber} for ${safeShotName}`);
+
+    // Construct the identifier including the take number
+    const shotTakeIdentifier = `${safeShotName}_${takeNumber}`;
+
+    // Construct the absolute base path for this specific take's recordings
+    const outputBasePath = path.join(sessionDir, sceneDirectory, shotTakeIdentifier);
+    broadcastConsole(`Output base path set to: ${outputBasePath}`);
+
+    // *** ADDED: Explicitly create the output base path directory NOW ***
+    try {
+        if (!fs.existsSync(outputBasePath)) {
+            fs.mkdirSync(outputBasePath, { recursive: true });
+            broadcastConsole(`Created output base directory: ${outputBasePath}`, 'info');
+        } else {
+            // This case shouldn't happen with the current logic, but log if it does
+            broadcastConsole(`Output base directory already exists: ${outputBasePath}`, 'warn');
+        }
+    } catch (mkdirError) {
+        const errorMsg = `Action failed: Could not create output base directory ${outputBasePath}: ${mkdirError.message}`;
+        console.error(errorMsg, mkdirError);
+        broadcastConsole(errorMsg, 'error');
+        if (res) return res.status(500).json({ success: false, message: errorMsg });
+        return; // Stop if directory creation fails
+    }
+    // *** END ADDED CODE ***
+
+    // --- End Path Construction ---
 
     // Determine shot duration FIRST
     const shotDurationStr = shot.duration || '0:05'; // Default if not specified
@@ -397,7 +484,7 @@ async function action(req, res) {
                     useFfmpeg: useFfmpeg,
                     resolution: resolution, // Use global resolution
                     devicePath: recordingDevicePath,
-                    sessionDirectory: sessionDir, // Pass the absolute session directory
+                    outputBasePath: outputBasePath, // NEW: Pass the specific base path for this take
                     durationSec: shotDurationSec
                 };
 
@@ -503,7 +590,7 @@ async function action(req, res) {
 
         // --- Start Audio Recording (AFTER starting video workers) ---
         broadcastConsole('Starting audio recording...', 'info');
-        audioRecorder.startRecording(sessionDir, shotDurationSec); // Pass duration
+        audioRecorder.startRecording(outputBasePath, shotDurationSec); // NEW: Pass outputBasePath
 
         // --- Proceed with the rest of the action ---
         // broadcastConsole('Brief pause for recording(s) to initialize...'); // Maybe remove or shorten this pause?

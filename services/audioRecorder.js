@@ -44,29 +44,29 @@ class AudioRecorder {
                     const deviceLineRegex = /^card\s+(\d+):\s+([^\[]+)\s+\[.*?],\s+device\s+(\d+):\s+([^\[]+)\s+\[.*?]/;
 
                     lines.forEach(line => {
-                         const match = line.match(deviceLineRegex);
-                         if (match) {
-                             const cardNum = match[1];
-                             const cardName = match[2].trim();
-                             const deviceNum = match[3];
-                             const deviceName = match[4].trim();
-                             // Construct the standard ALSA device ID (e.g., hw:1,0)
-                             const deviceId = `hw:${cardNum},${deviceNum}`;
+                        const match = line.match(deviceLineRegex);
+                        if (match) {
+                            const cardNum = match[1];
+                            const cardName = match[2].trim();
+                            const deviceNum = match[3];
+                            const deviceName = match[4].trim();
+                            // Construct the standard ALSA device ID (e.g., hw:1,0)
+                            const deviceId = `hw:${cardNum},${deviceNum}`;
 
-                             // Basic filtering to exclude likely output devices
-                             if (!deviceName.toLowerCase().includes('playback') && !deviceName.toLowerCase().includes('hdmi')) {
-                                 devices.push({
+                            // Basic filtering to exclude likely output devices
+                            if (!deviceName.toLowerCase().includes('playback') && !deviceName.toLowerCase().includes('hdmi')) {
+                                devices.push({
                                     id: deviceId,
                                     // Combine card and device name for a more descriptive label
                                     name: `${cardName} - ${deviceName}`
-                                 });
-                             }
-                         }
+                                });
+                            }
+                        }
                     });
 
                     if (devices.length === 0) {
-                         // Log the raw output only if parsing fails, to aid debugging
-                         console.warn("arecord -l parsing yielded no devices. Full output was:\n", stdout);
+                        // Log the raw output only if parsing fails, to aid debugging
+                        console.warn("arecord -l parsing yielded no devices. Full output was:\n", stdout);
                     }
 
                     console.log('Linux - Found audio input devices:', devices);
@@ -85,7 +85,7 @@ class AudioRecorder {
                         const spAudioData = data && data.SPAudioDataType;
                         const items = spAudioData && spAudioData.length > 0 ? spAudioData[0]["_items"] : null;
                         const audioDevices = items || []; // Default to empty array if items is null/undefined
-                        
+
                         const inputDevices = audioDevices
                             .filter(device => device && device.coreaudio_device_input && parseInt(device.coreaudio_device_input, 10) > 0) // Add checks for device and property existence
                             .map((device, index) => ({
@@ -132,7 +132,7 @@ class AudioRecorder {
     }
 
     getActiveDevices() {
-         return Array.from(this.activeDevices.entries()).map(([id, data]) => ({ id, name: data.name }));
+        return Array.from(this.activeDevices.entries()).map(([id, data]) => ({ id, name: data.name }));
     }
 
     // Internal helper to stop a specific device's recording
@@ -140,14 +140,14 @@ class AudioRecorder {
         if (this.recordingProcesses.has(deviceId)) {
             const { process, filePath } = this.recordingProcesses.get(deviceId);
             console.log(`Stopping recording for device ${deviceId}...`);
-            
+
             // Mark the process as being stopped so we don't double-handle cleanup
             this.recordingProcesses.set(deviceId, { process, filePath, stopping: true });
-            
+
             // Send SIGTERM first for graceful shutdown
             try {
                 process.kill('SIGTERM');
-                
+
                 // Set a timeout to forcefully kill if it doesn't terminate
                 const killTimeout = setTimeout(() => {
                     try {
@@ -187,19 +187,24 @@ class AudioRecorder {
         }
     }
 
-    startRecording(sessionPath, durationSec = null) {
+    startRecording(outputBasePath, durationSec = null) {
         if (this.activeDevices.size === 0) {
             console.log("No active audio devices selected for recording.");
             return;
         }
 
-        if (!fs.existsSync(sessionPath)) {
-            console.error(`Session path does not exist: ${sessionPath}`);
-            // Optionally create it? fs.mkdirSync(sessionPath, { recursive: true });
-            return;
+        // Check if the base path exists, create if not (should generally exist from sceneController)
+        if (!fs.existsSync(outputBasePath)) {
+            console.warn(`AudioRecorder: Output base path did not exist, creating: ${outputBasePath}`);
+            try {
+                fs.mkdirSync(outputBasePath, { recursive: true });
+            } catch (error) {
+                console.error(`Failed to create output base path ${outputBasePath}:`, error);
+                return; // Cannot proceed without the directory
+            }
         }
 
-        console.log(`Starting audio recording for ${this.activeDevices.size} devices in session: ${sessionPath}`);
+        console.log(`Starting audio recording for ${this.activeDevices.size} devices in base path: ${outputBasePath}`);
         this.recordingCounter++; // Increment for this recording session (Action!)
 
         this.activeDevices.forEach((deviceData, deviceId) => {
@@ -207,27 +212,33 @@ class AudioRecorder {
             if (this.recordingProcesses.has(deviceId)) {
                 console.warn(`Device ${deviceId} is already recording. Stopping the current recording first.`);
                 this._stopDeviceRecording(deviceId);
-                // Wait a moment to ensure cleanup and pass duration, use sessionPath directly
-                setTimeout(() => this._startDeviceRecording(deviceId, deviceData, sessionPath, durationSec), 500);
+                // Wait a moment to ensure cleanup and pass duration, use outputBasePath directly
+                setTimeout(() => this._startDeviceRecording(deviceId, deviceData, outputBasePath, durationSec), 500);
             } else {
-                // Pass duration, use sessionPath directly
-                this._startDeviceRecording(deviceId, deviceData, sessionPath, durationSec);
+                // Pass duration, use outputBasePath directly
+                this._startDeviceRecording(deviceId, deviceData, outputBasePath, durationSec);
             }
         });
     }
-    
-    _startDeviceRecording(deviceId, deviceData, sessionPath, durationSec = null) {
+
+    _startDeviceRecording(deviceId, deviceData, outputBasePath, durationSec = null) {
         // Format a proper device number for the filename
-        const deviceNumber = this.activeDevices.size > 1 ? 
+        const deviceNumber = this.activeDevices.size > 1 ?
             Array.from(this.activeDevices.keys()).indexOf(deviceId) + 1 : 1;
-        
-        // Create device-specific directory directly under sessionPath
-        const deviceAudioDir = path.join(sessionPath, `Audio_${deviceNumber}`);
+
+        // Create device-specific directory directly under outputBasePath
+        const deviceAudioDir = path.join(outputBasePath, `Audio_${deviceNumber}`);
         if (!fs.existsSync(deviceAudioDir)) {
-            fs.mkdirSync(deviceAudioDir, { recursive: true });
-            console.log(`Created device audio directory: ${deviceAudioDir}`);
+            try {
+                fs.mkdirSync(deviceAudioDir, { recursive: true });
+                console.log(`Created device audio directory: ${deviceAudioDir}`);
+            } catch (error) {
+                console.error(`Failed to create device audio directory ${deviceAudioDir}:`, error);
+                // Optionally stop trying to record for this device
+                return;
+            }
         }
-        
+
         const fileName = `original.wav`; // Set fixed filename
         const filePath = path.join(deviceAudioDir, fileName);
 
@@ -240,10 +251,10 @@ class AudioRecorder {
             command += ` -d ${Math.ceil(durationSec)}`; // Use ceil to ensure full duration
             console.log(`Recording duration set to ${Math.ceil(durationSec)} seconds.`);
         } else {
-             console.warn(`No duration specified for recording ${filePath}. It may run indefinitely until manually stopped.`);
+            console.warn(`No duration specified for recording ${filePath}. It may run indefinitely until manually stopped.`);
         }
         command += ` "${filePath}"`; // Add file path at the end, quoted
-        
+
         if (this.platform === 'linux') {
             console.log(`Executing: ${command}`);
             recorderProcess = exec(command, (error, stdout, stderr) => {
@@ -267,7 +278,7 @@ class AudioRecorder {
                 macCommand += ` -t ${Math.ceil(durationSec)}`;
                 console.log(`Recording duration set to ${Math.ceil(durationSec)} seconds.`);
             } else {
-                 console.warn(`No duration specified for recording ${filePath}. It may run indefinitely until manually stopped.`);
+                console.warn(`No duration specified for recording ${filePath}. It may run indefinitely until manually stopped.`);
             }
             macCommand += ` "${filePath}"`;
             console.log(`Executing (Placeholder for macOS): ${macCommand}`);
@@ -319,70 +330,72 @@ class AudioRecorder {
         // this.recordingCounter = 0;
     }
 
-     async startTestRecording(deviceId, sessionPath) {
-         console.log(`Starting 3-second test recording for device: ${deviceId}`);
-         if (!this.activeDevices.has(deviceId)) {
-             return { success: false, message: `Device ${deviceId} is not selected as an active device.` };
-         }
-         const deviceData = this.activeDevices.get(deviceId);
-         const tempFileName = `test_audio_${deviceId.replace(/[^a-zA-Z0-9]/g, '_')}.wav`;
-         const tempFilePath = path.join(sessionPath || './temp', tempFileName); // Use temp dir if no session path
+    async startTestRecording(deviceId, sessionPath) {
+        // TODO: Decide if test recordings should also use the new structure or a simpler temp path.
+        // For now, keeping the existing logic which uses sessionPath or ./temp
+        console.log(`Starting 3-second test recording for device: ${deviceId}`);
+        if (!this.activeDevices.has(deviceId)) {
+            return { success: false, message: `Device ${deviceId} is not selected as an active device.` };
+        }
+        const deviceData = this.activeDevices.get(deviceId);
+        const tempFileName = `test_audio_${deviceId.replace(/[^a-zA-Z0-9]/g, '_')}.wav`;
+        const tempFilePath = path.join(sessionPath || './temp', tempFileName); // Use temp dir if no session path
 
-         // Ensure temp directory exists
-         const tempDir = path.dirname(tempFilePath);
-         if (!fs.existsSync(tempDir)) {
-             fs.mkdirSync(tempDir, { recursive: true });
-         }
+        // Ensure temp directory exists
+        const tempDir = path.dirname(tempFilePath);
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
 
-          // Ensure device is not already recording
-          if (this.recordingProcesses.has(deviceId)) {
-              console.warn(`Device ${deviceId} is already recording. Cannot start test.`);
-              return { success: false, message: `Device ${deviceId} is already recording.` };
-          }
+        // Ensure device is not already recording
+        if (this.recordingProcesses.has(deviceId)) {
+            console.warn(`Device ${deviceId} is already recording. Cannot start test.`);
+            return { success: false, message: `Device ${deviceId} is already recording.` };
+        }
 
 
-         return new Promise((resolve, reject) => {
-             let testProcess;
-             const duration = 3; // seconds
+        return new Promise((resolve, reject) => {
+            let testProcess;
+            const duration = 3; // seconds
 
-             if (this.platform === 'linux') {
-                  testProcess = exec(`arecord -D ${deviceId} -f cd -t wav -d ${duration} ${tempFilePath}`);
-             } else if (this.platform === 'darwin') {
-                  console.warn(`Test recording implementation for macOS needs specific library/tool setup (e.g., ffmpeg, sox). Device ID used: ${deviceId}`);
-                 // Placeholder: Replace with actual command using ffmpeg or sox
-                 // testProcess = exec(`ffmpeg -f avfoundation -i ":${deviceId}" -t ${duration} -ar 44100 -ac 1 ${tempFilePath}`);
-                  testProcess = exec(`sleep ${duration}`); // Mock process
+            if (this.platform === 'linux') {
+                testProcess = exec(`arecord -D ${deviceId} -f cd -t wav -d ${duration} ${tempFilePath}`);
+            } else if (this.platform === 'darwin') {
+                console.warn(`Test recording implementation for macOS needs specific library/tool setup (e.g., ffmpeg, sox). Device ID used: ${deviceId}`);
+                // Placeholder: Replace with actual command using ffmpeg or sox
+                // testProcess = exec(`ffmpeg -f avfoundation -i ":${deviceId}" -t ${duration} -ar 44100 -ac 1 ${tempFilePath}`);
+                testProcess = exec(`sleep ${duration}`); // Mock process
 
-             } else {
-                 console.error(`Test recording not supported on platform: ${this.platform}`);
-                 return reject(new Error(`Test recording not supported on platform: ${this.platform}`));
-             }
+            } else {
+                console.error(`Test recording not supported on platform: ${this.platform}`);
+                return reject(new Error(`Test recording not supported on platform: ${this.platform}`));
+            }
 
-             this.recordingProcesses.set(deviceId, { process: testProcess, filePath: tempFilePath }); // Track test recording temporarily
+            this.recordingProcesses.set(deviceId, { process: testProcess, filePath: tempFilePath }); // Track test recording temporarily
 
-             testProcess.on('error', (err) => {
-                 console.error(`Failed to start test recording process for ${deviceId}:`, err);
-                 this.recordingProcesses.delete(deviceId); // Clean up
-                 reject(new Error(`Failed to start test recording: ${err.message}`));
-             });
+            testProcess.on('error', (err) => {
+                console.error(`Failed to start test recording process for ${deviceId}:`, err);
+                this.recordingProcesses.delete(deviceId); // Clean up
+                reject(new Error(`Failed to start test recording: ${err.message}`));
+            });
 
-             testProcess.on('exit', (code, signal) => {
-                 this.recordingProcesses.delete(deviceId); // Clean up tracker
-                 if (code === 0 || signal === 'SIGTERM') { // arecord might exit with code 0 on duration end
-                     console.log(`Test recording for ${deviceId} completed successfully. File: ${tempFilePath}`);
-                     resolve({ success: true, message: `Test recording saved to ${tempFilePath}`, filePath: tempFilePath });
-                 } else {
-                     console.error(`Test recording process for ${deviceId} failed with code ${code}, signal ${signal}.`);
-                     // Optionally delete the file
-                     // fs.unlink(tempFilePath, ()=>{});
-                     reject(new Error(`Test recording failed (code: ${code}, signal: ${signal})`));
-                 }
-             });
+            testProcess.on('exit', (code, signal) => {
+                this.recordingProcesses.delete(deviceId); // Clean up tracker
+                if (code === 0 || signal === 'SIGTERM') { // arecord might exit with code 0 on duration end
+                    console.log(`Test recording for ${deviceId} completed successfully. File: ${tempFilePath}`);
+                    resolve({ success: true, message: `Test recording saved to ${tempFilePath}`, filePath: tempFilePath });
+                } else {
+                    console.error(`Test recording process for ${deviceId} failed with code ${code}, signal ${signal}.`);
+                    // Optionally delete the file
+                    // fs.unlink(tempFilePath, ()=>{});
+                    reject(new Error(`Test recording failed (code: ${code}, signal: ${signal})`));
+                }
+            });
 
-             console.log(`Test recording process started for ${deviceId} with PID: ${testProcess.pid}, duration: ${duration}s`);
-         });
-     }
+            console.log(`Test recording process started for ${deviceId} with PID: ${testProcess.pid}, duration: ${duration}s`);
+        });
+    }
 
 }
 
-module.exports = AudioRecorder; 
+module.exports = AudioRecorder;
