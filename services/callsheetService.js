@@ -48,6 +48,32 @@ function getActorsForScene(numActorsNeeded) {
     return selectedActors;
 }
 
+// Add a new actor to the callsheet if they don't exist
+function addActor(actorData) {
+    if (!actorData || !actorData.id || !actorData.name) {
+        console.error('Invalid actor data provided to addActor', actorData);
+        return false; // Indicate failure
+    }
+
+    // Check if actor already exists by ID or name
+    const existingActor = callsheet.find(a => a.id === actorData.id || a.name === actorData.name);
+    if (existingActor) {
+        console.log(`Actor with ID ${actorData.id} or name ${actorData.name} already exists. Not adding.`);
+        return false; // Indicate duplicate/failure
+    }
+
+    // Add the new actor
+    const newActor = {
+        id: actorData.id,
+        name: actorData.name,
+        available: actorData.available !== undefined ? actorData.available : true, // Default to true
+        sceneCount: actorData.sceneCount !== undefined ? actorData.sceneCount : 0 // Default to 0
+    };
+    callsheet.push(newActor);
+    console.log('Added new actor:', newActor);
+    return true; // Indicate success
+}
+
 // Update actor's scene count
 function updateActorSceneCount(actorName) {
     console.log('Updating scene count for actor:', actorName);
@@ -84,5 +110,7 @@ module.exports = {
     initCallsheet,
     getActorsForScene,
     updateActorSceneCount,
-    getCallsheet
-}; 
+    getCallsheet,
+    addActor, // Export the new function
+    saveCallsheet // Ensure saveCallsheet is exported if not already
+};

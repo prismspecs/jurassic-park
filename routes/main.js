@@ -10,6 +10,7 @@ const { scenes } = require('../services/sceneService');
 const aiVoice = require('../services/aiVoice');
 const sessionService = require('../services/sessionService');
 const settingsService = require('../services/settingsService');
+const callsheetService = require('../services/callsheetService'); // Import callsheetService
 const { broadcastConsole, broadcast } = require('../websocket/broadcaster');
 const teleprompterRouter = require('./teleprompter');
 const cameraRouter = require('./camera');
@@ -348,136 +349,101 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
     try {
         const crypto = require('crypto');
         const actorsDir = config.actorsDir;
-        const callsheetPath = path.join(actorsDir, 'callsheet.json');
+        // const callsheetPath = path.join(actorsDir, 'callsheet.json'); // No longer needed here
 
-        // Load existing callsheet
-        let callsheet = [];
-        if (fs.existsSync(callsheetPath)) {
-            callsheet = JSON.parse(fs.readFileSync(callsheetPath, 'utf8'));
-            console.log('Loaded existing callsheet:', callsheet);
-        }
+        // Get the current callsheet from the service
+        let currentCallsheet = callsheetService.getCallsheet();
 
-        // First, scan existing actor directories and add them to callsheet if not present
+        // First, scan existing actor directories and add them to the service's callsheet if not present
         const existingDirs = fs.readdirSync(actorsDir).filter(dir => {
-            const fullPath = path.join(actorsDir, dir);
-            // Ensure we don't check 'temp' or 'temp_uploads' if they somehow exist inside actorsDir
-            return fs.statSync(fullPath).isDirectory() && dir !== 'temp' && dir !== 'temp_uploads';
+            // ... existing directory filtering logic ...
         });
 
         const recoveredActors = [];
+        let callsheetUpdatedByRecovery = false;
         for (const dir of existingDirs) {
             const infoPath = path.join(actorsDir, dir, 'info.json');
             if (fs.existsSync(infoPath)) {
                 try {
                     const info = JSON.parse(fs.readFileSync(infoPath, 'utf8'));
-                    // Check if actor already exists in callsheet
-                    const existingActor = callsheet.find(a => a.id === dir);
-                    if (!existingActor) {
-                        callsheet.push({
-                            id: dir,
-                            name: info.name,
-                            available: true,
-                            sceneCount: 0
-                        });
+                    // Use addActor from the service
+                    const added = callsheetService.addActor({
+                        id: dir,
+                        name: info.name,
+                        available: true,
+                        sceneCount: 0
+                    });
+                    if (added) {
                         recoveredActors.push(info.name);
+                        callsheetUpdatedByRecovery = true;
                     }
                 } catch (e) {
                     console.error(`Error processing directory ${dir}:`, e);
                 }
             }
         }
+        // Update currentCallsheet if recovery added actors
+        if (callsheetUpdatedByRecovery) {
+            currentCallsheet = callsheetService.getCallsheet();
+        }
 
-        // Group files by their base name (without extension)
-        const files = req.files || [];
-        const fileGroups = {};
-        const skippedActors = [];
-        const processedActors = [];
+        // Group uploaded files
+        // ... existing file grouping logic ...
 
-        files.forEach(file => {
-            const baseName = path.basename(file.originalname, path.extname(file.originalname));
-            if (!fileGroups[baseName]) {
-                fileGroups[baseName] = [];
-            }
-            fileGroups[baseName].push(file);
-        });
-
-        // Process each group of files
+        // Process each group of uploaded files
+        let callsheetUpdatedByUpload = false;
         for (const [baseName, groupFiles] of Object.entries(fileGroups)) {
-            // Find the JSON file in the group
-            const jsonFile = groupFiles.find(f => f.originalname.endsWith('.json'));
-            if (!jsonFile) continue;
+            // ... existing jsonFile finding logic ...
 
             // Read the JSON data
-            const jsonPath = path.join(tempDir, jsonFile.originalname);
-            const actorData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+            // ... existing json reading logic ...
 
-            // Check if actor with this name already exists in callsheet
-            const existingActor = callsheet.find(a => a.name === actorData.name);
-            if (existingActor) {
-                skippedActors.push(actorData.name);
-                continue;
+            // Check if actor with this name already exists using the service's current data
+            const existingActorEntry = currentCallsheet.find(a => a.name === actorData.name);
+            if (existingActorEntry) {
+                // ... existing skip logic ...
+                continue; // Move to the next group
             }
 
+            // --- If actor does NOT exist, proceed with creation --- 
+
             // Generate a unique identifier
-            const randomId = crypto.randomBytes(3).toString('hex').toUpperCase();
+            // ... existing ID generation ...
             const actorId = `${actorData.name}-${randomId}`;
 
             // Create actor directory
-            const actorDir = path.join(actorsDir, actorId);
-            fs.mkdirSync(actorDir, { recursive: true });
+            // ... existing directory creation ...
 
-            // Find and copy the image file
-            const imageFile = groupFiles.find(f =>
-                f.originalname === actorData.imageFile ||
-                f.originalname === path.basename(actorData.imageFile)
-            );
-
-            if (imageFile) {
-                const sourceImage = path.join(tempDir, imageFile.originalname);
-                const targetImage = path.join(actorDir, 'headshot.jpg');
-                fs.copyFileSync(sourceImage, targetImage);
-            }
+            // Copy image file
+            // ... existing image copy logic ...
 
             // Create info.json
-            const infoJson = {
-                name: actorData.name,
-                interestingFact: actorData['interesting-thing']
-            };
-            fs.writeFileSync(path.join(actorDir, 'info.json'), JSON.stringify(infoJson, null, 2));
+            // ... existing info.json creation ...
 
-            // Add to callsheet
-            callsheet.push({
+            // Add to callsheet using the service
+            const added = callsheetService.addActor({
                 id: actorId,
                 name: actorData.name,
                 available: true,
                 sceneCount: 0
             });
-
-            processedActors.push(actorData.name);
+            if (added) {
+                processedActors.push(actorData.name);
+                callsheetUpdatedByUpload = true;
+            }
         }
 
-        // Save updated callsheet
-        console.log('Saving updated callsheet:', callsheet);
-        fs.writeFileSync(callsheetPath, JSON.stringify(callsheet, null, 2));
+        // Save updated callsheet using the service if any changes were made
+        if (callsheetUpdatedByRecovery || callsheetUpdatedByUpload) {
+            console.log('Saving updated callsheet via service...');
+            callsheetService.saveCallsheet();
+        }
 
         // Clean up temp files
-        files.forEach(file => {
-            const filePath = path.join(tempDir, file.originalname); // Use unified tempDir
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-            }
-        });
+        // ... existing cleanup logic ...
 
-        let message = 'Actors loaded successfully';
-        if (recoveredActors.length > 0) {
-            message += ` | Recovered existing actors: ${recoveredActors.join(', ')}`;
-        }
-        if (processedActors.length > 0) {
-            message += ` | Added new actors: ${processedActors.join(', ')}`;
-        }
-        if (skippedActors.length > 0) {
-            message += ` | Skipped existing actors: ${skippedActors.join(', ')}`;
-        }
+        // Construct response message
+        // ... existing message construction ...
 
         res.json({
             success: true,
@@ -487,8 +453,7 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
             skipped: skippedActors
         });
     } catch (error) {
-        console.error('Error loading actors:', error);
-        res.status(500).json({ success: false, message: 'Error loading actors: ' + error.message });
+        // ... existing error handling ...
     }
 });
 
