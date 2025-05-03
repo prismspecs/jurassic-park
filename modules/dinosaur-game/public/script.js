@@ -12,8 +12,11 @@ const mainElement = document.getElementById('main');
 const scoreElement = document.getElementById('score');
 const cameraSelect = document.getElementById('camera-select');
 const resolutionSelect = document.getElementById('resolution-select');
+const processResolutionSelect = document.getElementById('process-resolution-select');
 const applyCameraButton = document.getElementById('apply-camera-settings');
 const maskVideoElement = document.getElementById('mask-video');
+const fullscreenButton = document.getElementById('fullscreen-btn');
+const canvasContainer = document.querySelector('.canvas-container');
 
 let maskImageData = null;
 let poseDetector = null;
@@ -23,6 +26,8 @@ let currentStream = null;
 // Configuration (adjust as needed)
 let videoWidth = 640;
 let videoHeight = 480;
+let displayWidth = 1920;  // Output/display resolution width
+let displayHeight = 1080; // Output/display resolution height
 const DEFAULT_SETTINGS = {
     scoreThreshold: 0.1,
     // Skeleton settings
@@ -46,7 +51,8 @@ const DEFAULT_SETTINGS = {
     showDifference: true,
     // Camera settings
     selectedCamera: '', // Will be populated with default camera
-    selectedResolution: '640x480', // Default resolution
+    selectedResolution: '1920x1080', // Default resolution
+    processResolution: '640x480',    // Default processing resolution for CV
     flipWebcam: true // Flip webcam horizontally by default
 };
 
@@ -115,19 +121,47 @@ function updateMaskImageData() {
         // Draw the video frame onto the temp canvas
         // Make sure the video has dimensions before drawing
         if (maskVideoElement.videoWidth > 0 && maskVideoElement.videoHeight > 0) {
-            tempCtx.drawImage(maskVideoElement, 0, 0, canvasWidth, canvasHeight);
+            // Calculate proper scaling to maintain aspect ratio
+            const maskAspect = maskVideoElement.videoWidth / maskVideoElement.videoHeight;
+            const canvasAspect = canvasWidth / canvasHeight;
+            
+            let drawWidth = canvasWidth;
+            let drawHeight = canvasHeight;
+            let drawX = 0;
+            let drawY = 0;
+            
+            // Calculate dimensions to maintain aspect ratio while filling canvas
+            if (maskAspect > canvasAspect) {
+                // Mask video is wider than canvas
+                drawHeight = canvasWidth / maskAspect;
+                drawY = (canvasHeight - drawHeight) / 2;
+            } else {
+                // Mask video is taller than canvas
+                drawWidth = canvasHeight * maskAspect;
+                drawX = (canvasWidth - drawWidth) / 2;
+            }
+            
+            tempCtx.drawImage(maskVideoElement, drawX, drawY, drawWidth, drawHeight);
             maskImageData = tempCtx.getImageData(0, 0, canvasWidth, canvasHeight);
             console.log(`Mask image data updated from video frame: ${maskImageData.width}x${maskImageData.height}`);
         } else {
              console.warn('Mask video dimensions are zero, cannot draw frame.');
              maskImageData = null;
         }
-
-
     } catch (err) {
         console.error("Error updating mask image data from video:", err);
         maskImageData = null;
     }
+}
+
+// Add this new function to check if video dimensions are valid
+function checkVideoDimensions() {
+    if (videoElement && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+        console.log(`Video dimensions: ${videoElement.videoWidth}x${videoElement.videoHeight}`);
+        return true;
+    }
+    console.warn('Video dimensions not available or zero');
+    return false;
 }
 
 /**
@@ -330,7 +364,30 @@ function drawBaseLayer(ctx) {
             ctx.scale(-1, 1);
             ctx.translate(-width, 0);
         }
-        ctx.drawImage(videoElement, 0, 0, width, height);
+        
+        // Scale up from process resolution to display resolution
+        // Use video element's actual dimensions to calculate correct scaling
+        const videoAspect = videoElement.videoWidth / videoElement.videoHeight;
+        const canvasAspect = width / height;
+        
+        let drawWidth = width;
+        let drawHeight = height;
+        let drawX = 0;
+        let drawY = 0;
+        
+        // Calculate dimensions to maintain aspect ratio while filling canvas
+        if (videoAspect > canvasAspect) {
+            // Video is wider than canvas
+            drawHeight = width / videoAspect;
+            drawY = (height - drawHeight) / 2;
+        } else {
+            // Video is taller than canvas
+            drawWidth = height * videoAspect;
+            drawX = (width - drawWidth) / 2;
+        }
+        
+        // Draw the video with correct scaling
+        ctx.drawImage(videoElement, drawX, drawY, drawWidth, drawHeight);
         ctx.restore(); // Restore context state
     }
 
@@ -339,7 +396,27 @@ function drawBaseLayer(ctx) {
     if (settings.showMaskOverlay && maskVideoElement.readyState >= 1) { // HAVE_METADATA
         ctx.globalAlpha = settings.maskOpacity; // Use the mask opacity setting
         try {
-            ctx.drawImage(maskVideoElement, 0, 0, width, height);
+            // Scale mask video to fit canvas properly
+            const maskAspect = maskVideoElement.videoWidth / maskVideoElement.videoHeight;
+            const canvasAspect = width / height;
+            
+            let drawWidth = width;
+            let drawHeight = height;
+            let drawX = 0;
+            let drawY = 0;
+            
+            // Calculate dimensions to maintain aspect ratio while filling canvas
+            if (maskAspect > canvasAspect) {
+                // Video is wider than canvas
+                drawHeight = width / maskAspect;
+                drawY = (height - drawHeight) / 2;
+            } else {
+                // Video is taller than canvas
+                drawWidth = height * maskAspect;
+                drawX = (width - drawWidth) / 2;
+            }
+            
+            ctx.drawImage(maskVideoElement, drawX, drawY, drawWidth, drawHeight);
         } catch (e) {
             // Catch potential errors if the video state changes unexpectedly
             console.warn("Could not draw mask video frame to base layer:", e);
@@ -384,7 +461,10 @@ function drawSilhouette(pose, ctx) {
         tempCtx.imageSmoothingEnabled = false;
 
         // Draw the scaled-down silhouette
-        drawSilhouetteToContext(pose, tempCtx, smallWidth / videoElement.videoWidth, smallHeight / videoElement.videoHeight);
+        // Scale based on processing resolution to display resolution
+        const scaleFactorX = width / videoWidth;
+        const scaleFactorY = height / videoHeight;
+        drawSilhouetteToContext(pose, tempCtx, smallWidth / videoWidth, smallHeight / videoHeight);
 
         // Now draw the pixelated silhouette back to the main canvas
         // Turn OFF image smoothing to keep the chunky pixelated look
@@ -402,8 +482,9 @@ function drawSilhouette(pose, ctx) {
         ctx.globalAlpha = 1.0;
     } else {
         // Regular drawing with no pixelation
-        const scaleX = width / videoElement.videoWidth;
-        const scaleY = height / videoElement.videoHeight;
+        // Scale based on processing resolution to display resolution
+        const scaleX = width / videoWidth;
+        const scaleY = height / videoHeight;
 
         // Set silhouette style
         ctx.fillStyle = settings.silhouetteColor;
@@ -642,8 +723,9 @@ function drawSkeleton(pose, ctx) {
     ctx.clearRect(0, 0, width, height);
 
     const keypoints = pose.keypoints;
-    const scaleX = width / videoElement.videoWidth;
-    const scaleY = height / videoElement.videoHeight;
+    // Scale based on processing resolution to display resolution
+    const scaleX = width / videoWidth;
+    const scaleY = height / videoHeight;
 
     // Save context state before potential flip
     ctx.save();
@@ -745,7 +827,7 @@ function calculateOverlapScore(bodyShapeImageData) {
  * Draws the difference layer showing where the silhouette overlaps with the mask
  */
 function drawDifferenceLayer(ctx) {
-    // Get the actual canvas dimensions
+    // Get the actual canvas dimensions (display resolution)
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
 
@@ -764,7 +846,7 @@ function drawDifferenceLayer(ctx) {
         return;
     }
 
-    // Update the mask image data with the current video frame *before* drawing difference
+    // Update the mask image data with the current video frame at display resolution
     updateMaskImageData();
 
     // If still no mask data after trying to update, we can't proceed
@@ -775,8 +857,7 @@ function drawDifferenceLayer(ctx) {
     }
 
     try {
-        // Create a temporary canvas to generate the silhouette data
-        // This way we can get silhouette data even if silhouette layer is hidden
+        // Create a temporary canvas to generate the silhouette data at display resolution
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = width;
         tempCanvas.height = height;
@@ -784,7 +865,7 @@ function drawDifferenceLayer(ctx) {
 
         // Use the current pose data from the main detection loop
         if (currentPose) {
-            // Draw the silhouette to the temp canvas
+            // Draw the silhouette to the temp canvas at display resolution
             drawSilhouette(currentPose, tempCtx);
         } else {
             // Draw a simple debug circle if no pose is detected
@@ -794,7 +875,7 @@ function drawDifferenceLayer(ctx) {
             tempCtx.fill();
         }
 
-        // Get the silhouette data from the temp canvas
+        // Get the silhouette data from the temp canvas at display resolution
         const silhouetteData = tempCtx.getImageData(0, 0, width, height);
 
         // Direct pixel manipulation for maximum performance and reliability
@@ -845,9 +926,9 @@ function drawDifferenceLayer(ctx) {
             // Calculate how much of the mask is covered by silhouette
             const coverageScore = Math.round((overlapCount / maskCount) * 100);
             scoreElement.textContent = `Score: ${coverageScore}%`;
-
-            // Debug output (optional, can be noisy)
-            // console.log(`Score: ${coverageScore}% (Overlap: ${overlapCount}, Mask: ${maskCount}, Silhouette: ${silhouetteCount})`);
+            
+            // Log detailed scores for debugging/tuning
+            console.log(`Score: ${coverageScore}% (Overlap: ${overlapCount}, Mask: ${maskCount}, Silhouette: ${silhouetteCount}, Resolution: ${width}x${height})`);
         } else if (maskCount === 0 && silhouetteCount > 0) {
              scoreElement.textContent = `Score: 0% (No mask pixels detected)`;
         } else {
@@ -921,13 +1002,21 @@ async function applyCameraSettings() {
         // Update settings from UI
         settings.selectedCamera = cameraSelect.value;
         settings.selectedResolution = resolutionSelect.value;
+        settings.processResolution = processResolutionSelect.value;
 
         // Restart webcam with new settings
         await setupWebcam();
 
-        // Update canvas dimensions if resolution changed
-        const { width, height } = parseResolution(settings.selectedResolution);
-        updateCanvasDimensions(width, height);
+        // Update canvas dimensions for display resolution
+        const { width: displayWidth, height: displayHeight } = parseResolution(settings.selectedResolution);
+        
+        // Set process dimensions for CV operations
+        const { width: processWidth, height: processHeight } = parseResolution(settings.processResolution);
+        videoWidth = processWidth;
+        videoHeight = processHeight;
+        
+        // Update all dimensions
+        updateCanvasDimensions(processWidth, processHeight);
 
         // Restart detection loop
         detectionLoop();
@@ -935,6 +1024,8 @@ async function applyCameraSettings() {
         // Hide loading screen
         loadingElement.style.display = 'none';
         mainElement.style.display = 'block';
+        
+        console.log(`Applied settings - Display: ${displayWidth}x${displayHeight}, Process: ${processWidth}x${processHeight}`);
     } catch (error) {
         console.error('Error applying camera settings:', error);
         loadingElement.textContent = `Error: ${error.message}. Please try different settings.`;
@@ -946,26 +1037,47 @@ async function applyCameraSettings() {
  */
 function updateCanvasDimensions(width, height) {
     const canvases = [baseCanvas, silhouetteCanvas, differenceCanvas, skeletonCanvas];
+    
+    // Set internal canvas resolution to display width/height
     canvases.forEach(canvas => {
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = displayWidth;  // Always use display resolution for canvases
+        canvas.height = displayHeight;
+        
+        // Do NOT set CSS dimensions - let CSS handle the scaling
+        // This allows canvas to properly scale down within its container
+        // Remove any inline styles that might interfere with CSS scaling
+        canvas.style.width = '';
+        canvas.style.height = '';
     });
 
     // Update global variables
-    videoWidth = width;
+    videoWidth = width;  // Processing resolution
     videoHeight = height;
 
     // Recreate mask image data (since dimensions might have changed)
     updateMaskImageData();
+    
+    console.log(`Canvas dimensions set to: ${displayWidth}x${displayHeight} (internal resolution)`);
 }
 
 /**
  * Initialize control panel event listeners.
  */
 function setupControlListeners() {
+    // Fullscreen toggle
+    if (fullscreenButton) {
+        fullscreenButton.addEventListener('click', toggleFullscreen);
+    }
+    
     // Camera controls
     applyCameraButton.addEventListener('click', () => {
         applyCameraSettings();
+    });
+    
+    // Process resolution controls
+    processResolutionSelect.addEventListener('change', (e) => {
+        // Just store the value, it will be applied when the Apply button is clicked
+        console.log(`Process resolution selection changed to: ${e.target.value}`);
     });
 
     // Layer visibility toggles
@@ -1081,19 +1193,26 @@ async function detectionLoop() {
             console.error("Failed to play video in detection loop:", err);
         }
     }
+    
+    // Check if video dimensions are available and valid
+    if (!checkVideoDimensions()) {
+        // If dimensions aren't available yet, try again in the next frame
+        animationFrameId = requestAnimationFrame(detectionLoop);
+        return;
+    }
 
-    // Get dimensions from video element if available
-    const actualWidth = videoElement.videoWidth || videoWidth;
-    const actualHeight = videoElement.videoHeight || videoHeight;
+    // Get display dimensions
+    const canvasWidth = displayWidth;
+    const canvasHeight = displayHeight;
 
-    // Set canvas dimensions for all canvases
+    // Set canvas dimensions for all canvases if they don't match display dimensions
     const canvases = [baseCanvas, silhouetteCanvas, differenceCanvas, skeletonCanvas];
     let dimensionsChanged = false;
 
     canvases.forEach(canvas => {
-        if (canvas.width !== actualWidth || canvas.height !== actualHeight) {
-            canvas.width = actualWidth;
-            canvas.height = actualHeight;
+        if (canvas.width !== canvasWidth || canvas.height !== canvasHeight) {
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
             dimensionsChanged = true;
         }
     });
@@ -1103,13 +1222,47 @@ async function detectionLoop() {
 
     // If dimensions changed, update the mask data
     if (dimensionsChanged) {
-        console.log(`Canvas dimensions updated to ${actualWidth}x${actualHeight}`);
+        console.log(`Canvas dimensions updated to ${canvasWidth}x${canvasHeight}`);
         updateMaskImageData();
     }
 
     try {
-        // Get pose estimation - explicitly set options for MoveNet
-        const poses = await poseDetector.estimatePoses(videoElement, {
+        // Create a temporary scaled-down canvas for pose detection
+        // This improves performance while maintaining high display resolution
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = videoWidth;  // Processing width
+        tempCanvas.height = videoHeight; // Processing height
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        // Calculate scaling factors to maintain aspect ratio when drawing the video
+        const videoAspect = videoElement.videoWidth / videoElement.videoHeight;
+        const canvasAspect = videoWidth / videoHeight;
+        
+        let sourceX = 0;
+        let sourceY = 0;
+        let sourceWidth = videoElement.videoWidth;
+        let sourceHeight = videoElement.videoHeight;
+        
+        // Crop the video to match the target aspect ratio
+        if (videoAspect > canvasAspect) {
+            // Video is wider, crop sides
+            sourceWidth = videoElement.videoHeight * canvasAspect;
+            sourceX = (videoElement.videoWidth - sourceWidth) / 2;
+        } else if (videoAspect < canvasAspect) {
+            // Video is taller, crop top/bottom
+            sourceHeight = videoElement.videoWidth / canvasAspect;
+            sourceY = (videoElement.videoHeight - sourceHeight) / 2;
+        }
+        
+        // Draw the video onto the temp canvas (scaling down if needed)
+        tempCtx.drawImage(
+            videoElement, 
+            sourceX, sourceY, sourceWidth, sourceHeight, // Source rectangle
+            0, 0, videoWidth, videoHeight                // Destination rectangle
+        );
+        
+        // Get pose estimation from the scaled-down image
+        const poses = await poseDetector.estimatePoses(tempCanvas, {
             flipHorizontal: false, // Let the drawing functions handle flipping based on settings.flipWebcam
             maxPoses: 1           // Only detect one person
         });
@@ -1123,20 +1276,20 @@ async function detectionLoop() {
         if (settings.showSilhouette && currentPose) {
             drawSilhouette(currentPose, silhouetteCtx);
         } else {
-            silhouetteCtx.clearRect(0, 0, actualWidth, actualHeight);
+            silhouetteCtx.clearRect(0, 0, canvasWidth, canvasHeight);
         }
 
         if (settings.showSkeleton && currentPose) {
             drawSkeleton(currentPose, skeletonCtx);
         } else {
-            skeletonCtx.clearRect(0, 0, actualWidth, actualHeight);
+            skeletonCtx.clearRect(0, 0, canvasWidth, canvasHeight);
         }
 
         // Make sure difference layer gets drawn last and independently
         if (settings.showDifference) {
             drawDifferenceLayer(differenceCtx);
         } else {
-            differenceCtx.clearRect(0, 0, actualWidth, actualHeight);
+            differenceCtx.clearRect(0, 0, canvasWidth, canvasHeight);
         }
     } catch (error) {
         console.error('Error in detection loop:', error);
@@ -1151,6 +1304,20 @@ async function detectionLoop() {
  */
 async function main() {
     try {
+        // Set initial display dimensions immediately
+        displayWidth = 1920;
+        displayHeight = 1080;
+
+        // Apply dimensions to all canvases
+        const canvases = [baseCanvas, silhouetteCanvas, differenceCanvas, skeletonCanvas];
+        canvases.forEach(canvas => {
+            canvas.width = displayWidth;
+            canvas.height = displayHeight;
+            // Don't set inline styles - let CSS handle visual scaling
+            canvas.style.width = '';
+            canvas.style.height = '';
+        });
+
         // Draw test pattern to verify canvas works
         drawTestPattern(baseCtx);
 
@@ -1183,6 +1350,10 @@ async function main() {
         loadingElement.textContent = 'Accessing webcam...';
         await setupWebcam();
 
+        // Set process resolution dropdown to 640x480 default
+        processResolutionSelect.value = '640x480';
+        settings.processResolution = '640x480';
+        
         // Set resolution dropdown to match actual video dimensions
         const actualResolution = `${videoElement.videoWidth}x${videoElement.videoHeight}`;
         const resolutionExists = Array.from(resolutionSelect.options).some(option => option.value === actualResolution);
@@ -1194,6 +1365,9 @@ async function main() {
         }
         resolutionSelect.value = actualResolution;
         settings.selectedResolution = actualResolution;
+        
+        // Ensure canvas dimensions are set to display resolution
+        updateCanvasDimensions(videoWidth, videoHeight);
 
         // Start detection loop
         loadingElement.style.display = 'none';
@@ -1230,12 +1404,9 @@ window.addEventListener('load', () => {
 function drawTestPattern(ctx) {
     if (!ctx) return;
 
-    // Use default dimensions initially for test pattern
-    const initialWidth = 640;
-    const initialHeight = 480;
-
-    ctx.canvas.width = initialWidth;
-    ctx.canvas.height = initialHeight;
+    // Use display dimensions for test pattern
+    ctx.canvas.width = displayWidth;
+    ctx.canvas.height = displayHeight;
 
     // Fill with dark background
     ctx.fillStyle = '#333';
@@ -1248,10 +1419,11 @@ function drawTestPattern(ctx) {
 
     // Draw text
     ctx.fillStyle = '#FFF';
-    ctx.font = '20px sans-serif';
-    ctx.fillText('Canvas initialized. Waiting for setup...', 50, 50);
+    ctx.font = '30px sans-serif'; // Increased font size for larger canvas
+    ctx.fillText(`Canvas initialized at ${displayWidth}x${displayHeight}. Waiting for setup...`, 50, 50);
+    ctx.fillText(`Processing will occur at ${videoWidth}x${videoHeight} for better performance.`, 50, 90);
 
-    console.log("Test pattern drawn on canvas");
+    console.log(`Test pattern drawn on canvas at ${displayWidth}x${displayHeight}`);
 }
 
 // Add a helper function to wait for the mask video
@@ -1342,4 +1514,40 @@ async function waitForMaskVideoReady() {
              }
          }, timeoutDuration); 
     });
+}
+
+/**
+ * Toggles fullscreen mode for the canvas container
+ */
+function toggleFullscreen() {
+    if (!canvasContainer) return;
+    
+    if (canvasContainer.classList.contains('fullscreen')) {
+        // Exit fullscreen
+        canvasContainer.classList.remove('fullscreen');
+        fullscreenButton.textContent = '⤢'; // Expand icon
+        
+        // Check if browser is in fullscreen mode and exit
+        if (document.fullscreenElement) {
+            document.exitFullscreen()
+                .catch(err => console.error('Error exiting fullscreen:', err));
+        }
+    } else {
+        // Enter fullscreen
+        canvasContainer.classList.add('fullscreen');
+        fullscreenButton.textContent = '⤡'; // Collapse icon
+        
+        // Try to request fullscreen on the container
+        try {
+            if (canvasContainer.requestFullscreen) {
+                canvasContainer.requestFullscreen()
+                    .catch(err => console.warn('Fullscreen request was rejected:', err));
+            }
+        } catch (err) {
+            console.warn('Fullscreen API not supported, using CSS fallback');
+        }
+    }
+    
+    // Force a resize event to make sure canvas dimensions update
+    window.dispatchEvent(new Event('resize'));
 }

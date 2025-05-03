@@ -35,14 +35,23 @@
 
       <!-- Canvas layers for drawing -->
       <div class="canvas-container">
-        <!-- Base canvas for webcam and mask -->
-        <canvas id="base-canvas" class="canvas-layer"></canvas>
-        <!-- Silhouette layer -->
-        <canvas id="silhouette-canvas" class="canvas-layer"></canvas>
-        <!-- Difference layer to show overlapping areas -->
-        <canvas id="difference-canvas" class="canvas-layer"></canvas>
-        <!-- Skeleton layer on top -->
-        <canvas id="skeleton-canvas" class="canvas-layer"></canvas>
+        <button
+          id="fullscreen-btn"
+          class="fullscreen-button"
+          title="Toggle fullscreen"
+        >
+          ⤢
+        </button>
+        <div class="canvas-scaler">
+          <!-- Base canvas for webcam and mask -->
+          <canvas id="base-canvas" class="canvas-layer"></canvas>
+          <!-- Silhouette layer -->
+          <canvas id="silhouette-canvas" class="canvas-layer"></canvas>
+          <!-- Difference layer to show overlapping areas -->
+          <canvas id="difference-canvas" class="canvas-layer"></canvas>
+          <!-- Skeleton layer on top -->
+          <canvas id="skeleton-canvas" class="canvas-layer"></canvas>
+        </div>
       </div>
 
       <!-- Optional: Display score -->
@@ -70,6 +79,19 @@
             <option value="1920x1080">1920x1080 (Full HD)</option>
             <option value="320x240">320x240 (Low)</option>
           </select>
+        </div>
+        <div class="control-group">
+          <label for="process-resolution-select">Processing Resolution:</label>
+          <select id="process-resolution-select" class="full-width-control">
+            <option value="640x480">640x480 (Default - Faster)</option>
+            <option value="320x240">320x240 (Low - Fastest)</option>
+            <option value="960x720">960x720 (Medium)</option>
+            <option value="1280x720">1280x720 (HD - Slower)</option>
+          </select>
+          <small
+            >Lower resolution = faster processing, higher resolution = more
+            accurate detection</small
+          >
         </div>
         <div class="control-group">
           <label>
