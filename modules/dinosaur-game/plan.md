@@ -34,9 +34,9 @@ _(No database planned for this module)_
 
 ## TODO / Next Steps
 
-1.  **Provide `mask.jpg`**: The user needs to add a valid white-on-black mask image to `public/mask.jpg` (recommended size: 640x480 or matching webcam resolution).
+1.  **Use Video Mask**: The mask is now a video element (`#mask-video`) in `index.html`, sourced from `public/videos/walking-longneck.mp4`. `script.js` reads frames from this video.
 2.  **Implement `drawBodyShape`**: Refine the drawing logic in `script.js` to draw thicker lines and potentially fill areas (e.g., torso) based on keypoints. Color segments green/red based on mask overlap.
-3.  **Implement `calculateOverlapScore`**: Develop a robust pixel-based overlap calculation between the drawn body shape and the `maskImageData`.
+3.  **Implement `calculateOverlapScore`**: Develop a robust pixel-based overlap calculation between the drawn body shape and the current `maskImageData` (from the video frame).
 4.  **Refine Styling/UI**: Improve visual feedback, potentially drawing the score directly on the canvas, adjusting layout, etc.
-5.  **Error Handling**: Add more robust error handling (e.g., if webcam access is denied).
-6.  **Configuration**: Make parameters like colors, line widths, and model configuration easily adjustable.
+5.  **Error Handling**: Add more robust error handling (e.g., if webcam access is denied, video loading fails).
+6.  **Configuration**: Make parameters like colors, line widths, and model configuration easily adjustable. **Add Mask Video Selection**: Allow changing the mask video source via the UI.

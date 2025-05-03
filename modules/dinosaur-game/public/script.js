@@ -13,8 +13,8 @@ const scoreElement = document.getElementById('score');
 const cameraSelect = document.getElementById('camera-select');
 const resolutionSelect = document.getElementById('resolution-select');
 const applyCameraButton = document.getElementById('apply-camera-settings');
+const maskVideoElement = document.getElementById('mask-video');
 
-const maskImage = new Image();
 let maskImageData = null;
 let poseDetector = null;
 let animationFrameId = null;
@@ -23,7 +23,6 @@ let currentStream = null;
 // Configuration (adjust as needed)
 let videoWidth = 640;
 let videoHeight = 480;
-const maskPath = 'mask.jpg'; // Ensure this file exists in public/
 const DEFAULT_SETTINGS = {
     scoreThreshold: 0.1,
     // Skeleton settings
@@ -81,31 +80,15 @@ const BODY_PARTS = {
 // --- Helper Functions ---
 
 /**
- * Loads the mask image and extracts its pixel data.
- */
-async function loadMask() {
-    return new Promise((resolve, reject) => {
-        maskImage.onload = () => {
-            console.log('Mask image loaded.');
-            updateMaskImageData();
-            resolve();
-        };
-        maskImage.onerror = (err) => {
-            console.error('Error loading mask image:', err);
-            loadingElement.textContent = 'Error loading mask image. Please ensure mask.jpg exists.';
-            reject(err);
-        };
-        maskImage.src = maskPath;
-    });
-}
-
-/**
- * Updates the mask image data to match current canvas dimensions.
- * Call this whenever the canvas size changes.
+ * Updates the mask image data from the current frame of the mask video
+ * to match current canvas dimensions. Call this whenever the canvas size changes
+ * or you need the latest frame data.
  */
 function updateMaskImageData() {
-    if (!maskImage.complete || maskImage.naturalWidth === 0) {
-        console.warn('Cannot update mask image data: mask not loaded');
+    // Check if mask video is ready
+    if (!maskVideoElement || maskVideoElement.readyState < 2) { // readyState 2 (HAVE_CURRENT_DATA) or higher
+        console.warn('Cannot update mask image data: mask video not ready');
+        maskImageData = null; // Ensure data is cleared if video not ready
         return;
     }
 
@@ -114,19 +97,35 @@ function updateMaskImageData() {
         const canvasWidth = baseCanvas.width;
         const canvasHeight = baseCanvas.height;
 
-        console.log(`Updating mask image data to ${canvasWidth}x${canvasHeight}`);
+        // Only update if dimensions are valid
+        if (canvasWidth <= 0 || canvasHeight <= 0) {
+             console.warn(`Skipping mask update due to invalid dimensions: ${canvasWidth}x${canvasHeight}`);
+             maskImageData = null;
+             return;
+        }
 
-        // Draw mask to a temporary canvas to get its imageData
+        console.log(`Updating mask image data from video frame to ${canvasWidth}x${canvasHeight}`);
+
+        // Draw current mask video frame to a temporary canvas to get its imageData
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = canvasWidth;
         tempCanvas.height = canvasHeight;
         const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.drawImage(maskImage, 0, 0, canvasWidth, canvasHeight);
-        maskImageData = tempCtx.getImageData(0, 0, canvasWidth, canvasHeight);
 
-        console.log(`Mask image data updated: ${maskImageData.width}x${maskImageData.height}`);
+        // Draw the video frame onto the temp canvas
+        // Make sure the video has dimensions before drawing
+        if (maskVideoElement.videoWidth > 0 && maskVideoElement.videoHeight > 0) {
+            tempCtx.drawImage(maskVideoElement, 0, 0, canvasWidth, canvasHeight);
+            maskImageData = tempCtx.getImageData(0, 0, canvasWidth, canvasHeight);
+            console.log(`Mask image data updated from video frame: ${maskImageData.width}x${maskImageData.height}`);
+        } else {
+             console.warn('Mask video dimensions are zero, cannot draw frame.');
+             maskImageData = null;
+        }
+
+
     } catch (err) {
-        console.error("Error updating mask image data:", err);
+        console.error("Error updating mask image data from video:", err);
         maskImageData = null;
     }
 }
@@ -310,7 +309,7 @@ async function loadPoseDetector() {
 }
 
 /**
- * Draws the base layer with webcam and mask overlay
+ * Draws the base layer with webcam and mask overlay (now from video)
  */
 function drawBaseLayer(ctx) {
     // Get the actual canvas dimensions
@@ -335,10 +334,16 @@ function drawBaseLayer(ctx) {
         ctx.restore(); // Restore context state
     }
 
-    // Draw mask overlay if enabled (regardless of webcam visibility)
-    if (settings.showMaskOverlay && maskImage.complete && maskImage.naturalWidth > 0) {
+    // Draw mask overlay if enabled (using the mask video)
+    // Check if video is ready (at least metadata loaded)
+    if (settings.showMaskOverlay && maskVideoElement.readyState >= 1) { // HAVE_METADATA
         ctx.globalAlpha = settings.maskOpacity; // Use the mask opacity setting
-        ctx.drawImage(maskImage, 0, 0, width, height);
+        try {
+            ctx.drawImage(maskVideoElement, 0, 0, width, height);
+        } catch (e) {
+            // Catch potential errors if the video state changes unexpectedly
+            console.warn("Could not draw mask video frame to base layer:", e);
+        }
         ctx.globalAlpha = 1.0; // Reset alpha
     }
 }
@@ -747,25 +752,26 @@ function drawDifferenceLayer(ctx) {
     // Clear the canvas first
     ctx.clearRect(0, 0, width, height);
 
-    // If difference layer is disabled or mask isn't loaded, just return
+    // If difference layer is disabled, just return
     if (!settings.showDifference) {
         return;
     }
 
-    if (!maskImage.complete) {
-        console.log("Mask image not loaded - can't draw difference layer");
+    // Check if the mask video is ready to provide data
+    if (!maskVideoElement || maskVideoElement.readyState < 2) { // HAVE_CURRENT_DATA
+        console.log("Mask video not ready - can't draw difference layer");
+        scoreElement.textContent = `Score: Waiting for mask...`; // Provide feedback
         return;
     }
 
-    // Make sure we have the latest mask image data at the current dimensions
-    if (!maskImageData) {
-        updateMaskImageData();
+    // Update the mask image data with the current video frame *before* drawing difference
+    updateMaskImageData();
 
-        // If still no mask data, we can't proceed
-        if (!maskImageData) {
-            console.error("Failed to create mask image data");
-            return;
-        }
+    // If still no mask data after trying to update, we can't proceed
+    if (!maskImageData) {
+        console.error("Failed to create mask image data from video frame");
+        scoreElement.textContent = `Score: Error getting mask frame`;
+        return;
     }
 
     try {
@@ -805,6 +811,7 @@ function drawDifferenceLayer(ctx) {
         // Process each pixel
         for (let i = 0; i < diffData.length; i += 4) {
             // A pixel from the mask is considered active if it's bright (white mask)
+            // Use the same logic assuming the video mask is white on black
             const isMaskPixel = maskData[i] > 200;
 
             // A pixel from the silhouette is active if it has any opacity
@@ -839,8 +846,10 @@ function drawDifferenceLayer(ctx) {
             const coverageScore = Math.round((overlapCount / maskCount) * 100);
             scoreElement.textContent = `Score: ${coverageScore}%`;
 
-            // Debug output
-            console.log(`Score: ${coverageScore}% (Overlap: ${overlapCount}, Mask: ${maskCount}, Silhouette: ${silhouetteCount})`);
+            // Debug output (optional, can be noisy)
+            // console.log(`Score: ${coverageScore}% (Overlap: ${overlapCount}, Mask: ${maskCount}, Silhouette: ${silhouetteCount})`);
+        } else if (maskCount === 0 && silhouetteCount > 0) {
+             scoreElement.textContent = `Score: 0% (No mask pixels detected)`;
         } else {
             scoreElement.textContent = `Score: 0%`;
         }
@@ -1138,7 +1147,7 @@ async function detectionLoop() {
 }
 
 /**
- * Initializes the application: loads model, webcam, mask, and starts loop.
+ * Initializes the application: loads model, webcam, mask video, and starts loop.
  */
 async function main() {
     try {
@@ -1165,10 +1174,10 @@ async function main() {
             throw new Error('Failed to load pose detector.');
         }
 
-        // Load mask image
-        loadingElement.textContent = 'Loading mask image...';
-        await loadMask();
-        console.log('Mask image loaded successfully.');
+        // Wait for the mask video to be ready instead of loading mask image
+        loadingElement.textContent = 'Waiting for mask video...';
+        await waitForMaskVideoReady(); // Add this new helper function
+        console.log('Mask video ready.');
 
         // Setup webcam with current settings
         loadingElement.textContent = 'Accessing webcam...';
@@ -1190,6 +1199,13 @@ async function main() {
         loadingElement.style.display = 'none';
         mainElement.style.display = 'block';
         detectionLoop();
+
+        // --- ADDED: Explicitly try to play mask video again after setup ---
+        console.log('Attempting final mask video play...');
+        maskVideoElement.play()
+            .then(() => console.log('Final mask video play() successful.'))
+            .catch(err => console.warn('Final mask video play() failed (might already be playing or blocked): ', err));
+        // --- END ADDED --- 
 
     } catch (error) {
         console.error('Initialization failed:', error);
@@ -1214,8 +1230,12 @@ window.addEventListener('load', () => {
 function drawTestPattern(ctx) {
     if (!ctx) return;
 
-    ctx.canvas.width = videoWidth;
-    ctx.canvas.height = videoHeight;
+    // Use default dimensions initially for test pattern
+    const initialWidth = 640;
+    const initialHeight = 480;
+
+    ctx.canvas.width = initialWidth;
+    ctx.canvas.height = initialHeight;
 
     // Fill with dark background
     ctx.fillStyle = '#333';
@@ -1229,7 +1249,97 @@ function drawTestPattern(ctx) {
     // Draw text
     ctx.fillStyle = '#FFF';
     ctx.font = '20px sans-serif';
-    ctx.fillText('Canvas initialized. Waiting for pose detection...', 50, 50);
+    ctx.fillText('Canvas initialized. Waiting for setup...', 50, 50);
 
     console.log("Test pattern drawn on canvas");
+}
+
+// Add a helper function to wait for the mask video
+async function waitForMaskVideoReady() {
+    console.log(`Initial mask video readyState: ${maskVideoElement.readyState}`);
+    return new Promise((resolve, reject) => {
+        // Check if already ready
+        if (maskVideoElement.readyState >= 2) { // HAVE_CURRENT_DATA or more
+             console.log('Mask video already ready (readyState >= 2).');
+            // Ensure it's playing if already ready
+            if (maskVideoElement.paused) {
+                console.log("Mask video was ready but paused, attempting play...");
+                maskVideoElement.play().then(resolve).catch(e => {
+                    console.warn("Play attempt failed in ready check:", e);
+                    // Resolve anyway if data is available, but log warning
+                    resolve(); 
+                });
+            } else {
+                resolve();
+            }
+            return;
+        }
+
+        // Add event listeners
+        const onCanPlay = () => {
+             console.log(`Mask video 'canplay' event. readyState: ${maskVideoElement.readyState}`);
+             // Try to play just in case autoplay failed or was blocked
+             maskVideoElement.play()
+                .then(() => {
+                    console.log("Mask video play() successful in onCanPlay.");
+                    resolve();
+                })
+                .catch(e => {
+                    console.warn("Mask video play() failed in onCanPlay (might be okay if already playing):", e);
+                    // Resolve even if play fails here, as data might still be drawable
+                    resolve(); 
+                });
+            removeListeners();
+        };
+
+        const onError = (e) => {
+            console.error('Error loading mask video:', e);
+            const error = maskVideoElement.error;
+            let errorMsg = 'Failed to load mask video.';
+            if (error) {
+                 errorMsg += ` Code: ${error.code}, Message: ${error.message}`;
+            }
+            reject(new Error(errorMsg + ' Check console and video path.'));
+            removeListeners();
+        };
+        
+        // Log other potentially useful events
+        const onLoadedData = () => console.log(`Mask video 'loadeddata' event. readyState: ${maskVideoElement.readyState}`);
+        const onPlaying = () => console.log(`Mask video 'playing' event.`);
+        const onWaiting = () => console.log(`Mask video 'waiting' event.`);
+        const onStalled = () => console.log(`Mask video 'stalled' event.`);
+
+        const removeListeners = () => {
+            maskVideoElement.removeEventListener('canplay', onCanPlay);
+            maskVideoElement.removeEventListener('error', onError);
+            maskVideoElement.removeEventListener('loadeddata', onLoadedData);
+            maskVideoElement.removeEventListener('playing', onPlaying);
+            maskVideoElement.removeEventListener('waiting', onWaiting);
+            maskVideoElement.removeEventListener('stalled', onStalled);
+        };
+
+        maskVideoElement.addEventListener('canplay', onCanPlay);
+        maskVideoElement.addEventListener('error', onError);
+        maskVideoElement.addEventListener('loadeddata', onLoadedData);
+        maskVideoElement.addEventListener('playing', onPlaying);
+        maskVideoElement.addEventListener('waiting', onWaiting);
+        maskVideoElement.addEventListener('stalled', onStalled);
+
+         // Optional: Set a timeout in case 'canplay' never fires
+         // Increased timeout slightly
+         const timeoutDuration = 15000; // 15 seconds
+         setTimeout(() => {
+             if (maskVideoElement.readyState < 2) {
+                 console.warn(`Mask video readyState (${maskVideoElement.readyState}) did not reach 2 within ${timeoutDuration / 1000}s.`);
+                 // Resolve if metadata is available, reject otherwise
+                 if (maskVideoElement.readyState >= 1) { // HAVE_METADATA
+                    console.log("Mask video has metadata, proceeding with caution.");
+                    resolve(); // Allow proceeding if at least metadata is loaded
+                 } else {
+                    reject(new Error('Mask video did not become ready in time (readyState < 1).'));
+                 }
+                 removeListeners();
+             }
+         }, timeoutDuration); 
+    });
 }
