@@ -18,6 +18,7 @@ const authMiddleware = require('../middleware/auth');
 const AudioRecorder = require('../services/audioRecorder');
 const audioRecorder = AudioRecorder.getInstance();
 const os = require('os');
+const sceneController = require('../controllers/sceneController');
 
 // Middleware for parsing application/x-www-form-urlencoded
 router.use(express.urlencoded({ extended: true }));
@@ -584,5 +585,55 @@ router.delete('/api/audio/active-devices/:deviceId(*)', (req, res) => {
 });
 
 // --- END Audio Device API Endpoints ---
+
+// --- NEW: Scene Details API Endpoint ---
+
+// GET full details for a specific scene based on its directory
+router.get('/api/scene-details', (req, res) => {
+    const { sceneDir } = req.query;
+
+    if (!sceneDir) {
+        return res.status(400).json({ error: "Missing required query parameter: sceneDir" });
+    }
+
+    const scenesFilePath = path.join(__dirname, '..', 'database', 'scenes.json');
+
+    try {
+        // Using sync read here for simplicity, consider async for very large files
+        const scenesData = fs.readFileSync(scenesFilePath, 'utf8');
+        const scenes = JSON.parse(scenesData);
+
+        const scene = scenes.find(s => s.directory === sceneDir);
+
+        if (scene) {
+            res.json(scene);
+        } else {
+            res.status(404).json({ error: `Scene not found for directory: ${sceneDir}` });
+        }
+    } catch (error) {
+        console.error(`Error handling /api/scene-details for ${sceneDir}:`, error);
+        if (error instanceof SyntaxError) {
+            res.status(500).json({ error: "Failed to parse scenes data.", details: error.message });
+        } else if (error.code === 'ENOENT') {
+            res.status(500).json({ error: "Scenes database file not found." });
+        } else {
+            res.status(500).json({ error: "Failed to retrieve scene details.", details: error.message });
+        }
+    }
+});
+
+// --- End Scene Details API Endpoint ---
+
+// --- NEW: Scene Assembly API Endpoint ---
+
+// POST to trigger the assembly of a scene from selected takes
+router.post('/api/assemble-scene', sceneController.assembleScene);
+
+// --- End Scene Assembly API Endpoint ---
+
+// GET the list of unique prop filenames referenced in scenes.json
+router.get('/api/props', (req, res) => {
+    // ... existing code ...
+});
 
 module.exports = router;

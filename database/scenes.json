@@ -6,20 +6,20 @@
             {
                 "shot": "main",
                 "camera": "Camera_1",
-                "in": 1,
-                "out": 5
+                "in": 0,
+                "out": 80
             },
             {
                 "shot": "dinosaur",
                 "camera": "Camera_1",
-                "in": 1,
-                "out": 3
+                "in": 80,
+                "out": 160
             },
             {
-                "shot": "dinosaur",
-                "camera": "Camera_2",
-                "in": 3,
-                "out": 5
+                "shot": "main",
+                "camera": "Camera_1",
+                "in": 160,
+                "out": 300
             }
         ],
         "shots": [

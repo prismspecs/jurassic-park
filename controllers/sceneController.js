@@ -15,6 +15,7 @@ const AudioRecorder = require('../services/audioRecorder');
 const audioRecorder = AudioRecorder.getInstance();
 const os = require('os');
 const fs = require('fs'); // Ensure fs is required
+const { assembleSceneFFmpeg } = require('../services/sceneAssembler'); // Import the new assembler function
 
 // Encapsulated stage state
 const currentStageState = {
@@ -744,9 +745,65 @@ async function action(req, res) {
     }
 }
 
+// --- NEW: Scene Assembly Controller ---
+
+async function assembleScene(req, res) {
+    const { sceneDirectory, takes } = req.body;
+    const currentSessionId = sessionService.getCurrentSessionId();
+
+    // Basic validation (remains in controller)
+    if (!currentSessionId) {
+        return res.status(400).json({ success: false, message: "No active session selected." });
+    }
+    if (!sceneDirectory || typeof sceneDirectory !== 'string') {
+        return res.status(400).json({ success: false, message: "Missing or invalid sceneDirectory." });
+    }
+    if (!takes || !Array.isArray(takes) || takes.length === 0) {
+        return res.status(400).json({ success: false, message: "Missing or invalid takes array." });
+    }
+    // Further validation of takes array contents (shot, camera, in, out, take)
+    for (const take of takes) {
+        // Check for frame numbers instead of in/out time
+        if (!take.shot || !take.camera || take.inFrame == null || take.outFrame == null || !take.take) { 
+             return res.status(400).json({ success: false, message: `Invalid take data provided (missing frame info?): ${JSON.stringify(take)}` });
+        }
+        // Validate frame numbers are integers and inFrame < outFrame
+        if (!Number.isInteger(take.inFrame) || !Number.isInteger(take.outFrame) || take.inFrame < 0 || take.outFrame <= take.inFrame) {
+             return res.status(400).json({ success: false, message: `Invalid frame numbers (inFrame >= outFrame or negative?): ${JSON.stringify(take)}` });
+        }
+        if (typeof take.take !== 'number' || take.take < 1) {
+            return res.status(400).json({ success: false, message: `Invalid take number: ${JSON.stringify(take)}` });
+        }
+    }
+
+    console.log(`[Controller] Received assembly request for session: ${currentSessionId}, scene: ${sceneDirectory}`);
+    broadcastConsole(`Assembly request received for scene: ${sceneDirectory}. Starting process...`, 'info');
+
+    // Immediately respond to the client that the process has started
+    const sanitizedSceneDir = sceneDirectory.replace(/[^a-zA-Z0-9_-]/g, '_');
+    res.status(202).json({ 
+        success: true, 
+        message: `Assembly process initiated for ${sceneDirectory}. Monitor console/UI for updates.` 
+    });
+
+    // Call the actual assembly function asynchronously (don't await here)
+    assembleSceneFFmpeg(sceneDirectory, takes, currentSessionId)
+        .then(outputPath => {
+            // Success is handled by the assembler via broadcast
+            console.log(`[Controller] Assembly for ${sceneDirectory} completed successfully. Output: ${outputPath}`);
+            // Optionally do something else here on completion if needed
+        })
+        .catch(error => {
+            // Error is handled by the assembler via broadcast
+            console.error(`[Controller] Assembly for ${sceneDirectory} failed:`, error);
+            // Optionally do something else here on failure if needed
+        });
+}
+
 module.exports = {
     initShot,
     actorsReady,
     action,
-    getCurrentScene
+    getCurrentScene,
+    assembleScene
 };
