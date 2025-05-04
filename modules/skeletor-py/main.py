@@ -8,43 +8,6 @@ from config import MODEL_INFO  # Keep for arg choices
 from model_loader import load_model
 from video_processor import process_video
 
-# --- Remove Global variables (managed elsewhere now) ---
-# movenet = None
-# model_input_size = None
-# frame_queue = queue.Queue(maxsize=16)
-# result_queue = queue.Queue()
-# processing_done = threading.Event()
-
-# --- Remove load_model function (moved to model_loader.py) ---
-# def load_model(...): ...
-
-# --- Remove detect_pose function (moved to pose_detector.py) ---
-# def detect_pose(...): ...
-
-# --- Remove create_mask function (moved to masking.py) ---
-# def create_mask(...): ...
-
-# --- Remove apply_mask function (moved to masking.py) ---
-# def apply_mask(...): ...
-
-# --- Remove process_frame function (moved to video_processor.py) ---
-# def process_frame(...): ...
-
-# --- Remove frame_reader function (moved to video_processor.py) ---
-# def frame_reader(...): ...
-
-# --- Remove process_video function (moved to video_processor.py) ---
-# def process_video(...): ...
-
-
-# --- Remove Skeleton Structure (moved to config.py) ---
-# KEYPOINT_DICT = { ... }
-# SKELETON_LINES = [ ... ]
-
-# --- Remove MODEL_INFO (moved to config.py) ---
-# MODEL_INFO = { ... }
-
-
 if __name__ == "__main__":
     # Configure TensorFlow logging and performance settings
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"  # Reduce TF verbosity
