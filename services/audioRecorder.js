@@ -89,7 +89,8 @@ class AudioRecorder {
                         const inputDevices = audioDevices
                             .filter(device => device && device.coreaudio_device_input && parseInt(device.coreaudio_device_input, 10) > 0) // Add checks for device and property existence
                             .map((device, index) => ({
-                                id: device.coreaudio_device_uid || `mac_audio_${index}`,
+                                // Use the device name (_name) as the ID, fallback if name is missing
+                                id: device._name || `Unknown macOS Audio Input ${index}`,
                                 name: device._name || `Unknown macOS Audio Input ${index}`
                             }));
                         console.log('macOS - Found audio input devices:', inputDevices);
@@ -268,23 +269,19 @@ class AudioRecorder {
                 }
             });
         } else if (this.platform === 'darwin') {
-            // Example using 'sox' or 'ffmpeg'. Requires installation.
-            // ffmpeg -f avfoundation -i ":<device_index_or_uid>" -ar 44100 -ac 1 output.wav
-            // Finding the correct index/UID mapping might need more work from detectAudioInputDevices
-            console.warn(`Recording implementation for macOS needs specific library/tool setup (e.g., ffmpeg, sox). Device ID used: ${deviceId}`);
-            // Placeholder: Replace with actual command using ffmpeg or sox and the correct device identifier
-            let macCommand = `ffmpeg -f avfoundation -i ":${deviceId}" -ar 44100 -ac 1`;
+            // Use ffmpeg for actual macOS recording, trying default audio device index ":0"
+            console.warn(`Using ffmpeg for macOS recording. Trying default audio device index ":0". Ensure ffmpeg is installed.`);
+            let macCommand = `ffmpeg -f avfoundation -i ":0" -ar 44100 -ac 1`;
             if (durationSec && durationSec > 0) {
                 macCommand += ` -t ${Math.ceil(durationSec)}`;
                 console.log(`Recording duration set to ${Math.ceil(durationSec)} seconds.`);
             } else {
-                console.warn(`No duration specified for recording ${filePath}. It may run indefinitely until manually stopped.`);
+                // For non-timed recordings, ffmpeg will run until stopped by SIGTERM/
+                console.log(`Recording ${filePath} without a fixed duration. Will record until stopped.`);
             }
             macCommand += ` "${filePath}"`;
-            console.log(`Executing (Placeholder for macOS): ${macCommand}`);
-            // recorderProcess = exec(macCommand, ...);
-            // For now, create a mock process to allow testing flow
-            recorderProcess = exec(`sleep 3600`); // Mock long-running process
+            console.log(`Executing macOS recording command: ${macCommand}`);
+            recorderProcess = exec(macCommand);
         } else {
             console.error(`Recording not supported on platform: ${this.platform}`);
             return; // Skip this device
@@ -361,11 +358,11 @@ class AudioRecorder {
             if (this.platform === 'linux') {
                 testProcess = exec(`arecord -D ${deviceId} -f cd -t wav -d ${duration} ${tempFilePath}`);
             } else if (this.platform === 'darwin') {
-                console.warn(`Test recording implementation for macOS needs specific library/tool setup (e.g., ffmpeg, sox). Device ID used: ${deviceId}`);
-                // Placeholder: Replace with actual command using ffmpeg or sox
-                // testProcess = exec(`ffmpeg -f avfoundation -i ":${deviceId}" -t ${duration} -ar 44100 -ac 1 ${tempFilePath}`);
-                testProcess = exec(`sleep ${duration}`); // Mock process
-
+                console.warn(`Using ffmpeg for macOS test recording. Trying default audio device index ":0". Ensure ffmpeg is installed.`);
+                // Use ":0" to specify the default audio device index
+                const macCommand = `ffmpeg -f avfoundation -i ":0" -t ${duration} -ar 44100 -ac 1 "${tempFilePath}"`;
+                console.log(`Executing macOS test command: ${macCommand}`);
+                testProcess = exec(macCommand);
             } else {
                 console.error(`Test recording not supported on platform: ${this.platform}`);
                 return reject(new Error(`Test recording not supported on platform: ${this.platform}`));

@@ -6,15 +6,55 @@ from PIL import Image
 import argparse
 from tqdm import tqdm  # Import tqdm
 
-# Load MoveNet Thunder model (higher accuracy)
-model = hub.load("https://tfhub.dev/google/movenet/singlepose/thunder/4")
-movenet = model.signatures["serving_default"]
+# Model dictionary with input sizes
+MODEL_INFO = {
+    "thunder": {
+        "url": "https://tfhub.dev/google/movenet/singlepose/thunder/4",
+        "input_size": 256,
+    },
+    "lightning": {
+        "url": "https://tfhub.dev/google/movenet/singlepose/lightning/4",
+        "input_size": 192,
+    },
+}
+
+# Global variable for loaded model and its input size
+movenet = None
+model_input_size = None
+
+
+def load_model(model_type="thunder"):
+    """Loads the specified MoveNet model."""
+    global movenet, model_input_size  # Update global variables
+    if model_type not in MODEL_INFO:
+        raise ValueError(
+            f"Invalid model type: {model_type}. Choose from {list(MODEL_INFO.keys())}"
+        )
+
+    info = MODEL_INFO[model_type]
+    model_input_size = info["input_size"]  # Store input size
+    model_url = info["url"]
+
+    print(
+        f"Loading MoveNet {model_type.capitalize()} model (expects {model_input_size}x{model_input_size} input)..."
+    )
+    model = hub.load(model_url)
+    movenet = model.signatures["serving_default"]
+    print("Model loaded.")
 
 
 def detect_pose(frame, confidence_threshold=0.3):
-    image = tf.image.resize_with_pad(tf.expand_dims(frame, axis=0), 256, 256)
+    # Use the globally stored model_input_size for resizing
+    if model_input_size is None:
+        raise RuntimeError("Model not loaded or input size not set.")
+
+    image = tf.image.resize_with_pad(
+        tf.expand_dims(frame, axis=0), model_input_size, model_input_size
+    )
     input_image = tf.cast(image, dtype=tf.int32)
-    outputs = movenet(input_image)
+
+    # Call the model by specifying the input tensor name 'input'
+    outputs = movenet(input=input_image)
     keypoints = outputs["output_0"].numpy()[0, 0, :, :]
 
     # Only keep if confidence is high
@@ -56,67 +96,107 @@ def process_video(
     confidence_threshold,
     dilation_iterations,
     blur_kernel_size,
+    processing_width,  # New argument
 ):
     cap = cv2.VideoCapture(input_path)
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = None
 
-    # Get total number of frames for tqdm
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    # Wrap the loop with tqdm
+    target_w, target_h = orig_w, orig_h
+    if (
+        processing_width is not None
+        and processing_width > 0
+        and processing_width < orig_w
+    ):
+        print(f"Resizing frames for processing to width: {processing_width}")
+        target_w = processing_width
+        target_h = int(orig_h * (processing_width / orig_w))
+        # Ensure height is even for some codecs
+        target_h = target_h if target_h % 2 == 0 else target_h + 1
+    else:
+        print("Processing at original resolution.")
+
     for _ in tqdm(range(total_frames), desc="Processing video", unit="frame"):
         ret, frame = cap.read()
         if not ret:
             break
 
-        keypoints = detect_pose(frame, confidence_threshold)
-        if keypoints is not None:
-            mask = create_mask(
-                frame, keypoints, radius, dilation_iterations, blur_kernel_size
+        # Resize frame if needed *before* processing
+        if target_w != orig_w:
+            frame_processed = cv2.resize(
+                frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR
             )
         else:
-            mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+            frame_processed = frame
 
-        result = apply_mask(frame, mask)
+        # --- Process the potentially smaller frame ---
+        keypoints = detect_pose(frame_processed, confidence_threshold)
+        if keypoints is not None:
+            mask = create_mask(
+                frame_processed,
+                keypoints,
+                radius,
+                dilation_iterations,
+                blur_kernel_size,
+            )
+        else:
+            mask = np.zeros(frame_processed.shape[:2], dtype=np.uint8)
+
+        result = apply_mask(frame_processed, mask)
+        # --- End processing smaller frame ---
 
         if out is None:
-            h, w = result.shape[:2]
-            out = cv2.VideoWriter(
-                output_path, fourcc, cap.get(cv2.CAP_PROP_FPS), (w, h), True
-            )
+            # Use target dimensions for the output writer
+            out = cv2.VideoWriter(output_path, fourcc, fps, (target_w, target_h), True)
 
-        out.write(cv2.cvtColor(result, cv2.COLOR_BGRA2BGR))
+        # Write the processed (potentially smaller) result
+        # Ensure result is BGR before writing
+        if result.shape[2] == 4:  # BGRA
+            out.write(cv2.cvtColor(result, cv2.COLOR_BGRA2BGR))
+        else:  # Assume BGR
+            out.write(result)
 
     cap.release()
-    if out:  # Check if out was initialized
+    if out:
         out.release()
-    print(
-        "\n✅ Processing complete:", output_path
-    )  # Added newline for cleaner output after tqdm
+    print("\n✅ Processing complete:", output_path)
 
-
-# Example usage -> Replaced with CLI argument parsing
-# process_video("input.mp4", "output.mp4")
 
 if __name__ == "__main__":
     # Check for available devices, including Metal GPU
     print("TensorFlow Devices:")
     devices = tf.config.list_physical_devices()
-    gpu_devices = tf.config.list_physical_devices('GPU')
+    gpu_devices = tf.config.list_physical_devices("GPU")
     for device in devices:
         print(f"- {device.name} ({device.device_type})")
     if gpu_devices:
         print("✅ Metal GPU detected and available for TensorFlow!")
     else:
         print("❌ Metal GPU not detected by TensorFlow. Running on CPU.")
-    print("---") # Separator
+    print("---")  # Separator
 
     parser = argparse.ArgumentParser(
         description="Process video to highlight pose keypoints."
     )
     parser.add_argument("input_path", help="Path to the input video file.")
     parser.add_argument("output_path", help="Path to save the output video file.")
+    parser.add_argument(
+        "--model_type",
+        choices=list(MODEL_INFO.keys()),
+        default="thunder",  # Use keys from MODEL_INFO
+        help="MoveNet model type ('lightning' is faster, 'thunder' is more accurate).",
+    )
+    parser.add_argument(
+        "--processing_width",
+        type=int,
+        default=None,
+        help="Resize video to this width for processing (e.g., 640). Processes at original resolution if omitted or >= original width.",
+    )
     parser.add_argument(
         "--radius", type=int, default=30, help="Radius of the circle around keypoints."
     )
@@ -138,6 +218,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Load the selected model (this will set model_input_size)
+    load_model(args.model_type)
+
     process_video(
         args.input_path,
         args.output_path,
@@ -145,4 +228,5 @@ if __name__ == "__main__":
         args.confidence,
         args.dilate,
         args.blur,
+        args.processing_width,  # Pass the new argument
     )

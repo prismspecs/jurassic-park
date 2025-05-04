@@ -4,11 +4,11 @@
 
 + I have 2 identical cameras. They are both showing up with exactly the same names in the dropdown menus. It would be nice to have some sort of device ID to distinguish them listed in the dropdowns.
 
-+ When Johannes tried to access my server from IP:3000/ it said it was not a safe connection. How can we deal with that?
-
 - When hovering over an element, press F to fullscreen that particular element. ??
 
 ### Functional
+
++ Do skeleton analysis and masking live
 
 + I have created a module in modules/dinosaur-game. It takes webcam input, does some processing and analysis, then outputs a new video. Right now that is working on its own, as in I can host a live server from that module directory via npm start and see the result in my browser. What I want to do with it ultimately is to use dinosaur-game as a module. If I start a shot which is of type "dinosaur" (in scenes.json) then the webcam should send video/frames to that module, and then it should receive back video/frames. For now it should use Camera 1 preview device as the input, and it should output/show the video in the center column.
 
@@ -16,20 +16,9 @@
 
 - The third time the scene is run, the audience hums along
 
-- Dinosaur position accuracy: how well can they take up the shape/outline of the dinosaur while they are acting as one?
-
 - capture video from actor phones
 
   - The character teleprompters run on participants phones. I would like for them to sometimes record the participants who will be looking at their phone. I have added "capture-camera" to the @scenes.json file for each character. At in: 1, out: 5 it should record the participant from 1 second to 5 seconds once the scene has begun (Action!). I also need a way for this video to be sent to the server. We can store it on recordings/phone-vids. Because it will later be cut into a longer video and the timecodes should correspond (as in if it records from 0:01 to 0:05 in the scene, it will be cut into that position) and we need a way to store this meta data. So in the records/phone-vids directory there should be a json file which stores this list of shots that includes the character, the scene, and the time in/out.
-
-- update scenes.json
-
-  - add camera movements
-    - https://docs.google.com/presentation/d/1AfB2Eh2Di7RI5x7QjNFDiLoypyYsyMnt9xGKXs9W35s/edit
-  - add ins and outs which will be used by editing module
-    - these are also in the document. there are F and B and A (above) and U (underneath)
-    - with Above and Underneath these are shot as a separate take
-    - there is also a final separate take for each dinosaur
 
 - refactor the endpoints. some use /api/ prefix. /camera/ does not, for example. I should update everything to use /api/
 
