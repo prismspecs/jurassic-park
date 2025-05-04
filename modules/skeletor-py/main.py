@@ -54,68 +54,110 @@ def load_model(model_type="thunder"):
 
 
 def detect_pose(frame, confidence_threshold=0.3):
-    # Use the globally stored model_input_size for resizing
+    h_proc, w_proc, _ = frame.shape  # Dimensions of the frame *before* padding
+
     if model_input_size is None:
         raise RuntimeError("Model not loaded or input size not set.")
 
+    # Preprocess image (resize and pad)
+    image = tf.convert_to_tensor(frame)
     image = tf.image.resize_with_pad(
-        tf.expand_dims(frame, axis=0), model_input_size, model_input_size
+        tf.expand_dims(image, axis=0), model_input_size, model_input_size
     )
     input_image = tf.cast(image, dtype=tf.int32)
 
     outputs = movenet(input=input_image)
     output_data = outputs["output_0"].numpy()
 
-    detected_persons = []  # List to hold keypoints for each detected person
-    h, w, _ = frame.shape
+    # --- Calculate padding and scaling factors ---
+    # How much the original frame was scaled to fit model_input_size
+    scale_y = model_input_size / h_proc
+    scale_x = model_input_size / w_proc
+    scale = min(scale_y, scale_x)
+
+    # Dimensions after scaling, before padding
+    h_scaled = int(h_proc * scale)
+    w_scaled = int(w_proc * scale)
+
+    # Padding added to center the scaled image
+    pad_y = (model_input_size - h_scaled) // 2
+    pad_x = (model_input_size - w_scaled) // 2
+    # --------------------------------------------
+
+    detected_persons = []
 
     if output_data.shape[1] == 1:  # Single pose model
-        keypoints_with_scores = output_data[0, 0, :, :]  # Shape (17, 3)
-        # Check if *any* keypoint has sufficient confidence to consider this a person
-        # (Or use a different metric if needed, e.g., average score)
+        keypoints_with_scores = output_data[
+            0, 0, :, :
+        ]  # Shape (17, 3) [y_norm, x_norm, score]
         if np.max(keypoints_with_scores[:, 2]) > confidence_threshold:
-            keypoints_px = keypoints_with_scores[:, :2] * [h, w]  # y, x
-            scores = keypoints_with_scores[:, 2]
-            person_data = np.hstack((keypoints_px, scores[:, np.newaxis])).astype(
-                np.float32
-            )  # Combine [[y, x, score], ...]
-            detected_persons.append(person_data)
+            person_data_final = np.zeros_like(keypoints_with_scores)
+            for i, (y_norm, x_norm, score) in enumerate(keypoints_with_scores):
+                # Coords within padded square
+                y_padded = y_norm * model_input_size
+                x_padded = x_norm * model_input_size
+                # Subtract padding
+                y_unpadded = y_padded - pad_y
+                x_unpadded = x_padded - pad_x
+                # Scale back to original frame dims
+                y_final = y_unpadded / scale
+                x_final = x_unpadded / scale
+                # Clip to frame bounds
+                y_final = np.clip(y_final, 0, h_proc - 1)
+                x_final = np.clip(x_final, 0, w_proc - 1)
+                person_data_final[i] = [y_final, x_final, score]
+            detected_persons.append(person_data_final.astype(np.float32))
 
     elif output_data.shape[1] == 6:  # Multi pose model
         num_detections = output_data.shape[1]
         for i in range(num_detections):
             person = output_data[0, i]
-            keypoints_with_scores = person[:51].reshape((17, 3))  # (y, x, score)
+            keypoints_with_scores = person[:51].reshape(
+                (17, 3)
+            )  # [y_norm, x_norm, score]
             bbox = person[51:]
             person_score = bbox[4]
 
             if person_score > confidence_threshold:
-                keypoints_px = keypoints_with_scores[:, :2] * [h, w]  # y, x
-                scores = keypoints_with_scores[:, 2]
-                person_data = np.hstack((keypoints_px, scores[:, np.newaxis])).astype(
-                    np.float32
-                )  # Combine [[y, x, score], ...]
-                detected_persons.append(person_data)
+                person_data_final = np.zeros_like(keypoints_with_scores)
+                for j, (y_norm, x_norm, score) in enumerate(keypoints_with_scores):
+                    if (
+                        score > confidence_threshold
+                    ):  # Also check individual keypoint score here? Optional.
+                        y_padded = y_norm * model_input_size
+                        x_padded = x_norm * model_input_size
+                        y_unpadded = y_padded - pad_y
+                        x_unpadded = x_padded - pad_x
+                        y_final = y_unpadded / scale
+                        x_final = x_unpadded / scale
+                        y_final = np.clip(y_final, 0, h_proc - 1)
+                        x_final = np.clip(x_final, 0, w_proc - 1)
+                        person_data_final[j] = [y_final, x_final, score]
+                    else:
+                        # Store 0s or keep original low-score normalized data? Store 0s for now.
+                        person_data_final[j] = [0, 0, score]
+
+                detected_persons.append(person_data_final.astype(np.float32))
 
     if not detected_persons:
         return None
 
-    # Return list of arrays, each array is [[y_px, x_px, score], ...] for one person
-    return detected_persons
+    return detected_persons  # List of arrays, each array is [[y_px, x_px, score], ...]
 
 
 def create_mask(
     frame,
     persons_keypoints,  # List of person data [[y,x,score],...]
-    confidence_threshold,  # Added confidence threshold
-    radius=30,
+    confidence_threshold,
+    radius=30,  # Base radius, used to derive thickness
     dilation_iterations=10,
     blur_kernel_size=21,
 ):
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)
-    line_thickness = max(
-        1, int(radius * 0.5)
-    )  # Make line thickness proportional to radius
+    # Make line thickness and joint radius proportional to the input radius
+    # Ensure thickness is at least 1
+    joint_radius = max(1, int(radius * 0.5))
+    line_thickness = joint_radius  # Use the same for lines and joints
 
     if persons_keypoints is None:
         return mask  # Return empty mask if no one detected
@@ -123,26 +165,74 @@ def create_mask(
     for (
         person_kps
     ) in persons_keypoints:  # person_kps is shape (17, 3) [[y, x, score], ...]
-        # Draw skeleton lines
+
+        # --- 1. Fill Torso ---
+        shoulder_l = person_kps[KEYPOINT_DICT["left_shoulder"]]
+        shoulder_r = person_kps[KEYPOINT_DICT["right_shoulder"]]
+        hip_l = person_kps[KEYPOINT_DICT["left_hip"]]
+        hip_r = person_kps[KEYPOINT_DICT["right_hip"]]
+
+        # Check confidence of all torso keypoints
+        if (
+            shoulder_l[2] > confidence_threshold
+            and shoulder_r[2] > confidence_threshold
+            and hip_l[2] > confidence_threshold
+            and hip_r[2] > confidence_threshold
+        ):
+
+            # Define vertices in order (top-left, top-right, bottom-right, bottom-left)
+            torso_pts = np.array(
+                [
+                    [int(shoulder_l[1]), int(shoulder_l[0])],  # x, y format for cv2
+                    [int(shoulder_r[1]), int(shoulder_r[0])],
+                    [int(hip_r[1]), int(hip_r[0])],
+                    [int(hip_l[1]), int(hip_l[0])],
+                ],
+                dtype=np.int32,
+            )
+
+            cv2.fillPoly(mask, [torso_pts], 255)
+
+        # --- 2. Draw Skeleton Lines ---
         for kp_idx1, kp_idx2 in SKELETON_LINES:
             kp1 = person_kps[kp_idx1]
             kp2 = person_kps[kp_idx2]
-
-            # Check confidence scores for both keypoints
             if kp1[2] > confidence_threshold and kp2[2] > confidence_threshold:
-                # Extract coords (y, x) and convert to int (x, y) for cv2
                 y1, x1 = int(kp1[0]), int(kp1[1])
                 y2, x2 = int(kp2[0]), int(kp2[1])
                 cv2.line(mask, (x1, y1), (x2, y2), 255, line_thickness)
 
-        # Draw keypoint circles (after lines, so circles are on top)
-        for y_px, x_px, score in person_kps:
-            if score > confidence_threshold:
-                # Draw circle using (x, y) order
-                cv2.circle(mask, (int(x_px), int(y_px)), radius, 255, -1)
+        # --- 3. Draw Head & Joint Circles ---
+        # Define indices for head and limb joints separately
+        head_indices = [
+            KEYPOINT_DICT[k]
+            for k in ["nose", "left_eye", "right_eye", "left_ear", "right_ear"]
+        ]
+        limb_joint_indices = [
+            KEYPOINT_DICT[k]
+            for k in [
+                "left_elbow",
+                "right_elbow",
+                "left_wrist",
+                "right_wrist",
+                "left_knee",
+                "right_knee",
+                "left_ankle",
+                "right_ankle",
+            ]
+        ]
+        # Shoulders and hips are part of torso/lines, no separate circles needed unless desired
 
+        all_joint_indices = head_indices + limb_joint_indices
+
+        for idx in all_joint_indices:
+            y_px, x_px, score = person_kps[idx]
+            if score > confidence_threshold:
+                # Use joint_radius (derived from input radius) for circles
+                cv2.circle(mask, (int(x_px), int(y_px)), joint_radius, 255, -1)
+
+    # --- 4. Apply Dilation & Blur ---
     mask = cv2.dilate(mask, None, iterations=dilation_iterations)
-    # Ensure kernel size is odd
     blur_kernel_size = (
         blur_kernel_size if blur_kernel_size % 2 != 0 else blur_kernel_size + 1
     )
