@@ -155,8 +155,8 @@ def create_mask(
 ):
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)
     # Make line thickness and joint radius proportional to the input radius
-    # Ensure thickness is at least 1
-    joint_radius = max(1, int(radius * 0.5))
+    # Increase the thickness relative to the radius
+    joint_radius = max(1, int(radius * 0.8))  # Increased from 0.5 to 0.8
     line_thickness = joint_radius  # Use the same for lines and joints
 
     if persons_keypoints is None:
@@ -241,26 +241,35 @@ def create_mask(
 
 
 def apply_mask(frame, mask):
-    # Convert frame to float for multiplication
-    frame_float = frame.astype(np.float32)
     # Normalize mask to float [0.0, 1.0]
-    mask_float = mask.astype(np.float32) / 255.0
-    # Make mask 3 channels (needed for element-wise multiplication)
-    mask_3ch_float = cv2.cvtColor(mask_float, cv2.COLOR_GRAY2BGR)
+    mask_float_norm = mask.astype(np.float32) / 255.0
+    # Make mask 3 channels for broadcasting/multiplication
+    mask_3ch_float = cv2.cvtColor(mask_float_norm, cv2.COLOR_GRAY2BGR)
 
-    # Multiply frame's BGR data by the normalized mask.
-    # Areas where mask is 0 will become black (0*color=0).
-    # Areas where mask is 1 will keep original color (1*color=color).
-    # Areas in between will be scaled.
-    masked_bgr_float = frame_float * mask_3ch_float
+    # Convert frame to float for calculations
+    frame_float = frame.astype(np.float32)
 
-    # Convert the blacked-out BGR back to uint8
-    masked_bgr_uint8 = masked_bgr_float.astype(np.uint8)
+    # Calculate the foreground (skeleton * mask)
+    foreground_float = frame_float * mask_3ch_float
 
-    # Split the blacked-out BGR
-    b, g, r = cv2.split(masked_bgr_uint8)
+    # Calculate the background (white * inverted_mask)
+    white_background_color = np.array(
+        [255.0, 255.0, 255.0], dtype=np.float32
+    )  # White in BGR float
+    inverted_mask_3ch_float = 1.0 - mask_3ch_float
+    background_float = white_background_color * inverted_mask_3ch_float
 
-    # Merge the blacked-out BGR with the original mask as the alpha channel
+    # Combine foreground and background
+    combined_bgr_float = foreground_float + background_float
+
+    # Convert the combined BGR back to uint8
+    final_bgr_uint8 = np.clip(combined_bgr_float, 0, 255).astype(np.uint8)
+
+    # Split the final BGR
+    b, g, r = cv2.split(final_bgr_uint8)
+
+    # Merge the white-backed BGR with the original mask as the alpha channel
+    # 'mask' here is the original single-channel uint8 mask
     return cv2.merge((b, g, r, mask))  # Return BGRA
 
 
