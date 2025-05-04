@@ -1,0 +1,6 @@
+opencv-python
+numpy
+tensorflow
+tensorflow_hub
+Pillow
+tqdm # Added for progress bar
