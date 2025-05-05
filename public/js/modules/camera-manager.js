@@ -31,52 +31,10 @@ export class CameraManager {
     this.cameraDefaults = [];
     this.serverToBrowserDeviceMap = new Map(); // Map<serverID, browserDeviceId>
     // Removed latestPoseData map
-    this.drawingLoops = new Map(); // Map<cameraName, { loopId: number, detector: poseDetection.PoseDetector, running: boolean }>
-    this.poseDetector = null; // Store the detector instance
-    this.tfjsBackendReady = false;
-
-    this.initializeTfjs();
-    // Removed WebSocket listener setup
-  }
-
-  async initializeTfjs() {
-    try {
-      logToConsole("Initializing TensorFlow.js backend...", "info");
-      // Access global tf object loaded from CDN
-      await tf.setBackend('webgl');
-      await tf.ready();
-      this.tfjsBackendReady = true;
-      logToConsole("TensorFlow.js backend ready (WebGL).", "success");
-      await this.loadPoseDetector();
-    } catch (err) {
-      logToConsole(`Error initializing TensorFlow.js: ${err.message}`, "error");
-    }
-  }
-
-  async loadPoseDetector() {
-    if (!this.tfjsBackendReady) {
-      logToConsole("TF.js backend not ready, cannot load pose detector.", "warn");
-      return;
-    }
-    if (this.poseDetector) {
-      logToConsole("Pose detector already loaded.", "info");
-      return;
-    }
-    try {
-      logToConsole("Loading MoveNet pose detector model...", "info");
-      // Access global poseDetection object loaded from CDN
-      const model = poseDetection.SupportedModels.MoveNet;
-      const detectorConfig = {
-        modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING, // Use MultiPose Lightning for multiple people
-        enableSmoothing: true,
-        // multiPoseMaxDimension: 256 // Optional: Can reduce if performance is an issue
-      };
-      this.poseDetector = await poseDetection.createDetector(model, detectorConfig);
-      logToConsole("MoveNet pose detector loaded successfully.", "success");
-    } catch (err) {
-      logToConsole(`Error loading pose detector: ${err.message}`, "error");
-      this.poseDetector = null; // Ensure it's null on failure
-    }
+    // this.drawingLoops = new Map();
+    // this.poseDetector = null;
+    // this.tfjsBackendReady = false;
+    // this.initializeTfjs();
   }
 
   // Removed setupWebSocketListener()
@@ -301,7 +259,7 @@ export class CameraManager {
       }
       // Stop skeleton drawing loop if running
       this.updateSkeletonDrawing(name, false); // Ensure loop stops and cleans up
-      this.drawingLoops.delete(name); // Remove from map
+      // this.drawingLoops.delete(name); // Remove from map
 
       const response = await fetch("/camera/remove", {
         method: "POST",
@@ -426,7 +384,7 @@ export class CameraManager {
           </div>
           <div class="camera-preview">
             <video id="preview-${camera.name}" autoplay playsinline muted></video> <!-- Added muted -->
-            <canvas id="skeleton-canvas-${camera.name}" class="skeleton-overlay"></canvas> <!-- Add canvas for overlay -->
+            <!-- <canvas id="skeleton-canvas-${camera.name}" class="skeleton-overlay"></canvas> --> <!-- REMOVED -->
             <div class="device-info">Using: No device selected</div>
           </div>
           <div class="camera-settings">
@@ -474,11 +432,11 @@ export class CameraManager {
 
     // Initialize drawing state based on initial camera data
     setTimeout(() => {
-      if (this.poseDetector) {
-        this.updateSkeletonDrawing(camera.name, camera.showSkeleton);
-      } else {
-        logToConsole(`Pose detector not ready for ${camera.name}, delaying skeleton init.`, "warn");
-      }
+      // if (this.poseDetector) {
+      //   this.updateSkeletonDrawing(camera.name, camera.showSkeleton);
+      // } else {
+      //   logToConsole(`Pose detector not ready for ${camera.name}, delaying skeleton init.`, "warn");
+      // }
     }, 150);
 
     // --- ADDED: Automatically start preview if a device is pre-selected ---
@@ -934,6 +892,7 @@ export class CameraManager {
   async toggleSkeletonOverlay(cameraName, show) {
     logToConsole(`Toggling skeleton overlay for ${cameraName} to ${show}`, "info");
 
+    // --- MODIFICATION START: Control Compositor --- 
     // Update local state directly
     const camera = this.cameras.find(c => c.name === cameraName);
     if (camera) {
@@ -943,210 +902,31 @@ export class CameraManager {
       return; // Don't proceed if camera isn't found
     }
 
-    // Ensure detector is loaded before trying to draw
-    if (show && !this.poseDetector) { // Only load if needed
-      await this.loadPoseDetector(); // Attempt to load if not already loaded
-      if (!this.poseDetector) {
-        logToConsole(`Pose detector failed to load. Cannot start skeleton drawing for ${cameraName}.`, "error");
-        // Revert checkbox state
-        const checkbox = document.getElementById(`skeleton-toggle-${cameraName}`);
-        if (checkbox) checkbox.checked = false;
-        if (camera) camera.showSkeleton = false; // Revert local state too
-        return;
-      }
+    // Find the main compositor (exposed globally from home.js for now)
+    // We assume Camera_1 maps to the main compositor for this example
+    // A more robust solution would map cameras to compositors/render targets
+    if (cameraName === 'Camera_1' && window.mainCompositor) {
+      logToConsole(`Calling mainCompositor.setPoseDetectionEnabled(${show})`, 'info');
+      window.mainCompositor.setPoseDetectionEnabled(show);
+    } else if (cameraName === 'Camera_1') {
+      logToConsole('Could not find window.mainCompositor to toggle pose detection.', 'error');
+    } else {
+      logToConsole(`Skeleton toggle for non-primary camera (${cameraName}) not linked to compositor yet.`, 'warn');
     }
-
-    // Trigger drawing logic update
-    this.updateSkeletonDrawing(cameraName, show);
-    logToConsole(`Skeleton overlay for ${cameraName} toggled locally to ${show}`, "success");
+    // --- MODIFICATION END ---
   }
 
   // Starts or stops the pose detection and drawing loop
+  /* --- REMOVE OLD METHOD ---
   updateSkeletonDrawing(cameraName, show) {
-    let loopInfo = this.drawingLoops.get(cameraName);
-    const canvas = document.getElementById(`skeleton-canvas-${cameraName}`);
-    const video = document.getElementById(`preview-${cameraName}`);
-
-    if (!canvas || !video) {
-      logToConsole(`Cannot ${show ? 'start' : 'stop'} drawing loop for ${cameraName}: canvas or video element not found.`, "warn");
-      return;
-    }
-    // Ensure video stream is active before trying to draw
-    if (show && (!video.srcObject || !video.srcObject.active)) {
-      logToConsole(`Cannot start drawing loop for ${cameraName}: Preview video stream is not active.`, "warn");
-      // Ensure checkbox is unchecked and state is false
-      const checkbox = document.getElementById(`skeleton-toggle-${cameraName}`);
-      if (checkbox) checkbox.checked = false;
-      const camera = this.cameras.find(c => c.name === cameraName);
-      if (camera) camera.showSkeleton = false;
-      return;
-    }
-
-
-    if (show) {
-      if (!this.poseDetector) {
-        logToConsole(`Pose detector not ready for ${cameraName}. Cannot start drawing.`, "error");
-        return; // Don't start if detector isn't ready
-      }
-      if (!loopInfo || !loopInfo.running) {
-        logToConsole(`Starting skeleton detection/drawing loop for ${cameraName}`, "info");
-        canvas.style.display = 'block'; // Show canvas
-
-        const detectAndDraw = async () => {
-          // Check if still running before doing work
-          const currentLoopData = this.drawingLoops.get(cameraName);
-          if (!currentLoopData?.running) return; // Stop if flag turned false or entry removed
-
-          // Check if video is still playing and visible
-          if (video.paused || video.ended || !video.srcObject?.active || video.readyState < 2) {
-            logToConsole(`Video stream for ${cameraName} ended or paused. Stopping drawing loop.`, "info");
-            this.updateSkeletonDrawing(cameraName, false); // Stop the loop properly
-            return;
-          }
-
-
-          try {
-            const poses = await this.poseDetector.estimatePoses(video, {
-              // maxPoses: 5, // Default for MultiPose
-              // flipHorizontal: false // Default
-            });
-            // Check again if still running before drawing
-            if (this.drawingLoops.get(cameraName)?.running) {
-              this.drawSkeletonFrame(cameraName, canvas, video, poses);
-            }
-          } catch (err) {
-            if (err.message.includes("WebGL context lost")) {
-              logToConsole(`WebGL context lost for ${cameraName}. Stopping drawing loop. Re-initializing TFJS might be needed.`, "error");
-              this.updateSkeletonDrawing(cameraName, false);
-              // Optionally try to re-initialize TFJS
-              // this.tfjsBackendReady = false;
-              // this.initializeTfjs();
-            } else {
-              logToConsole(`Error during pose estimation for ${cameraName}: ${err.message}`, "error");
-            }
-            // Consider stopping the loop on repeated errors? For now, continue.
-          }
-
-          // Continue the loop ONLY IF still running
-          const latestLoopData = this.drawingLoops.get(cameraName);
-          if (latestLoopData?.running) {
-            latestLoopData.loopId = requestAnimationFrame(detectAndDraw);
-            // No need to set back into map, modifying object directly
-          }
-        };
-
-        // Initialize or update loop info
-        loopInfo = { loopId: null, running: true }; // Ensure a fresh object if restarting
-        this.drawingLoops.set(cameraName, loopInfo);
-        detectAndDraw(); // Start the loop
-
-      } else {
-        logToConsole(`Loop already running for ${cameraName}`, "info");
-      }
-    } else {
-      // Stop the loop
-      if (loopInfo && loopInfo.running) {
-        logToConsole(`Stopping skeleton detection/drawing loop for ${cameraName}`, "info");
-        loopInfo.running = false; // Set flag
-        if (loopInfo.loopId) {
-          cancelAnimationFrame(loopInfo.loopId);
-          loopInfo.loopId = null;
-        }
-        // Optionally remove from map once stopped? Or keep state as not running.
-        // this.drawingLoops.delete(cameraName);
-
-
-        // Clear the canvas when stopping
-        const ctx = canvas.getContext('2d');
-        // Check if canvas size is valid before clearing
-        if (canvas.width > 0 && canvas.height > 0) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-        } else {
-          logToConsole(`Canvas for ${cameraName} has zero dimensions, skipping clear.`, "warn");
-        }
-        canvas.style.display = 'none'; // Hide canvas
-      }
-    }
+     // ... Entire method removed ...
   }
+  */
 
   // Actual drawing logic for a single frame - ACCEPTS POSES
+  /* --- REMOVE OLD METHOD ---
   drawSkeletonFrame(cameraName, canvas, video, poses) {
-    const ctx = canvas.getContext('2d');
-
-    // Ensure canvas size matches video display size for accurate overlay
-    // Use clientWidth/clientHeight as video intrinsic size might be different
-    const displayWidth = video.clientWidth;
-    const displayHeight = video.clientHeight;
-
-    if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-      canvas.width = displayWidth;
-      canvas.height = displayHeight;
-      if (displayWidth === 0 || displayHeight === 0) {
-        // logToConsole(`Warning: Video element ${cameraName} has zero display dimensions. Canvas cannot be sized.`, "warn");
-        return; // Don't draw if video isn't visible/sized
-      }
-    }
-
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (!poses || poses.length === 0) {
-      return; // No poses to draw
-    }
-
-    // Calculate scaling factors based on intrinsic video size vs display size
-    const scaleX = displayWidth / video.videoWidth;
-    const scaleY = displayHeight / video.videoHeight;
-
-    if (!isFinite(scaleX) || !isFinite(scaleY) || scaleX === 0 || scaleY === 0) {
-      // logToConsole(`Invalid scaling factors for ${cameraName}. Video dimensions: ${video.videoWidth}x${video.videoHeight}, Display: ${displayWidth}x${displayHeight}`, "warn");
-      return; // Avoid drawing with invalid scales
-    }
-
-
-    poses.forEach((pose, poseIndex) => {
-      // Use pose.keypoints directly (MoveNet provides x, y, score, name)
-      if (!pose || !pose.keypoints) return; // Check for valid pose data
-
-      const keypoints = pose.keypoints;
-      const color = POSE_COLORS[poseIndex % POSE_COLORS.length];
-      ctx.strokeStyle = color;
-      ctx.fillStyle = color;
-      ctx.lineWidth = 2;
-
-      // --- Draw Connections ---
-      POSE_CONNECTIONS.forEach(([i, j]) => {
-        const kp1 = keypoints[i];
-        const kp2 = keypoints[j];
-
-        // Check if keypoints and their scores are valid (e.g., score > 0.1)
-        if (kp1 && kp2 && kp1.score > 0.1 && kp2.score > 0.1) {
-          // Keypoints x, y are in pixel coordinates relative to the *input* video frame
-          // Scale them to the *display* size of the video element
-          const x1 = kp1.x * scaleX;
-          const y1 = kp1.y * scaleY;
-          const x2 = kp2.x * scaleX;
-          const y2 = kp2.y * scaleY;
-
-          ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-          ctx.stroke();
-        }
-      });
-
-      // --- Draw Keypoints ---
-      keypoints.forEach((kp) => {
-        if (kp && kp.score > 0.1) {
-          const x = kp.x * scaleX;
-          const y = kp.y * scaleY;
-
-          ctx.beginPath();
-          ctx.arc(x, y, 3, 0, 2 * Math.PI); // Draw a small circle for each keypoint
-          ctx.fill();
-        }
-      });
-    });
+    // ... Entire method removed ...
   }
+  */
 }
