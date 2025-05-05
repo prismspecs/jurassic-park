@@ -119,9 +119,15 @@ router.get('/ptz-devices', async (req, res) => {
 
 // Set preview device for a camera
 router.post('/preview-device', (req, res) => {
+    // Log the received request body immediately
+    console.log(`[Route /preview-device] Received request body:`, req.body);
+    broadcastConsole(`[Route /preview-device] Received body: ${JSON.stringify(req.body)}`, 'debug'); // Also broadcast
+
     const { cameraName, deviceId } = req.body;
-    if (!cameraName || !deviceId) {
-        return res.status(400).json({ success: false, message: 'Camera name and device ID are required' });
+    if (!cameraName || deviceId === null || typeof deviceId === 'undefined') {
+        console.warn(`[Route /preview-device] Validation failed: cameraName='${cameraName}', deviceId='${deviceId}' (type: ${typeof deviceId})`);
+        broadcastConsole(`[Route /preview-device] Validation failed: cameraName='${cameraName}', deviceId='${deviceId}'`, 'warn');
+        return res.status(400).json({ success: false, message: 'Camera name and a valid device ID (including 0) are required' });
     }
 
     try {

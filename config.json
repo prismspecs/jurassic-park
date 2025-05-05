@@ -15,7 +15,7 @@
         {
             "resolution": "1920x1080",
             "fps": 30,
-            "previewDevice": "/dev/video2",
+            "previewDevice": "FaceTime HD Camera",
             "recordingDevice": "/dev/video4",
             "ptzDevice": "/dev/video4"
         },

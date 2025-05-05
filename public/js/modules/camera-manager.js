@@ -626,10 +626,14 @@ export class CameraManager {
         }
       }
 
+      // Log values *before* the check
+      console.log(`[Preview Update] Checking server update. browserDeviceId: ${browserDeviceId}, mapped serverIdToUpdate: ${serverIdToUpdate}`);
+
       if (serverIdToUpdate !== null) {
-        logToConsole(`Updating server: ${cameraName} preview set to server device ID: ${serverIdToUpdate}`, "info");
+        console.log(`Updating server: ${cameraName} preview set to server device ID: ${serverIdToUpdate}`);
         try {
-          const response = await fetch("/camera/preview-device", { // Use the correct endpoint if it exists
+          console.warn(`[Fetch /preview-device] Sending body: ${JSON.stringify({ cameraName, deviceId: serverIdToUpdate })}`);
+          const response = await fetch("/camera/preview-device", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             // Send the SERVER ID

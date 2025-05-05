@@ -24,6 +24,7 @@ import {
   handleResolutionChange
 } from './modules/control-actions.js';
 import { AudioManager } from './modules/audio-manager.js';
+import { CanvasRenderer } from './modules/canvas-renderer.js';
 
 // --- Globals ---
 let currentSceneData = null; // Store loaded scene data
@@ -223,66 +224,29 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize Resizers
   initializeResizers();
 
-  // --- Goal 1c: Direct Stream-to-Canvas Test ---
-  // Get references AFTER cameraManager.initialize() has run
-  // Adding a slight delay to increase likelihood of elements being ready
+  // --- Goal 1d: Integrate CanvasRenderer ---
+  let mainCanvasRenderer = null;
+  try {
+    mainCanvasRenderer = new CanvasRenderer('main-output-canvas');
+  } catch (error) {
+    logToConsole(`Failed to initialize CanvasRenderer: ${error.message}`, 'error');
+  }
+
+  // Need a way to know when Camera 1 video element is ready.
+  // Using a simple timeout for now, but a callback/promise from CameraManager would be better.
   setTimeout(() => {
-    logToConsole("Attempting direct stream-to-canvas setup...", "info");
-    const mainCanvas = document.getElementById('main-output-canvas');
-    const camera1Video = document.getElementById('preview-Camera_1'); // Assumes Camera 1 is named 'Camera_1'
-
-    if (mainCanvas && mainCanvas.getContext) {
-      const ctx = mainCanvas.getContext('2d');
-
+    if (mainCanvasRenderer) {
+      const camera1Video = document.getElementById('preview-Camera_1');
       if (camera1Video) {
-        logToConsole("Found canvas and Camera 1 video element.", "info");
-
-        // Check if video has dimensions and is ready
-        if (camera1Video.readyState >= 2) { // HAVE_CURRENT_DATA or higher
-          // Match canvas size to video intrinsic size initially
-          mainCanvas.width = camera1Video.videoWidth;
-          mainCanvas.height = camera1Video.videoHeight;
-          logToConsole(`Set canvas size to video dimensions: ${mainCanvas.width}x${mainCanvas.height}`, "info");
-        }
-
-        function drawVideoFrame() {
-          // Check if video is still present and playing
-          const currentVideo = document.getElementById('preview-Camera_1');
-          if (!currentVideo || currentVideo.paused || currentVideo.ended || currentVideo.readyState < 2) {
-            // Optional: Clear canvas or show placeholder if video stops/disappears
-            // ctx.fillStyle = '#eeeeee';
-            // ctx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
-            // ctx.fillStyle = 'black';
-            // ctx.fillText('Video stopped', 10, 30);
-            requestAnimationFrame(drawVideoFrame); // Keep checking
-            return;
-          }
-
-          // Ensure canvas size matches video intrinsic size (can change)
-          if (mainCanvas.width !== currentVideo.videoWidth || mainCanvas.height !== currentVideo.videoHeight) {
-            mainCanvas.width = currentVideo.videoWidth;
-            mainCanvas.height = currentVideo.videoHeight;
-            logToConsole(`Resized canvas to video dimensions: ${mainCanvas.width}x${mainCanvas.height}`, "debug");
-          }
-
-          // Draw the video frame
-          ctx.drawImage(currentVideo, 0, 0, mainCanvas.width, mainCanvas.height);
-
-          // Request the next frame
-          requestAnimationFrame(drawVideoFrame);
-        }
-
-        logToConsole("Starting requestAnimationFrame loop for canvas drawing.", "info");
-        drawVideoFrame(); // Start the loop
-
+        logToConsole('Adding Camera 1 video to CanvasRenderer.', 'info');
+        mainCanvasRenderer.addVideoSource(camera1Video);
       } else {
-        logToConsole("Could not find Camera 1 video element (preview-Camera_1) for canvas drawing.", "error");
+        logToConsole('Could not find Camera 1 video element to add to CanvasRenderer.', 'warn');
+        // Maybe retry or wait longer?
       }
-    } else {
-      logToConsole("Could not find main output canvas or get 2D context.", "error");
     }
-  }, 1000); // Wait 1 second after DOMContentLoaded to give CameraManager time
-  // --- End Goal 1c ---
+  }, 1500); // Wait slightly longer than before
+  // --- End Goal 1d ---
 
   // Initialize Collapsible Sections
   initializeCollapsibleSections();
