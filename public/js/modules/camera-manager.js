@@ -591,18 +591,34 @@ export class CameraManager {
       const browserDeviceLabel = selectedBrowserDevice ? (selectedBrowserDevice.label || `Unnamed Device (${browserDeviceId.substring(0, 6)}...)`) : `Unknown (${browserDeviceId.substring(0, 6)}...)`;
 
       // 1. Request the stream using the BROWSER device ID
-      logToConsole(`Requesting getUserMedia for ${cameraName} with browser device ID: ${browserDeviceId}`, "info");
+      console.info(`[${cameraName}] Attempting getUserMedia with browser device ID: ${browserDeviceId}`);
+      console.info(`[${cameraName}] Requesting getUserMedia with browser device ID: ${browserDeviceId}`);
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           deviceId: { exact: browserDeviceId },
-          frameRate: { ideal: 30 } // Add ideal frameRate
+          frameRate: { ideal: 30 },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
         }
       });
 
       // 2. Assign stream to video element
       videoElement.srcObject = stream;
-      await videoElement.play().catch(e => logToConsole(`Error playing preview video for ${cameraName}: ${e.message}`, "error"));
-      logToConsole(`Preview started successfully for ${cameraName} using ${browserDeviceLabel}`, "success");
+      // --- Logging Added ---
+      console.debug(`[${cameraName}] Stream assigned. Checking tracks...`);
+      const videoTracks = stream.getVideoTracks();
+      console.debug(`[${cameraName}] videoTracks:`, videoTracks);
+      if (videoTracks.length > 0) {
+        console.debug(`[${cameraName}] Track found. Getting settings...`);
+        const settings = videoTracks[0].getSettings();
+        console.debug(`[${cameraName}] Settings object:`, settings);
+        console.info(`[${cameraName}] Native stream resolution: ${settings.width}x${settings.height}`);
+      } else {
+        console.warn(`[${cameraName}] No video tracks found on the stream.`);
+      }
+      // --- End Logging ---
+      await videoElement.play().catch(e => console.error(`Error playing preview video for ${cameraName}: ${e.message}`));
+      console.info(`Preview started successfully for ${cameraName} using ${browserDeviceLabel}`);
 
       if (deviceInfoElement) {
         // Find server device associated with this browser device for display text
@@ -634,9 +650,9 @@ export class CameraManager {
       console.log(`[Preview Update] Checking server update. browserDeviceId: ${browserDeviceId}, mapped serverIdToUpdate: ${serverIdToUpdate}`);
 
       if (serverIdToUpdate !== null) {
-        console.log(`Updating server: ${cameraName} preview set to server device ID: ${serverIdToUpdate}`);
+        console.info(`Updating server: ${cameraName} preview set to server device ID: ${serverIdToUpdate}`);
         try {
-          console.warn(`[Fetch /preview-device] Sending body: ${JSON.stringify({ cameraName, deviceId: serverIdToUpdate })}`);
+          console.debug(`[Fetch /preview-device] Sending body: ${JSON.stringify({ cameraName, deviceId: serverIdToUpdate })}`);
           const response = await fetch("/camera/preview-device", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -644,15 +660,15 @@ export class CameraManager {
             body: JSON.stringify({ cameraName, deviceId: serverIdToUpdate }),
           });
           if (!response.ok) {
-            logToConsole(`Failed to update server preview device for ${cameraName}: ${response.statusText}`, "warn");
+            console.warn(`Failed to update server preview device for ${cameraName}: ${response.statusText}`);
           } else {
-            logToConsole(`Server updated successfully for ${cameraName} preview device.`, "success");
+            console.info(`Server updated successfully for ${cameraName} preview device.`);
           }
         } catch (serverUpdateError) {
-          logToConsole(`Error updating server preview device for ${cameraName}: ${serverUpdateError.message}`, "error");
+          console.error(`Error updating server preview device for ${cameraName}: ${serverUpdateError.message}`);
         }
       } else {
-        logToConsole(`Could not find server ID mapping for browser device ${browserDeviceId}. Cannot update server.`, "warn");
+        console.warn(`Could not find server ID mapping for browser device ${browserDeviceId}. Cannot update server.`);
       }
 
 
@@ -660,19 +676,19 @@ export class CameraManager {
       const cam = this.cameras.find(c => c.name === cameraName);
       if (cam) {
         cam.previewDevice = serverIdToUpdate ?? ''; // Store the corresponding server ID or empty if not found
-        logToConsole(`Stored server device ID ${cam.previewDevice} locally for ${cameraName}`, "info");
+        console.info(`Stored server device ID ${cam.previewDevice} locally for ${cameraName}`);
       } else {
-        logToConsole(`Camera ${cameraName} not found to store server device ID locally.`, "warn");
+        console.warn(`Camera ${cameraName} not found to store server device ID locally.`);
       }
 
       // 5. Restart skeleton drawing if it was enabled
       if (cam?.showSkeleton) {
-        logToConsole(`Restarting skeleton drawing for ${cameraName} on new stream.`, "info");
-        this.updateSkeletonDrawing(cameraName, true);
+        console.info(`Restarting skeleton drawing for ${cameraName} on new stream.`);
+        // this.updateSkeletonDrawing(cameraName, true); // updateSkeletonDrawing method seems to be removed
       }
 
     } catch (err) {
-      logToConsole(`Error updating preview device for ${cameraName}: ${err.message}`, "error");
+      console.error(`Error updating preview device for ${cameraName}: ${err.message}`);
       if (deviceInfoElement) deviceInfoElement.textContent = `Error: ${err.message.split(':')[0]}`; // Show shorter error
       // Optionally clear the dropdown selection or show an error state
       const previewSelect = cameraElement?.querySelector('.preview-device');
