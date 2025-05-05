@@ -57,7 +57,7 @@ class Camera {
         // Store the device ID selected by the user on the frontend.
         // This ID corresponds to navigator.mediaDevices.enumerateDevices()
         this.previewDevice = deviceId;
-        console.log(`Backend Camera ${this.name}: Preview device ID set to ${deviceId}`);
+        console.log(`[Camera Instance ${this.name}] Preview device ID set to: ${this.previewDevice} (type: ${typeof this.previewDevice})`);
         // REMOVED: Do not attempt to start preview from the backend.
         // The frontend CameraManager handles calling startPreview.
         /*

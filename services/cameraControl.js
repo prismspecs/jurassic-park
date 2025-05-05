@@ -19,6 +19,8 @@ class CameraControl {
             platform: this.platform,
             ...(this.platform === 'darwin' && { uvcUtilPath: this.uvcUtilPath })
         });
+        this.detectedServerDevices = null; // Cache for detected devices
+        this.detectingDevicesPromise = null; // To prevent concurrent detection
     }
 
     static getInstance() {
@@ -35,6 +37,28 @@ class CameraControl {
     }
 
     async detectVideoDevices() {
+        // Prevent concurrent executions
+        if (this.detectingDevicesPromise) {
+            return this.detectingDevicesPromise;
+        }
+        // Return cached result if available
+        // if (this.detectedServerDevices) {
+        //     console.log('Returning cached server devices:', this.detectedServerDevices);
+        //     return this.detectedServerDevices;
+        // }
+
+        console.log('[CameraControl] Detecting server video devices...');
+        this.detectingDevicesPromise = this._internalDetectVideoDevices();
+        try {
+            this.detectedServerDevices = await this.detectingDevicesPromise;
+            console.log('[CameraControl] Finished detecting server video devices.');
+            return this.detectedServerDevices;
+        } finally {
+            this.detectingDevicesPromise = null; // Clear promise after completion
+        }
+    }
+
+    async _internalDetectVideoDevices() { // Renamed original function
         if (this.platform === 'linux') {
             try {
                 const videoDevices = fs.readdirSync('/dev')
@@ -156,30 +180,64 @@ class CameraControl {
         return this.detectVideoDevices();
     }
 
-    async addCamera(name, previewDevice = "", recordingDevice = "", ptzDevice = "") {
-        if (!this.cameras.has(name)) {
-            const camera = new Camera(name);
-            this.cameras.set(name, camera);
-
-            // Set up devices from defaults if provided
-            if (previewDevice) {
-                await camera.setPreviewDevice(previewDevice);
-            }
-            if (recordingDevice) {
-                camera.setRecordingDevice(recordingDevice);
-            }
-            if (ptzDevice) {
-                camera.setPTZDevice(ptzDevice);
-            }
-
-            console.log(`Added camera: ${name} with devices: `, {
-                preview: previewDevice,
-                recording: recordingDevice,
-                ptz: ptzDevice
-            });
-            return true;
+    async addCamera(name, previewDeviceName = "", recordingDeviceName = "", ptzDeviceName = "") {
+        if (this.cameras.has(name)) {
+            console.warn(`[CameraControl Add] Camera ${name} already exists.`);
+            return false; // Indicate camera already exists
         }
-        return false;
+
+        // --- Ensure server devices are detected before proceeding ---
+        if (!this.detectedServerDevices) {
+            console.log('[CameraControl Add] Server devices not yet detected, calling detectVideoDevices...');
+            await this.detectVideoDevices(); // Await detection if not already done
+        }
+        const serverDevices = this.detectedServerDevices || [];
+        console.log('[CameraControl Add] Using detected server devices: ', serverDevices);
+        // -----------------------------------------------------------
+
+        const camera = new Camera(name);
+        this.cameras.set(name, camera);
+        console.log(`[CameraControl Add] Created Camera instance for ${name}.`);
+
+        // Helper to find server device ID by name
+        const findDeviceIdByName = (deviceName) => {
+            if (!deviceName) return null;
+            const device = serverDevices.find(d => d.name === deviceName);
+            if (device) {
+                console.log(`[CameraControl Add] Found device ID ${device.id} for name '${deviceName}'`);
+                return device.id; // Return the numerical ID (or path for Linux)
+            } else {
+                console.warn(`[CameraControl Add] Could not find server device matching name: '${deviceName}'`);
+                return null;
+            }
+        };
+
+        // Set devices using their detected IDs
+        const previewDeviceId = findDeviceIdByName(previewDeviceName);
+        if (previewDeviceId !== null) {
+            console.log(`[CameraControl Add] Calling camera.setPreviewDevice(${previewDeviceId}) for ${name}.`);
+            // Use await only if setPreviewDevice is async (it's not currently)
+            camera.setPreviewDevice(previewDeviceId); // Pass numerical ID
+        }
+
+        const recordingDeviceId = findDeviceIdByName(recordingDeviceName);
+        if (recordingDeviceId !== null) {
+            console.log(`[CameraControl Add] Calling camera.setRecordingDevice(${recordingDeviceId}) for ${name}.`);
+            camera.setRecordingDevice(recordingDeviceId); // Pass numerical ID or path
+        }
+
+        const ptzDeviceId = findDeviceIdByName(ptzDeviceName);
+        if (ptzDeviceId !== null) {
+            console.log(`[CameraControl Add] Calling camera.setPTZDevice(${ptzDeviceId}) for ${name}.`);
+            camera.setPTZDevice(ptzDeviceId); // Pass numerical ID or path
+        }
+
+        console.log(`Added camera: ${name} with resolved device IDs: `, {
+            preview: previewDeviceId,      // Log the ID used
+            recording: recordingDeviceId,  // Log the ID used
+            ptz: ptzDeviceId           // Log the ID used
+        });
+        return true;
     }
 
     removeCamera(name) {

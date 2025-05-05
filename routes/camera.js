@@ -20,7 +20,8 @@ async function initializeDefaultCamera() {
             const defaultCameraName = 'Camera_1';
             // Check if camera already exists (e.g., due to persistence or prior init)
             if (!cameraControl.getCamera(defaultCameraName)) {
-                console.log(`Attempting to add default camera '${defaultCameraName}' on startup...`);
+                console.log(`[Server Init] Attempting to add default camera '${defaultCameraName}' on startup...`);
+                console.log(`[Server Init] Defaults from config:`, defaultCameraConfig); // Log defaults
                 await cameraControl.addCamera(
                     defaultCameraName,
                     defaultCameraConfig.previewDevice,
@@ -46,10 +47,8 @@ initializeDefaultCamera();
 // Get available cameras
 router.get('/cameras', (req, res) => {
     const cameras = cameraControl.getCameras();
-    // Only log if cameras are found to avoid unnecessary logging at startup
-    if (cameras.length > 0) {
-        console.log('Available cameras:', cameras);
-    }
+    // Log the state being returned to the client
+    console.log(`[Route GET /cameras] Returning camera states:`, JSON.stringify(cameras, null, 2));
     res.json(cameras);
 });
 

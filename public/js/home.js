@@ -24,7 +24,8 @@ import {
   handleResolutionChange
 } from './modules/control-actions.js';
 import { AudioManager } from './modules/audio-manager.js';
-import { CanvasRenderer } from './modules/canvas-renderer.js';
+// import { CanvasRenderer } from './modules/canvas-renderer.js'; // Old renderer
+import { VideoCompositor } from './modules/video-compositor.js'; // Import the new compositor
 
 // --- Globals ---
 let currentSceneData = null; // Store loaded scene data
@@ -224,29 +225,53 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize Resizers
   initializeResizers();
 
-  // --- Goal 1d: Integrate CanvasRenderer ---
-  let mainCanvasRenderer = null;
+  // --- Goal 1d: Integrate CanvasRenderer --- REPLACED WITH COMPOSITOR
+  // let mainCanvasRenderer = null;
+  // try {
+  //     mainCanvasRenderer = new CanvasRenderer('main-output-canvas');
+  // } catch (error) {
+  //     logToConsole(`Failed to initialize CanvasRenderer: ${error.message}`, 'error');
+  // }
+  //
+  // // Need a way to know when Camera 1 video element is ready.
+  // // Using a simple timeout for now, but a callback/promise from CameraManager would be better.
+  // setTimeout(() => {
+  //     if (mainCanvasRenderer) {
+  //         const camera1Video = document.getElementById('preview-Camera_1');
+  //         if (camera1Video) {
+  //             logToConsole('Adding Camera 1 video to CanvasRenderer.', 'info');
+  //             mainCanvasRenderer.addVideoSource(camera1Video);
+  //         } else {
+  //             logToConsole('Could not find Camera 1 video element to add to CanvasRenderer.', 'warn');
+  //             // Maybe retry or wait longer?
+  //         }
+  //     }
+  // }, 1500); // Wait slightly longer than before
+  // --- End Goal 1d ---
+
+  // --- Initialize Video Compositor ---
+  let mainCompositor = null;
   try {
-    mainCanvasRenderer = new CanvasRenderer('main-output-canvas');
+    mainCompositor = new VideoCompositor('main-output-canvas');
   } catch (error) {
-    logToConsole(`Failed to initialize CanvasRenderer: ${error.message}`, 'error');
+    logToConsole(`Failed to initialize VideoCompositor: ${error.message}`, 'error');
+    // If compositor fails, the rest of the dependent code might not work
   }
 
-  // Need a way to know when Camera 1 video element is ready.
-  // Using a simple timeout for now, but a callback/promise from CameraManager would be better.
+  // Find Camera 1 video element and add it as the primary source
+  // Using a timeout again, still not ideal but functional for now
   setTimeout(() => {
-    if (mainCanvasRenderer) {
+    if (mainCompositor) {
       const camera1Video = document.getElementById('preview-Camera_1');
       if (camera1Video) {
-        logToConsole('Adding Camera 1 video to CanvasRenderer.', 'info');
-        mainCanvasRenderer.addVideoSource(camera1Video);
+        logToConsole('Adding Camera 1 video to VideoCompositor.', 'info');
+        mainCompositor.setPrimaryVideoSource(camera1Video);
       } else {
-        logToConsole('Could not find Camera 1 video element to add to CanvasRenderer.', 'warn');
-        // Maybe retry or wait longer?
+        logToConsole('Could not find Camera 1 video element to add to VideoCompositor.', 'warn');
       }
     }
-  }, 1500); // Wait slightly longer than before
-  // --- End Goal 1d ---
+  }, 1500); // Same delay as before
+  // --- End Compositor Init ---
 
   // Initialize Collapsible Sections
   initializeCollapsibleSections();
