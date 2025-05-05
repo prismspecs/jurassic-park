@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Test</title>
+    <style>
+        body {
+            margin: 20px;
+        }
+
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Basic Canvas Test</h1>
+    <p>You should see a red rectangle below:</p>
+    <canvas id="my-unique-drawing-canvas-123" width="300" height="150"></canvas>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOMContentLoaded event fired.');
+            const canvas = document.querySelector('#my-unique-drawing-canvas-123');
+            console.log('Attempted to get canvas element using querySelector:', canvas);
+            if (canvas && canvas.getContext) {
+                console.log('Canvas element found and has getContext method.');
+                const ctx = canvas.getContext('2d');
+                console.log('Attempted to get 2D context:', ctx);
+                if (ctx) {
+                    console.log('Canvas context obtained, drawing rectangle...');
+                    ctx.fillStyle = 'red';
+                    ctx.fillRect(50, 25, 200, 100); // x, y, width, height
+                    console.log('Rectangle drawn.');
+                } else {
+                    console.error('Failed to get 2D context for canvas.');
+                    alert('Failed to get 2D context for canvas.');
+                }
+            } else {
+                console.error('Canvas element not found or getContext not supported.');
+                alert('Canvas element not found or getContext not supported.');
+            }
+        });
+    </script>
+</body>
+
+</html>

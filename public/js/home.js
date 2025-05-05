@@ -223,6 +223,67 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize Resizers
   initializeResizers();
 
+  // --- Goal 1c: Direct Stream-to-Canvas Test ---
+  // Get references AFTER cameraManager.initialize() has run
+  // Adding a slight delay to increase likelihood of elements being ready
+  setTimeout(() => {
+    logToConsole("Attempting direct stream-to-canvas setup...", "info");
+    const mainCanvas = document.getElementById('main-output-canvas');
+    const camera1Video = document.getElementById('preview-Camera_1'); // Assumes Camera 1 is named 'Camera_1'
+
+    if (mainCanvas && mainCanvas.getContext) {
+      const ctx = mainCanvas.getContext('2d');
+
+      if (camera1Video) {
+        logToConsole("Found canvas and Camera 1 video element.", "info");
+
+        // Check if video has dimensions and is ready
+        if (camera1Video.readyState >= 2) { // HAVE_CURRENT_DATA or higher
+          // Match canvas size to video intrinsic size initially
+          mainCanvas.width = camera1Video.videoWidth;
+          mainCanvas.height = camera1Video.videoHeight;
+          logToConsole(`Set canvas size to video dimensions: ${mainCanvas.width}x${mainCanvas.height}`, "info");
+        }
+
+        function drawVideoFrame() {
+          // Check if video is still present and playing
+          const currentVideo = document.getElementById('preview-Camera_1');
+          if (!currentVideo || currentVideo.paused || currentVideo.ended || currentVideo.readyState < 2) {
+            // Optional: Clear canvas or show placeholder if video stops/disappears
+            // ctx.fillStyle = '#eeeeee';
+            // ctx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+            // ctx.fillStyle = 'black';
+            // ctx.fillText('Video stopped', 10, 30);
+            requestAnimationFrame(drawVideoFrame); // Keep checking
+            return;
+          }
+
+          // Ensure canvas size matches video intrinsic size (can change)
+          if (mainCanvas.width !== currentVideo.videoWidth || mainCanvas.height !== currentVideo.videoHeight) {
+            mainCanvas.width = currentVideo.videoWidth;
+            mainCanvas.height = currentVideo.videoHeight;
+            logToConsole(`Resized canvas to video dimensions: ${mainCanvas.width}x${mainCanvas.height}`, "debug");
+          }
+
+          // Draw the video frame
+          ctx.drawImage(currentVideo, 0, 0, mainCanvas.width, mainCanvas.height);
+
+          // Request the next frame
+          requestAnimationFrame(drawVideoFrame);
+        }
+
+        logToConsole("Starting requestAnimationFrame loop for canvas drawing.", "info");
+        drawVideoFrame(); // Start the loop
+
+      } else {
+        logToConsole("Could not find Camera 1 video element (preview-Camera_1) for canvas drawing.", "error");
+      }
+    } else {
+      logToConsole("Could not find main output canvas or get 2D context.", "error");
+    }
+  }, 1000); // Wait 1 second after DOMContentLoaded to give CameraManager time
+  // --- End Goal 1c ---
+
   // Initialize Collapsible Sections
   initializeCollapsibleSections();
 
@@ -361,149 +422,149 @@ function initializeSecretPanel() {
 
 // --- New: Function to Update Assembly UI ---
 function updateAssemblyUI(sceneData, sceneDisplayName) {
-    const assemblySection = document.getElementById('scene-assembly-section');
-    const sceneNameSpan = document.getElementById('assembly-scene-name');
-    const takeSelectionArea = document.getElementById('take-selection-area');
-    const assembleButton = document.getElementById('assemble-scene-button');
+  const assemblySection = document.getElementById('scene-assembly-section');
+  const sceneNameSpan = document.getElementById('assembly-scene-name');
+  const takeSelectionArea = document.getElementById('take-selection-area');
+  const assembleButton = document.getElementById('assemble-scene-button');
 
-    if (!assemblySection || !sceneNameSpan || !takeSelectionArea || !assembleButton) {
-        logToConsole("Assembly UI elements not found", "error");
-        return;
-    }
+  if (!assemblySection || !sceneNameSpan || !takeSelectionArea || !assembleButton) {
+    logToConsole("Assembly UI elements not found", "error");
+    return;
+  }
 
-    // Reset and hide by default
-    takeSelectionArea.innerHTML = '<p><em>Loading assembly info...</em></p>';
+  // Reset and hide by default
+  takeSelectionArea.innerHTML = '<p><em>Loading assembly info...</em></p>';
+  assembleButton.disabled = true;
+  assemblySection.style.display = 'none';
+  sceneNameSpan.textContent = '';
+  currentSceneData = sceneData; // Update global reference
+
+  if (sceneData && sceneData.assembly && Array.isArray(sceneData.assembly) && sceneData.assembly.length > 0) {
+    logToConsole(`Found assembly data for scene: ${sceneDisplayName}`, 'info');
+    sceneNameSpan.textContent = sceneDisplayName;
+    takeSelectionArea.innerHTML = ''; // Clear loading message
+
+    sceneData.assembly.forEach((segment, index) => {
+      const segmentDiv = document.createElement('div');
+      segmentDiv.className = 'assembly-segment mb-2 p-2 border rounded';
+      segmentDiv.dataset.index = index; // Store original index
+
+      const description = `Segment ${index + 1}: Shot "${segment.shot}", Cam "${segment.camera}", In Frame: ${segment.in}, Out Frame: ${segment.out}`;
+      const label = document.createElement('label');
+      label.textContent = `${description} - Take #:`;
+      label.htmlFor = `take-input-${index}`;
+      label.className = 'form-label me-2';
+
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.id = `take-input-${index}`;
+      input.className = 'form-control form-control-sm d-inline-block take-input';
+      input.style.width = '80px'; // Adjust width as needed
+      input.min = '1';
+      input.value = '1'; // Default to Take 1
+      input.required = true;
+      input.dataset.shot = segment.shot; // Store segment data on input for easier access later
+      input.dataset.camera = segment.camera;
+      input.dataset.inFrame = segment.in;
+      input.dataset.outFrame = segment.out;
+
+      segmentDiv.appendChild(label);
+      segmentDiv.appendChild(input);
+      takeSelectionArea.appendChild(segmentDiv);
+    });
+
+    assembleButton.disabled = false; // Enable the button
+    assemblySection.style.display = 'block'; // Show the section
+  } else {
+    logToConsole(`No assembly data found or scene not loaded for: ${sceneDisplayName || 'selected scene'}`, 'warn');
+    takeSelectionArea.innerHTML = '<p><em>No assembly definition found for this scene.</em></p>';
+    assemblySection.style.display = 'block'; // Show section but with message
     assembleButton.disabled = true;
-    assemblySection.style.display = 'none';
-    sceneNameSpan.textContent = '';
-    currentSceneData = sceneData; // Update global reference
-
-    if (sceneData && sceneData.assembly && Array.isArray(sceneData.assembly) && sceneData.assembly.length > 0) {
-        logToConsole(`Found assembly data for scene: ${sceneDisplayName}`, 'info');
-        sceneNameSpan.textContent = sceneDisplayName;
-        takeSelectionArea.innerHTML = ''; // Clear loading message
-
-        sceneData.assembly.forEach((segment, index) => {
-            const segmentDiv = document.createElement('div');
-            segmentDiv.className = 'assembly-segment mb-2 p-2 border rounded';
-            segmentDiv.dataset.index = index; // Store original index
-
-            const description = `Segment ${index + 1}: Shot "${segment.shot}", Cam "${segment.camera}", In Frame: ${segment.in}, Out Frame: ${segment.out}`;
-            const label = document.createElement('label');
-            label.textContent = `${description} - Take #:`;
-            label.htmlFor = `take-input-${index}`;
-            label.className = 'form-label me-2';
-
-            const input = document.createElement('input');
-            input.type = 'number';
-            input.id = `take-input-${index}`;
-            input.className = 'form-control form-control-sm d-inline-block take-input';
-            input.style.width = '80px'; // Adjust width as needed
-            input.min = '1';
-            input.value = '1'; // Default to Take 1
-            input.required = true;
-            input.dataset.shot = segment.shot; // Store segment data on input for easier access later
-            input.dataset.camera = segment.camera;
-            input.dataset.inFrame = segment.in;
-            input.dataset.outFrame = segment.out;
-
-            segmentDiv.appendChild(label);
-            segmentDiv.appendChild(input);
-            takeSelectionArea.appendChild(segmentDiv);
-        });
-
-        assembleButton.disabled = false; // Enable the button
-        assemblySection.style.display = 'block'; // Show the section
-    } else {
-        logToConsole(`No assembly data found or scene not loaded for: ${sceneDisplayName || 'selected scene'}`, 'warn');
-        takeSelectionArea.innerHTML = '<p><em>No assembly definition found for this scene.</em></p>';
-         assemblySection.style.display = 'block'; // Show section but with message
-         assembleButton.disabled = true;
-    }
+  }
 }
 
 // --- New: Add listener for the Assemble Scene button ---
 const assembleBtn = document.getElementById('assemble-scene-button');
 if (assembleBtn) {
   assembleBtn.addEventListener('click', async () => {
-      if (!currentSceneData || !currentSceneData.directory || !currentSceneData.assembly) {
-          logToConsole('Cannot assemble: No valid scene data or assembly loaded.', 'error');
-          alert('Error: Scene data is missing or invalid. Please select a scene with assembly info.');
-          return;
+    if (!currentSceneData || !currentSceneData.directory || !currentSceneData.assembly) {
+      logToConsole('Cannot assemble: No valid scene data or assembly loaded.', 'error');
+      alert('Error: Scene data is missing or invalid. Please select a scene with assembly info.');
+      return;
+    }
+
+    const takeInputs = document.querySelectorAll('#take-selection-area .take-input');
+    const assemblyTakes = [];
+    let isValid = true;
+
+    takeInputs.forEach(input => {
+      const takeNumber = parseInt(input.value, 10);
+      if (isNaN(takeNumber) || takeNumber < 1) {
+        isValid = false;
+        input.classList.add('is-invalid'); // Add validation feedback
+      } else {
+        input.classList.remove('is-invalid');
+        assemblyTakes.push({
+          shot: input.dataset.shot,
+          camera: input.dataset.camera,
+          inFrame: parseInt(input.dataset.inFrame, 10),
+          outFrame: parseInt(input.dataset.outFrame, 10),
+          take: takeNumber
+        });
       }
+    });
 
-      const takeInputs = document.querySelectorAll('#take-selection-area .take-input');
-      const assemblyTakes = [];
-      let isValid = true;
+    if (!isValid) {
+      logToConsole('Assembly cancelled: Invalid take number entered.', 'warn');
+      alert('Please enter a valid take number (>= 1) for all segments.');
+      return;
+    }
 
-      takeInputs.forEach(input => {
-          const takeNumber = parseInt(input.value, 10);
-          if (isNaN(takeNumber) || takeNumber < 1) {
-              isValid = false;
-              input.classList.add('is-invalid'); // Add validation feedback
-          } else {
-              input.classList.remove('is-invalid');
-              assemblyTakes.push({
-                  shot: input.dataset.shot,
-                  camera: input.dataset.camera,
-                  inFrame: parseInt(input.dataset.inFrame, 10),
-                  outFrame: parseInt(input.dataset.outFrame, 10),
-                  take: takeNumber
-              });
-          }
+    const assemblyPayload = {
+      sceneDirectory: currentSceneData.directory,
+      takes: assemblyTakes
+    };
+
+    logToConsole('Initiating scene assembly with payload:', 'info', assemblyPayload);
+    assembleBtn.disabled = true; // Disable button during processing
+    assembleBtn.textContent = 'Assembling...';
+
+    try {
+      // TODO: Replace log with actual API call
+      // console.log("--- WOULD SEND TO BACKEND ---", assemblyPayload);
+      // alert(`Assembly requested for scene: ${currentSceneData.directory}\nTakes: ${JSON.stringify(assemblyTakes, null, 2)}`);
+      // Simulating backend call delay
+      // await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // --- UNCOMMENT THIS BLOCK TO SEND TO BACKEND ---
+      const response = await fetch('/api/assemble-scene', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(assemblyPayload)
       });
-
-      if (!isValid) {
-          logToConsole('Assembly cancelled: Invalid take number entered.', 'warn');
-          alert('Please enter a valid take number (>= 1) for all segments.');
-          return;
+      if (!response.ok) {
+        // Try to get error message from backend response body
+        let errorMsg = `Assembly request failed with status: ${response.status}`;
+        try {
+          const errorResult = await response.json();
+          errorMsg = errorResult.message || errorMsg;
+        } catch (e) { /* Ignore if response body is not JSON */ }
+        throw new Error(errorMsg);
       }
+      const result = await response.json(); // Get success message
+      logToConsole('Assembly request successful:', 'success', result);
+      alert(result.message || 'Scene assembly process initiated successfully!'); // Show backend message
+      // --- END UNCOMMENT ---
 
-      const assemblyPayload = {
-          sceneDirectory: currentSceneData.directory,
-          takes: assemblyTakes
-      };
+      // logToConsole('Simulated assembly request finished.', 'info');
+      // alert('Simulated assembly request finished.'); // Placeholder
 
-      logToConsole('Initiating scene assembly with payload:', 'info', assemblyPayload);
-      assembleBtn.disabled = true; // Disable button during processing
-      assembleBtn.textContent = 'Assembling...';
-
-      try {
-           // TODO: Replace log with actual API call
-          // console.log("--- WOULD SEND TO BACKEND ---", assemblyPayload);
-          // alert(`Assembly requested for scene: ${currentSceneData.directory}\nTakes: ${JSON.stringify(assemblyTakes, null, 2)}`);
-           // Simulating backend call delay
-          // await new Promise(resolve => setTimeout(resolve, 1500));
-
-          // --- UNCOMMENT THIS BLOCK TO SEND TO BACKEND ---
-          const response = await fetch('/api/assemble-scene', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(assemblyPayload)
-          });
-          if (!response.ok) {
-              // Try to get error message from backend response body
-              let errorMsg = `Assembly request failed with status: ${response.status}`;
-              try {
-                  const errorResult = await response.json();
-                  errorMsg = errorResult.message || errorMsg;
-              } catch (e) { /* Ignore if response body is not JSON */ }
-              throw new Error(errorMsg);
-          }
-          const result = await response.json(); // Get success message
-          logToConsole('Assembly request successful:', 'success', result);
-          alert(result.message || 'Scene assembly process initiated successfully!'); // Show backend message
-          // --- END UNCOMMENT ---
-
-         // logToConsole('Simulated assembly request finished.', 'info');
-         // alert('Simulated assembly request finished.'); // Placeholder
-
-      } catch (error) {
-          logToConsole(`Error during scene assembly request: ${error}`, 'error');
-          alert(`Error starting assembly: ${error.message}`);
-      } finally {
-         assembleBtn.disabled = false; // Re-enable button
-         assembleBtn.textContent = 'Assemble Scene';
-      }
+    } catch (error) {
+      logToConsole(`Error during scene assembly request: ${error}`, 'error');
+      alert(`Error starting assembly: ${error.message}`);
+    } finally {
+      assembleBtn.disabled = false; // Re-enable button
+      assembleBtn.textContent = 'Assemble Scene';
+    }
   });
 }
