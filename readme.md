@@ -151,3 +151,11 @@ _this is a line of dialogue_ such as _It's... it's a dinosar_
 - Call actors to the stage
   ...
 - ## Action
+
+## Client-Side Processing
+
+### Pose Tracking
+
+The system performs real-time pose tracking directly in the browser using TensorFlow.js (MoveNet model) on the live camera preview streams. This provides visual feedback like skeleton overlays in the UI.
+
+To optimize performance, especially on macOS with Apple Silicon (M1/M2/M3 chips), the application is configured to use the **WebGPU** backend for TensorFlow.js. WebGPU can leverage Apple's Metal API more directly than WebGL, potentially offering significant speed improvements for compute-intensive tasks like pose estimation.
