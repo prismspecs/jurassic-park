@@ -590,6 +590,31 @@ export class CameraManager {
       const selectedBrowserDevice = this.availableDevices.find(bd => bd.deviceId === browserDeviceId);
       const browserDeviceLabel = selectedBrowserDevice ? (selectedBrowserDevice.label || `Unnamed Device (${browserDeviceId.substring(0, 6)}...)`) : `Unknown (${browserDeviceId.substring(0, 6)}...)`;
 
+      // --- Get Desired Resolution from UI ---
+      let requestedWidth = 1920; // Default width
+      let requestedHeight = 1080; // Default height
+      const resolutionSelect = document.getElementById('recording-resolution');
+      if (resolutionSelect) {
+        const selectedValue = resolutionSelect.value;
+        const parts = selectedValue.split('x');
+        if (parts.length === 2) {
+          const parsedWidth = parseInt(parts[0], 10);
+          const parsedHeight = parseInt(parts[1], 10);
+          if (!isNaN(parsedWidth) && !isNaN(parsedHeight) && parsedWidth > 0 && parsedHeight > 0) {
+            requestedWidth = parsedWidth;
+            requestedHeight = parsedHeight;
+            console.info(`[${cameraName}] Using resolution from dropdown: ${requestedWidth}x${requestedHeight}`);
+          } else {
+            console.warn(`[${cameraName}] Invalid resolution value parsed: ${selectedValue}. Using defaults.`);
+          }
+        } else {
+          console.warn(`[${cameraName}] Invalid resolution format in dropdown: ${selectedValue}. Using defaults.`);
+        }
+      } else {
+        console.warn(`[${cameraName}] Recording resolution dropdown (#recording-resolution) not found. Using defaults.`);
+      }
+      // --- End Get Desired Resolution ---
+
       // 1. Request the stream using the BROWSER device ID
       console.info(`[${cameraName}] Attempting getUserMedia with browser device ID: ${browserDeviceId}`);
       console.info(`[${cameraName}] Requesting getUserMedia with browser device ID: ${browserDeviceId}`);
@@ -597,8 +622,8 @@ export class CameraManager {
         video: {
           deviceId: { exact: browserDeviceId },
           frameRate: { ideal: 30 },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
+          width: { ideal: requestedWidth }, // Use value from UI
+          height: { ideal: requestedHeight } // Use value from UI
         }
       });
 
@@ -699,9 +724,36 @@ export class CameraManager {
     }
   }
 
+  // --- NEW METHOD ---
+  async updateAllPreviewsResolution() {
+    console.info("Recording resolution changed in UI. Updating active previews...");
+    for (const camera of this.cameras) {
+      const videoElement = document.getElementById(`preview-${camera.name}`);
+      // Check if video element exists AND has an active stream
+      if (videoElement && videoElement.srcObject) {
+        // Ensure tracks exist before trying to access them
+        const videoTracks = videoElement.srcObject.getVideoTracks();
+        if (videoTracks.length > 0) {
+          const currentBrowserDeviceId = videoTracks[0].getSettings().deviceId;
+          if (currentBrowserDeviceId) {
+            console.info(`Updating preview for ${camera.name} with new resolution.`);
+            // Call updatePreviewDevice with the current browser device ID.
+            // This function now reads the new resolution from the dropdown internally.
+            await this.updatePreviewDevice(camera.name, currentBrowserDeviceId);
+          } else {
+            console.warn(`Could not get current device ID from track settings for active preview ${camera.name}. Skipping update.`);
+          }
+        } else {
+          console.warn(`No video tracks found for active preview ${camera.name}. Skipping update.`);
+        }
+      }
+    }
+    console.info("Finished updating active previews for new resolution.");
+  }
+  // --- END NEW METHOD ---
 
   async updateRecordingDevice(cameraName, serverDeviceId) { // Stays serverDeviceId
-    logToConsole(`Setting recording device for ${cameraName} with server device ID: ${serverDeviceId}`, "info");
+    console.info(`Setting recording device for ${cameraName} with server device ID: ${serverDeviceId}`);
     try {
       // Update server
       const response = await fetch("/camera/recording-device", {
@@ -954,7 +1006,7 @@ export class CameraManager {
   async togglePoseDetection(cameraName, show) {
     logToConsole(`Toggling pose detection for ${cameraName} to ${show}`, "info");
 
-    // --- MODIFICATION START: Control Compositor --- 
+    // --- MODIFICATION START: Control Compositor ---
     // Update local state directly
     const camera = this.cameras.find(c => c.name === cameraName);
     if (camera) {

@@ -208,7 +208,11 @@ export class VideoCompositor {
             posesToDraw = this.lastDetectedPoses;
             // Start estimation for the *next* frame (don't await)
             this.poseDetector.estimatePoses(this.primaryVideoSource)
-                .then(poses => { this.lastDetectedPoses = poses; })
+                .then(poses => {
+                    // Log the number of poses detected in THIS batch
+                    console.debug(`[Pose Detection] Detected ${poses ? poses.length : 0} poses this frame.`);
+                    this.lastDetectedPoses = poses;
+                })
                 .catch(err => {
                     logToConsole(`VideoCompositor: Error estimating poses: ${err.message}`, 'error');
                     this.lastDetectedPoses = [];
@@ -255,8 +259,9 @@ export class VideoCompositor {
         if (!isFinite(scaleX) || !isFinite(scaleY) || scaleX === 0 || scaleY === 0) return;
 
         ctx.save();
-        ctx.fillStyle = 'black'; // Color doesn't matter
-        ctx.globalCompositeOperation = 'destination-in';
+
+        // 1. Build a path containing all bounding boxes
+        ctx.beginPath();
 
         poses.forEach(pose => {
             if (!pose || !pose.keypoints) return;
@@ -277,9 +282,19 @@ export class VideoCompositor {
                 const boxY = Math.max(0, minY - padding);
                 const boxWidth = Math.min(canvasWidth - boxX, (maxX - minX) + padding * 2);
                 const boxHeight = Math.min(canvasHeight - boxY, (maxY - minY) + padding * 2);
-                ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+                // Add this box to the path, don't fill yet
+                ctx.rect(boxX, boxY, boxWidth, boxHeight);
             }
         });
+
+        // 2. Set composite operation to mask
+        ctx.globalCompositeOperation = 'destination-in';
+
+        // 3. Fill the combined path to apply the mask
+        // (Video was already drawn in _drawFrame)
+        ctx.fillStyle = 'black'; // Color doesn't matter for the mask shape
+        ctx.fill();
+
         ctx.restore(); // Restore globalCompositeOperation
     }
     // --- End Refactored Masking Method ---

@@ -106,7 +106,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // Listener for recording pipeline dropdown
   document.getElementById('recording-pipeline')?.addEventListener('change', (e) => handlePipelineChange(e.target.value));
   // Listener for recording resolution dropdown
-  document.getElementById('recording-resolution')?.addEventListener('change', (e) => handleResolutionChange(e.target.value));
+  document.getElementById('recording-resolution')?.addEventListener('change', (e) => {
+    const newResolution = e.target.value;
+    // 1. Update the server-side setting (as before)
+    handleResolutionChange(newResolution);
+    // 2. Trigger update of live previews in CameraManager
+    if (cameraManager) { // Ensure cameraManager is initialized
+      cameraManager.updateAllPreviewsResolution(); // No need to pass resolution, it reads from dropdown
+    }
+  });
 
   // --- OLD Session Functions (Keep for reference/potential reuse if needed) ---
   /*
