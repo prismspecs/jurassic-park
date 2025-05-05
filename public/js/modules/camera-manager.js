@@ -389,7 +389,7 @@ export class CameraManager {
       const displayLabel = serverDevice.name || serverDevice.id; // User-friendly label
 
       if (browserDeviceId) {
-        // Value is the Browser Device ID
+        // Value is the BROWSER Device ID
         // Check if this browserDeviceId matches the one mapped from the saved server ID
         const selected = browserDeviceId === currentPreviewBrowserDeviceId ? "selected" : "";
         previewOptionsHtml += `<option value="${browserDeviceId}" ${selected}>${displayLabel}</option>`;
@@ -500,6 +500,42 @@ export class CameraManager {
     }
     // --- END ADDED ---
 
+    // --- MODIFICATION START: Robust initial selection ---
+    logToConsole(`[${camera.name}] Setting initial preview. Server default ID: ${camera.previewDevice}`, 'debug');
+    // Re-check the map *now*
+    let initialBrowserDeviceId = this.serverToBrowserDeviceMap.get(camera.previewDevice);
+
+    if (initialBrowserDeviceId) {
+      logToConsole(`[${camera.name}] Found corresponding browser deviceId in map: ${initialBrowserDeviceId}`, 'debug');
+      // Check if this deviceId actually exists in the dropdown options
+      const optionExists = Array.from(div.querySelector('.preview-device').options).some(opt => opt.value === initialBrowserDeviceId);
+      if (optionExists) {
+        div.querySelector('.preview-device').value = initialBrowserDeviceId;
+        logToConsole(`[${camera.name}] Set preview dropdown to: ${initialBrowserDeviceId}`, 'debug');
+      } else {
+        logToConsole(`[${camera.name}] Warning: Mapped browser deviceId ${initialBrowserDeviceId} not found in dropdown options!`, 'warn');
+        initialBrowserDeviceId = null; // Reset if not found in dropdown
+      }
+    } else {
+      logToConsole(`[${camera.name}] No corresponding browser deviceId found in map for server ID ${camera.previewDevice}.`, 'warn');
+    }
+
+    // Add change listener AFTER setting the initial value
+    div.querySelector('.preview-device').addEventListener('change', (e) =>
+      this.updatePreviewDevice(camera.name, e.target.value)
+    );
+
+    // Call updatePreviewDevice slightly delayed *if* we found a valid initial device
+    if (initialBrowserDeviceId) {
+      logToConsole(`[${camera.name}] Scheduling initial updatePreviewDevice for ${initialBrowserDeviceId}...`, 'debug');
+      setTimeout(() => {
+        logToConsole(`[${camera.name}] Executing delayed initial updatePreviewDevice for ${initialBrowserDeviceId}...`, 'debug');
+        this.updatePreviewDevice(camera.name, initialBrowserDeviceId);
+      }, 200); // Delay by 200ms
+    } else {
+      logToConsole(`[${camera.name}] Skipping initial updatePreviewDevice call as no valid browser device was selected.`, 'info');
+    }
+    // --- MODIFICATION END ---
 
     return div;
   }
@@ -554,9 +590,9 @@ export class CameraManager {
       logToConsole(`Requesting getUserMedia for ${cameraName} with browser device ID: ${browserDeviceId}`, "info");
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-            deviceId: { exact: browserDeviceId },
-            frameRate: { ideal: 30 } // Add ideal frameRate
-         }
+          deviceId: { exact: browserDeviceId },
+          frameRate: { ideal: 30 } // Add ideal frameRate
+        }
       });
 
       // 2. Assign stream to video element
@@ -581,7 +617,7 @@ export class CameraManager {
         logToConsole(`Device info element not found for ${cameraName}`, "warn");
       }
 
-      // 3. Update server (Send SERVER ID/Path corresponding to the selected Browser ID)
+      // 3. Update server (Send SERVER ID/Path corresponding to the selected BROWSER ID)
       let serverIdToUpdate = null;
       for (const [serverID, bID] of this.serverToBrowserDeviceMap.entries()) {
         if (bID === browserDeviceId) {
