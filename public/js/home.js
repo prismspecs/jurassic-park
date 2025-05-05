@@ -181,6 +181,102 @@ document.addEventListener('DOMContentLoaded', () => {
   const audioManager = new AudioManager();
   document.getElementById('addAudioDeviceBtn')?.addEventListener('click', () => audioManager.addDeviceCard());
 
+  // --- Canvas Recording Logic ---
+  const recordCanvasBtn = document.getElementById('recordCanvasBtn');
+  let mediaRecorder;
+  let recordedChunks = [];
+  let isCanvasRecording = false;
+
+  if (recordCanvasBtn) {
+    recordCanvasBtn.addEventListener('click', async () => {
+      const canvas = document.getElementById('main-output-canvas');
+      if (!canvas) {
+        logToConsole('Error: Main output canvas not found!', 'error');
+        return;
+      }
+
+      if (!isCanvasRecording) {
+        // Start recording
+        logToConsole('Starting canvas recording...', 'info');
+        const stream = canvas.captureStream(30); // Capture at 30 FPS
+
+        // Try common WebM VP9/VP8 codecs first, fall back to default
+        const mimeTypes = [
+          'video/webm;codecs=vp9',
+          'video/webm;codecs=vp8',
+          'video/webm',
+          'video/mp4' // Might not support transparency
+        ];
+        let selectedMimeType = '';
+        for (const type of mimeTypes) {
+          if (MediaRecorder.isTypeSupported(type)) {
+            selectedMimeType = type;
+            break;
+          }
+        }
+
+        if (!selectedMimeType) {
+          logToConsole('No suitable mimeType found for MediaRecorder.', 'error');
+          alert('Error: Your browser does not support common video recording formats (WebM/MP4) for canvas.');
+          return;
+        }
+
+        logToConsole(`Using mimeType: ${selectedMimeType}`, 'info');
+
+        try {
+          mediaRecorder = new MediaRecorder(stream, { mimeType: selectedMimeType });
+        } catch (e) {
+          logToConsole(`Error creating MediaRecorder: ${e}`, 'error');
+          alert(`Error starting recorder: ${e.message}`);
+          return;
+        }
+
+        recordedChunks = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          logToConsole('Canvas recording stopped. Processing video...', 'info');
+          const blob = new Blob(recordedChunks, {
+            type: selectedMimeType
+          });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          document.body.appendChild(a);
+          a.style = 'display: none';
+          a.href = url;
+          const timestamp = new Date().toISOString().replace(/[:.-]/g, '');
+          a.download = `canvas_recording_${timestamp}.${selectedMimeType.split('/')[1].split(';')[0]}`; // e.g., canvas_recording_....webm
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          logToConsole('Canvas recording download initiated.', 'success');
+        };
+
+        mediaRecorder.start();
+        recordCanvasBtn.textContent = 'Stop Canvas Recording';
+        recordCanvasBtn.style.backgroundColor = '#ff4444'; // Red for recording
+        isCanvasRecording = true;
+
+      } else {
+        // Stop recording
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+        }
+        recordCanvasBtn.textContent = 'Record Output Canvas';
+        recordCanvasBtn.style.backgroundColor = ''; // Reset color
+        isCanvasRecording = false;
+      }
+    });
+  } else {
+    logToConsole('Record Canvas button not found.', 'warn');
+  }
+  // --- End Canvas Recording Logic ---
+
   // --- Initialize Components ---
   logToConsole("DOM loaded. Initializing components...", "info");
 
@@ -239,14 +335,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // Find Camera 1 video element and add it as the primary source
   // Using a timeout again, still not ideal but functional for now
   setTimeout(() => {
+    logToConsole('setTimeout: Checking for compositor and video element...', 'debug'); // Added log
     if (mainCompositor) {
+      logToConsole('setTimeout: mainCompositor found. Looking for video element...', 'debug'); // Added log
       const camera1Video = document.getElementById('preview-Camera_1');
       if (camera1Video) {
-        logToConsole('Adding Camera 1 video to VideoCompositor.', 'info');
-        mainCompositor.setPrimaryVideoSource(camera1Video);
+        logToConsole(`setTimeout: Found video element: ${camera1Video.id}. Adding source to compositor.`, 'info'); // Modified log
+        try {
+          mainCompositor.setPrimaryVideoSource(camera1Video);
+        } catch (e) {
+          logToConsole(`setTimeout: Error calling setPrimaryVideoSource: ${e.message}`, 'error'); // Added error catch
+        }
       } else {
-        logToConsole('Could not find Camera 1 video element to add to VideoCompositor.', 'warn');
+        logToConsole('setTimeout: Could not find video element with ID preview-Camera_1.', 'warn'); // Modified log
       }
+    } else {
+      logToConsole('setTimeout: mainCompositor object not found.', 'warn'); // Added log
     }
   }, 1500); // Same delay as before
   // --- End Compositor Init ---

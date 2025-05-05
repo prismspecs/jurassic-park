@@ -145,9 +145,24 @@ export class VideoCompositor {
         this.primaryVideoSource = videoElement;
 
         // Ensure canvas is initially sized correctly if video is ready
-        if (this.primaryVideoSource.readyState >= 2) { // HAVE_CURRENT_DATA or higher
-            this._sizeCanvasToVideo();
-        }
+        const checkVideoReady = () => {
+            if (this.primaryVideoSource.readyState >= 2) { // HAVE_CURRENT_DATA or higher
+                const width = this.primaryVideoSource.videoWidth;
+                const height = this.primaryVideoSource.videoHeight;
+                if (width > 0 && height > 0) {
+                    logToConsole(`VideoCompositor: Source video ready with resolution ${width}x${height}.`, 'info');
+                    this._sizeCanvasToVideo();
+                } else {
+                    logToConsole(`VideoCompositor: Source video ready but resolution is ${width}x${height}. Retrying...`, 'warn');
+                    setTimeout(checkVideoReady, 100); // Retry shortly
+                }
+            } else {
+                logToConsole('VideoCompositor: Waiting for video source to become ready...', 'debug');
+                setTimeout(checkVideoReady, 100); // Retry shortly
+            }
+        };
+
+        checkVideoReady(); // Initial check
 
         if (!this.isDrawing) {
             this.startDrawingLoop();
