@@ -39,13 +39,15 @@ export class VideoCompositor {
         this.animationFrameId = null;
         this.isDrawing = false;
 
-        // --- New Pose Detection State ---
+        // --- New/Modified Pose Detection State ---
         this.poseDetector = null;
-        this.tfjsBackendReady = false; // Assume TFJS loaded globally
-        this.enablePoseDetection = false; // Flag to control detection/drawing
-        this.lastDetectedPoses = []; // Store latest poses
-        this._initializeTfjsAndDetector(); // Start initialization
-        // --- End New State ---
+        this.tfjsBackendReady = false;
+        this.enablePoseDetection = false; // Controls if detection runs
+        this.drawSkeletonOverlay = false; // Controls skeleton drawing
+        this.drawBoundingBoxMask = false; // Controls mask drawing
+        this.lastDetectedPoses = [];
+        this._initializeTfjsAndDetector();
+        // --- End New/Modified State ---
 
         logToConsole(`VideoCompositor initialized for canvas '#${canvasId}'.`, 'info');
     }
@@ -99,23 +101,38 @@ export class VideoCompositor {
     }
     // --- End New TFJS/Detector Methods ---
 
-    // --- New Method to Control Pose Detection --- 
+    // --- Control Methods --- 
     setPoseDetectionEnabled(enabled) {
         logToConsole(`VideoCompositor: Setting pose detection enabled to ${enabled}`, 'info');
+        const changed = this.enablePoseDetection !== !!enabled;
         this.enablePoseDetection = !!enabled;
-        if (enabled && !this.poseDetector) {
+        if (changed && this.enablePoseDetection && !this.poseDetector) {
             logToConsole('VideoCompositor: Enabling pose detection, but detector is not loaded yet. Attempting load...', 'warn');
-            this._loadPoseDetector(); // Try to load if enabled but not ready
+            this._loadPoseDetector();
         }
-        if (!enabled) {
+        if (changed && !this.enablePoseDetection) {
             this.lastDetectedPoses = []; // Clear poses when disabling
-            // Re-draw one last time without skeleton if loop is running
-            if (this.isDrawing) {
-                this._drawFrame(true); // Force redraw without skeleton
-            }
+            // Trigger a redraw without effects if needed
+            if (this.isDrawing) this._drawFrame(true);
         }
     }
-    // --- End New Control Method ---
+
+    setDrawSkeletonOverlay(enabled) {
+        const changed = this.drawSkeletonOverlay !== !!enabled;
+        this.drawSkeletonOverlay = !!enabled;
+        logToConsole(`VideoCompositor: Skeleton overlay set to ${this.drawSkeletonOverlay}.`, 'info');
+        // Trigger redraw if state changed and detection is active
+        if (changed && this.enablePoseDetection && this.isDrawing) this._drawFrame(true);
+    }
+
+    setDrawBoundingBoxMask(enabled) {
+        const changed = this.drawBoundingBoxMask !== !!enabled;
+        this.drawBoundingBoxMask = !!enabled;
+        logToConsole(`VideoCompositor: Bounding box mask set to ${this.drawBoundingBoxMask}.`, 'info');
+        // Trigger redraw if state changed and detection is active
+        if (changed && this.enablePoseDetection && this.isDrawing) this._drawFrame(true);
+    }
+    // --- End Control Methods ---
 
     // Sets the main video source to be drawn
     setPrimaryVideoSource(videoElement) {
@@ -153,53 +170,113 @@ export class VideoCompositor {
         }
     }
 
-    _drawFrame(forceClearSkeleton = false) {
+    _drawFrame(forceClearEffects = false) {
         if (!this.isDrawing) return;
         this.animationFrameId = requestAnimationFrame(() => this._drawFrame());
         if (!this.primaryVideoSource) return;
         if (this.primaryVideoSource.paused || this.primaryVideoSource.ended || this.primaryVideoSource.readyState < 2) {
+            // Clear canvas if video stops?
+            // this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             return;
         }
         this._sizeCanvasToVideo();
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.drawImage(this.primaryVideoSource, 0, 0, this.canvas.width, this.canvas.height);
 
-        // --- Modified: Perform Pose Detection & Drawing ---
-        // Only detect/draw if enabled and detector is ready
-        if (this.enablePoseDetection && this.poseDetector && !forceClearSkeleton) {
-            // Estimate poses (async, but we won't wait in the draw loop)
+        // --- Refactored Drawing Logic ---
+        let posesToDraw = null;
+        let drawPlainVideo = true; // Assume plain video draw initially
+
+        // 1. Estimate Poses (if enabled)
+        if (this.enablePoseDetection && this.poseDetector && !forceClearEffects) {
+            // Use last frame's poses for immediate drawing to reduce lag
+            posesToDraw = this.lastDetectedPoses;
+            // Start estimation for the *next* frame (don't await)
             this.poseDetector.estimatePoses(this.primaryVideoSource)
-                .then(poses => {
-                    this.lastDetectedPoses = poses; // Store latest poses
-                    // Draw the skeleton using the stored poses immediately after video draw
-                    // Note: This happens slightly after video draw, potentially causing flicker
-                    // A more advanced approach might use offscreen canvases
-                    this._drawSkeleton(this.lastDetectedPoses);
-                })
+                .then(poses => { this.lastDetectedPoses = poses; })
                 .catch(err => {
                     logToConsole(`VideoCompositor: Error estimating poses: ${err.message}`, 'error');
-                    this.lastDetectedPoses = []; // Clear on error
+                    this.lastDetectedPoses = [];
                 });
-            // Draw previous frame's skeleton immediately to reduce perceived lag
-            this._drawSkeleton(this.lastDetectedPoses);
         } else {
-            this.lastDetectedPoses = []; // Ensure poses are clear if detection off
+            this.lastDetectedPoses = []; // Clear poses if detection off
+            posesToDraw = [];
         }
-        // --- End Modified ---
+
+        // 2. Draw Base Video Frame
+        this.ctx.drawImage(this.primaryVideoSource, 0, 0, this.canvas.width, this.canvas.height);
+        drawPlainVideo = false; // Video has been drawn
+
+        // 3. Apply Mask (if enabled and poses exist)
+        if (this.drawBoundingBoxMask && posesToDraw && posesToDraw.length > 0) {
+            this._applyMaskShapes(posesToDraw); // Apply mask shapes
+            drawPlainVideo = false; // Mask was applied, no need for plain draw
+        }
+
+        // 4. Draw Skeleton Overlay (if enabled and poses exist)
+        // Note: Draw skeleton *after* potential masking
+        if (this.drawSkeletonOverlay && posesToDraw && posesToDraw.length > 0) {
+            this._drawSkeleton(posesToDraw);
+            drawPlainVideo = false; // Skeleton drawn, no need for plain draw
+        }
+
+        // Redundant check, drawImage is always called above now.
+        // if (drawPlainVideo) {
+        //     this.ctx.drawImage(this.primaryVideoSource, 0, 0, this.canvas.width, this.canvas.height);
+        // }
+        // --- End Refactored Logic ---
     }
 
-    // --- New Skeleton Drawing Method (from CameraManager) ---
-    _drawSkeleton(poses) {
+    // --- Refactored Masking Method (Applies shapes only) ---
+    _applyMaskShapes(poses) {
         if (!poses || poses.length === 0) return;
 
-        const ctx = this.ctx; // Use the compositor's context
+        const ctx = this.ctx;
+        const canvasWidth = this.canvas.width;
+        const canvasHeight = this.canvas.height;
+        const scaleX = canvasWidth / this.primaryVideoSource.videoWidth;
+        const scaleY = canvasHeight / this.primaryVideoSource.videoHeight;
+
+        if (!isFinite(scaleX) || !isFinite(scaleY) || scaleX === 0 || scaleY === 0) return;
+
+        ctx.save();
+        ctx.fillStyle = 'black'; // Color doesn't matter
+        ctx.globalCompositeOperation = 'destination-in';
+
+        poses.forEach(pose => {
+            if (!pose || !pose.keypoints) return;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            pose.keypoints.forEach(kp => {
+                if (kp && kp.score > 0.1) {
+                    const x = kp.x * scaleX;
+                    const y = kp.y * scaleY;
+                    minX = Math.min(minX, x);
+                    minY = Math.min(minY, y);
+                    maxX = Math.max(maxX, x);
+                    maxY = Math.max(maxY, y);
+                }
+            });
+            if (isFinite(minX)) {
+                const padding = 20;
+                const boxX = Math.max(0, minX - padding);
+                const boxY = Math.max(0, minY - padding);
+                const boxWidth = Math.min(canvasWidth - boxX, (maxX - minX) + padding * 2);
+                const boxHeight = Math.min(canvasHeight - boxY, (maxY - minY) + padding * 2);
+                ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+            }
+        });
+        ctx.restore(); // Restore globalCompositeOperation
+    }
+    // --- End Refactored Masking Method ---
+
+    // --- Restored Skeleton Drawing Method ---
+    _drawSkeleton(poses) { // UNCOMMENTED
+        if (!poses || poses.length === 0) return;
+        const ctx = this.ctx;
         const scaleX = this.canvas.width / this.primaryVideoSource.videoWidth;
         const scaleY = this.canvas.height / this.primaryVideoSource.videoHeight;
-
         if (!isFinite(scaleX) || !isFinite(scaleY) || scaleX === 0 || scaleY === 0) {
-            return; // Avoid drawing with invalid scales
+            return;
         }
-
         poses.forEach((pose, poseIndex) => {
             if (!pose || !pose.keypoints) return;
             const keypoints = pose.keypoints;
@@ -207,7 +284,6 @@ export class VideoCompositor {
             ctx.strokeStyle = color;
             ctx.fillStyle = color;
             ctx.lineWidth = 2;
-
             POSE_CONNECTIONS.forEach(([i, j]) => {
                 const kp1 = keypoints[i];
                 const kp2 = keypoints[j];
@@ -233,7 +309,7 @@ export class VideoCompositor {
             });
         });
     }
-    // --- End New Skeleton Drawing Method ---
+    // --- End Restored Skeleton Drawing Method ---
 
     startDrawingLoop() {
         if (this.isDrawing) return;

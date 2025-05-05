@@ -406,9 +406,17 @@ export class CameraManager {
                  ${ptzOptionsHtml}
               </select>
             </div>
-            <div class="setting-group skeleton-toggle-group">
-              <label for="skeleton-toggle-${camera.name}">Show Skeleton:</label>
-              <input type="checkbox" id="skeleton-toggle-${camera.name}" class="skeleton-toggle" ${skeletonChecked}>
+            <div class="setting-group pose-toggle-group">
+                <label for="pose-detection-toggle-${camera.name}">Enable Pose FX:</label>
+                <input type="checkbox" id="pose-detection-toggle-${camera.name}" class="pose-detection-toggle">
+            </div>
+            <div class="setting-group pose-fx-options" style="display: none;">
+                 <label for="skeleton-draw-toggle-${camera.name}">Draw Skeleton:</label>
+                <input type="checkbox" id="skeleton-draw-toggle-${camera.name}" class="skeleton-draw-toggle">
+            </div>
+             <div class="setting-group pose-fx-options" style="display: none;">
+                <label for="mask-apply-toggle-${camera.name}">Apply Simple Mask:</label>
+                <input type="checkbox" id="mask-apply-toggle-${camera.name}" class="mask-apply-toggle">
             </div>
             <div class="ptz-controls-container">
               <!-- PTZ controls will be added here if a PTZ device is selected -->
@@ -421,14 +429,52 @@ export class CameraManager {
 
     // Add event listeners programmatically
     div.querySelector('.remove-btn').addEventListener('click', () => this.removeCamera(camera.name));
-    // Update Preview Listener passes the BROWSER DEVICE ID (value of the option)
     div.querySelector('.preview-device').addEventListener('change', (e) => this.updatePreviewDevice(camera.name, e.target.value));
-    div.querySelector('.recording-device').addEventListener('change', (e) => {
-      this.updateRecordingDevice(camera.name, e.target.value); // Pass Server ID/Path
-    });
-    div.querySelector('.ptz-device').addEventListener('change', (e) => this.updatePTZDevice(camera.name, e.target.value)); // Pass Server ID/Path
+    div.querySelector('.recording-device').addEventListener('change', (e) => this.updateRecordingDevice(camera.name, e.target.value));
+    div.querySelector('.ptz-device').addEventListener('change', (e) => this.updatePTZDevice(camera.name, e.target.value));
     div.querySelector('.test-record-btn').addEventListener('click', () => this.recordVideo(camera.name));
-    div.querySelector('.skeleton-toggle').addEventListener('change', (e) => this.toggleSkeletonOverlay(camera.name, e.target.checked));
+
+    // --- New Pose FX Toggle Logic ---
+    const poseDetectionToggle = div.querySelector('.pose-detection-toggle');
+    const poseFxOptions = div.querySelectorAll('.pose-fx-options');
+    const skeletonDrawToggle = div.querySelector('.skeleton-draw-toggle');
+    const maskApplyToggle = div.querySelector('.mask-apply-toggle');
+
+    // Listener for the main Pose FX enable/disable toggle
+    poseDetectionToggle.addEventListener('change', (e) => {
+      const enabled = e.target.checked;
+      this.togglePoseDetection(camera.name, enabled); // Call new handler method
+      // Show/hide sub-options
+      poseFxOptions.forEach(opt => opt.style.display = enabled ? '' : 'none');
+      // Uncheck sub-options when disabling main toggle
+      if (!enabled) {
+        if (skeletonDrawToggle) skeletonDrawToggle.checked = false;
+        if (maskApplyToggle) maskApplyToggle.checked = false;
+        // Also tell compositor to disable specific effects
+        if (window.mainCompositor && camera.name === 'Camera_1') {
+          window.mainCompositor.setDrawSkeletonOverlay(false);
+          window.mainCompositor.setDrawBoundingBoxMask(false);
+        }
+      }
+    });
+
+    // Listener for Draw Skeleton toggle
+    if (skeletonDrawToggle) {
+      skeletonDrawToggle.addEventListener('change', (e) => {
+        if (window.mainCompositor && camera.name === 'Camera_1') {
+          window.mainCompositor.setDrawSkeletonOverlay(e.target.checked);
+        }
+      });
+    }
+    // Listener for Apply Mask toggle
+    if (maskApplyToggle) {
+      maskApplyToggle.addEventListener('change', (e) => {
+        if (window.mainCompositor && camera.name === 'Camera_1') {
+          window.mainCompositor.setDrawBoundingBoxMask(e.target.checked);
+        }
+      });
+    }
+    // --- End New Pose FX Toggle Logic ---
 
     // Initialize drawing state based on initial camera data
     setTimeout(() => {
@@ -889,8 +935,8 @@ export class CameraManager {
   }
 
   // Updated method to handle skeleton toggle - NO backend call
-  async toggleSkeletonOverlay(cameraName, show) {
-    logToConsole(`Toggling skeleton overlay for ${cameraName} to ${show}`, "info");
+  async togglePoseDetection(cameraName, show) {
+    logToConsole(`Toggling pose detection for ${cameraName} to ${show}`, "info");
 
     // --- MODIFICATION START: Control Compositor --- 
     // Update local state directly
@@ -898,7 +944,7 @@ export class CameraManager {
     if (camera) {
       camera.showSkeleton = show;
     } else {
-      logToConsole(`Camera ${cameraName} not found locally for skeleton toggle.`, "warn");
+      logToConsole(`Camera ${cameraName} not found locally for pose detection toggle.`, "warn");
       return; // Don't proceed if camera isn't found
     }
 
@@ -911,7 +957,7 @@ export class CameraManager {
     } else if (cameraName === 'Camera_1') {
       logToConsole('Could not find window.mainCompositor to toggle pose detection.', 'error');
     } else {
-      logToConsole(`Skeleton toggle for non-primary camera (${cameraName}) not linked to compositor yet.`, 'warn');
+      logToConsole(`Pose detection toggle for non-primary camera (${cameraName}) not linked to compositor yet.`, 'warn');
     }
     // --- MODIFICATION END ---
   }
