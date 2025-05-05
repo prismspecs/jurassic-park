@@ -61,7 +61,8 @@ export class VideoCompositor {
                 return;
             }
             logToConsole("VideoCompositor: Initializing TensorFlow.js backend...", "info");
-            await tf.setBackend('webgl'); // Reverted from WASM
+            // await tf.setBackend('webgl'); // Switch to WebGPU
+            await tf.setBackend('webgpu');
             await tf.ready();
             this.tfjsBackendReady = true;
             logToConsole(`VideoCompositor: TensorFlow.js backend ready (${tf.getBackend()}).`, "success");
