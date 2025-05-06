@@ -292,7 +292,8 @@ export class CameraManager {
     header.className = "camera-card-header";
     const removeBtn = document.createElement('button');
     removeBtn.className = 'btn btn-sm btn-danger remove-camera-btn'; removeBtn.title = `Remove ${camera.name}`;
-    removeBtn.innerHTML = '&times;'; removeBtn.addEventListener('click', () => this.removeCamera(camera.name));
+    removeBtn.innerHTML = '❌';
+    removeBtn.addEventListener('click', () => this.removeCamera(camera.name));
     header.innerHTML = `<h3>${camera.name.replace(/_/g, ' ')}</h3>`; header.appendChild(removeBtn);
     card.appendChild(header);
 
@@ -610,6 +611,10 @@ export class CameraManager {
     const cameraCard = this.cameraElements.get(cameraName);
     const ptzContainer = cameraCard?.querySelector(`#ptz-controls-${cameraName}`);
 
+    logToConsole(`updatePTZDevice for ${cameraName}: Found card:`, 'debug', cameraCard);
+    logToConsole(`updatePTZDevice for ${cameraName}: Found ptzContainer:`, 'debug', ptzContainer);
+    logToConsole(`updatePTZDevice for ${cameraName}: Calling renderPTZControls with deviceId: '${serverDeviceId}'`, 'debug');
+
     this.renderPTZControlsForCamera(cameraName, serverDeviceId, ptzContainer); // Pass the found container
   }
 
@@ -711,7 +716,12 @@ export class CameraManager {
 
   // --- PTZ Methods ---
   renderPTZControlsForCamera(cameraName, ptzDeviceId, ptzContainer) {
-    if (!ptzContainer) return;
+    logToConsole(`renderPTZControlsForCamera called for ${cameraName}. Device ID: '${ptzDeviceId}'. Passed container:`, 'debug', ptzContainer);
+
+    if (!ptzContainer) {
+      logToConsole(`PTZ container for ${cameraName} not found (or not passed). Cannot render controls.`, 'warn');
+      return;
+    }
     ptzContainer.innerHTML = ''; // Clear previous
     if (!ptzDeviceId) {
       ptzContainer.innerHTML = '<p class="ptz-placeholder text-muted small">No PTZ device selected.</p>'; return;
@@ -790,14 +800,22 @@ export class CameraManager {
     }
 
     try {
-      const stream = processedCanvas.captureStream(30);
+      const stream = processedCanvas.captureStream(30); // Target 30 FPS
       const mimeType = 'video/webm;codecs=vp9'; // VP9 preferred for potential alpha
       if (!MediaRecorder.isTypeSupported(mimeType)) {
-        logToConsole(`VP9 mimeType not supported for MediaRecorder. Recording may fail or lack alpha.`, 'warn');
-        // Could fallback here if needed: mimeType = 'video/webm';
+        logToConsole(`VP9 mimeType not supported for MediaRecorder. Recording may fail or lack alpha. Consider VP8 or H.264 if available and suitable.`, 'warn');
+        // Could fallback here if needed: mimeType = 'video/webm;codecs=vp8'; 
+        // Or even 'video/mp4' if that's supported and preferred, though WEBM is common for canvas.
       }
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const options = {
+        mimeType: mimeType,
+        videoBitsPerSecond: 5000000 // 5 Mbps, should significantly improve quality
+        // audioBitsPerSecond: 128000, // Example if audio was also being recorded
+      };
+      logToConsole(`Initializing MediaRecorder for ${cameraName} with options:`, 'debug', options);
+
+      const mediaRecorder = new MediaRecorder(stream, options);
       const recordedChunks = [];
       mediaRecorder.ondataavailable = (event) => { if (event.data.size > 0) recordedChunks.push(event.data); };
 
