@@ -20,6 +20,7 @@ const AudioRecorder = require('../services/audioRecorder');
 const audioRecorder = AudioRecorder.getInstance();
 const os = require('os');
 const sceneController = require('../controllers/sceneController');
+const { getLocalIpAddress } = require('../utils/networkUtils');
 
 // Middleware for parsing application/x-www-form-urlencoded
 router.use(express.urlencoded({ extended: true }));
@@ -261,19 +262,7 @@ router.post('/testConsole', (req, res) => {
 // Home route - protected by authentication (Needs its own IP fetch now)
 router.get('/', authMiddleware, async (req, res) => {
     try {
-        // Define IP getter locally or import if moved to utils
-        function getHomeLocalIpAddress() {
-            const interfaces = os.networkInterfaces();
-            for (const name of Object.keys(interfaces)) {
-                for (const net of interfaces[name]) {
-                    if (net.family === 'IPv4' && !net.internal) {
-                        return net.address;
-                    }
-                }
-            }
-            return 'localhost';
-        }
-        const ipAddress = getHomeLocalIpAddress();
+        const ipAddress = getLocalIpAddress();
         const port = config.port || 3000;
         const html = await buildHomeHTML(scenes, ipAddress, port);
         res.send(html);
@@ -346,7 +335,6 @@ router.get('/initShot/:sceneDir/:shotName', async (req, res) => {
 });
 // --- END NEW ---
 
-// console.log('[routes/main.js] About to define /loadActors POST route.'); // Removing this as it's confirmed
 // Handle loading new actors
 router.post('/loadActors', upload.array('files'), async (req, res) => {
     console.log('[POST /loadActors] Route handler STARTED. req.files:', req.files); // Kept for debugging
@@ -364,7 +352,6 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
 
         // First, scan existing actor directories and add them to the service's callsheet if not present
         const existingDirs = fs.readdirSync(actorsDir).filter(dir => {
-            // Placeholder for actual directory filtering logic from original code
             // This might have been checking if 'dir' is a directory, e.g., fs.statSync(path.join(actorsDir, dir)).isDirectory()
             // For now, allowing all entries to see if other parts work or error out.
             const fullPath = path.join(actorsDir, dir);
@@ -416,7 +403,9 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
         console.log('[POST /loadActors] Grouped files:', JSON.stringify(fileGroups, null, 2));
 
         for (const [baseName, groupFiles] of Object.entries(fileGroups)) {
-            // Placeholder for jsonFile finding logic from original code
+            // More robust baseName extraction might be needed if there are timestamps or unique IDs in the name before the extension.
+            // This simple version assumes the part before the last dot is the common identifier for grouping.
+            // e.g. "Actor One.json" and "Actor One.jpg" will both use "Actor One" as baseName.
             const jsonFile = groupFiles.find(f => f.mimetype === 'application/json' || f.originalname.endsWith('.json'));
             if (!jsonFile) {
                 console.warn(`No JSON file found for group ${baseName}, skipping.`);
@@ -426,7 +415,6 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
 
             let actorData;
             try {
-                // Placeholder for json reading logic from original code
                 actorData = JSON.parse(fs.readFileSync(jsonFile.path, 'utf8'));
             } catch (e) {
                 console.error(`Error reading or parsing JSON file ${jsonFile.originalname}:`, e);
@@ -436,24 +424,20 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
 
             const existingActorEntry = currentCallsheet.find(a => a.name === actorData.name);
             if (existingActorEntry) {
-                // Placeholder for existing skip logic from original code
                 skippedActors.push(actorData.name + " (already exists)");
                 console.log(`Actor ${actorData.name} already exists, skipping.`);
                 continue;
             }
 
             // --- If actor does NOT exist, proceed with creation ---
-            // Placeholder for ID generation from original code
             const randomId = crypto.randomBytes(4).toString('hex');
             const actorId = `${actorData.name.replace(/\s+/g, '-')}-${randomId}`;
 
-            // Placeholder for directory creation from original code
             const newActorDir = path.join(actorsDir, actorId);
             if (!fs.existsSync(newActorDir)) {
                 fs.mkdirSync(newActorDir, { recursive: true });
             }
 
-            // Placeholder for image copy logic from original code
             const imageFile = groupFiles.find(f => f.mimetype && f.mimetype.startsWith('image/'));
             if (imageFile) {
                 try {
@@ -464,7 +448,6 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
                 }
             }
 
-            // Placeholder for info.json creation from original code
             const infoJsonContent = {
                 id: actorId,
                 name: actorData.name,
@@ -493,14 +476,12 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
             callsheetService.saveCallsheet();
         }
 
-        // Placeholder for temp file cleanup logic from original code
-        console.warn("[POST /loadActors] Placeholder for temp file cleanup logic is active. Temp files might not be deleted until this is implemented.");
+        // Temp file cleanup
         if (req.files && Array.isArray(req.files)) {
             req.files.forEach(file => {
                 try {
                     if (fs.existsSync(file.path)) {
-                        // fs.unlinkSync(file.path); // Temporarily disabled for debugging, enable when logic is complete
-                        console.log(`[Debug] Would delete temp file: ${file.path}`);
+                        fs.unlinkSync(file.path);
                     }
                 } catch (err) {
                     console.warn(`Failed to delete temp file ${file.path}: ${err.message}`);
@@ -544,10 +525,6 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
 
 // Handle clearing audio files
 router.post('/clearAudio', express.json(), (req, res) => {
-    // This might need adjustment depending on how audio is cleared now.
-    // Does it clear from the session dir? Does it need the session ID?
-    // For now, assuming it clears from the *temp* dir (where recordings were stored before)
-    // If it needs to clear from the session dir, it needs the session ID.
     try {
         const { filename } = req.body;
         if (!filename) {
@@ -557,22 +534,13 @@ router.post('/clearAudio', express.json(), (req, res) => {
             });
         }
 
-        // **Potentially needs update:** Where should this delete from?
-        // If it's meant to delete the *final* WAV from the session:
-        // const sessionDir = sessionService.getSessionDirectory();
-        // const audioPath = path.join(sessionDir, filename);
-        // console.log(`Attempting to delete audio file from session: ${audioPath}`);
-
-        // If it's meant to delete the *temporary* webm/wav before/after conversion:
-        const audioPath = path.join(__dirname, '..', 'temp', filename); // Correctly points to temp now
-        console.log(`Attempting to delete audio file from temp: ${audioPath}`);
-
+        const audioPath = path.join(__dirname, '..', 'temp', filename);
 
         if (fs.existsSync(audioPath)) {
             fs.unlinkSync(audioPath);
             res.json({
                 success: true,
-                message: 'Audio file cleared successfully' // Adjust message based on actual behavior
+                message: 'Audio file cleared successfully'
             });
         } else {
             res.status(404).json({
@@ -680,13 +648,7 @@ router.get('/api/scene-details', (req, res) => {
         return res.status(400).json({ error: "Missing required query parameter: sceneDir" });
     }
 
-    const scenesFilePath = path.join(__dirname, '..', 'database', 'scenes.json');
-
     try {
-        // Using sync read here for simplicity, consider async for very large files
-        const scenesData = fs.readFileSync(scenesFilePath, 'utf8');
-        const scenes = JSON.parse(scenesData);
-
         const scene = scenes.find(s => s.directory === sceneDir);
 
         if (scene) {

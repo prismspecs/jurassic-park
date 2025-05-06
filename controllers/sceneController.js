@@ -16,6 +16,7 @@ const audioRecorder = AudioRecorder.getInstance();
 const os = require('os');
 const fs = require('fs'); // Ensure fs is required
 const { assembleSceneFFmpeg } = require('../services/sceneAssembler'); // Import the new assembler function
+const { getLocalIpAddress } = require('../utils/networkUtils');
 
 // Encapsulated stage state
 const currentStageState = {
@@ -23,21 +24,6 @@ const currentStageState = {
     shotIdentifier: null,
     shotIndex: 0
 };
-
-// Helper function to get local IP (moved here)
-function getLocalIpAddress() {
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-        for (const net of interfaces[name]) {
-            // Skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses
-            if (net.family === 'IPv4' && !net.internal) {
-                return net.address;
-            }
-        }
-    }
-    console.warn('[getLocalIpAddress] Could not find non-internal IPv4 address, falling back to localhost.');
-    return 'localhost'; // Fallback
-}
 
 /** Get the current scene - Minimal usage, consider removing if not used externally */
 function getCurrentScene() {
@@ -764,12 +750,12 @@ async function assembleScene(req, res) {
     // Further validation of takes array contents (shot, camera, in, out, take)
     for (const take of takes) {
         // Check for frame numbers instead of in/out time
-        if (!take.shot || !take.camera || take.inFrame == null || take.outFrame == null || !take.take) { 
-             return res.status(400).json({ success: false, message: `Invalid take data provided (missing frame info?): ${JSON.stringify(take)}` });
+        if (!take.shot || !take.camera || take.inFrame == null || take.outFrame == null || !take.take) {
+            return res.status(400).json({ success: false, message: `Invalid take data provided (missing frame info?): ${JSON.stringify(take)}` });
         }
         // Validate frame numbers are integers and inFrame < outFrame
         if (!Number.isInteger(take.inFrame) || !Number.isInteger(take.outFrame) || take.inFrame < 0 || take.outFrame <= take.inFrame) {
-             return res.status(400).json({ success: false, message: `Invalid frame numbers (inFrame >= outFrame or negative?): ${JSON.stringify(take)}` });
+            return res.status(400).json({ success: false, message: `Invalid frame numbers (inFrame >= outFrame or negative?): ${JSON.stringify(take)}` });
         }
         if (typeof take.take !== 'number' || take.take < 1) {
             return res.status(400).json({ success: false, message: `Invalid take number: ${JSON.stringify(take)}` });
@@ -781,9 +767,9 @@ async function assembleScene(req, res) {
 
     // Immediately respond to the client that the process has started
     const sanitizedSceneDir = sceneDirectory.replace(/[^a-zA-Z0-9_-]/g, '_');
-    res.status(202).json({ 
-        success: true, 
-        message: `Assembly process initiated for ${sceneDirectory}. Monitor console/UI for updates.` 
+    res.status(202).json({
+        success: true,
+        message: `Assembly process initiated for ${sceneDirectory}. Monitor console/UI for updates.`
     });
 
     // Call the actual assembly function asynchronously (don't await here)

@@ -53,7 +53,7 @@ module.exports = {
         if (broadcastConsole) {
             broadcastConsole(`[AI Voice]: ${text}`);
         }
-        
+
         // If bypass is enabled, just log and return
         if (bypassEnabled) {
             if (broadcastConsole) {
@@ -73,10 +73,6 @@ module.exports = {
             }
         } else {
             // Non-macOS: use Piper
-            //if (broadcastConsole) {
-            //    broadcastConsole('(Using Piper TTS, since not on macOS)');
-            //}
-
             // Make a random wave file
             const waveFile = makeTempWaveFile();
 

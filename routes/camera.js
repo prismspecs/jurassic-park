@@ -5,7 +5,6 @@ const CameraControl = require('../services/cameraControl');
 const cameraControl = require('../services/cameraControl').getInstance();
 const ffmpegHelper = require('../services/ffmpegHelper');
 const gstreamerHelper = require('../services/gstreamerHelper');
-const poseTracker = require('../services/poseTracker');
 const config = require('../config.json'); // Read the full config
 const sessionService = require('../services/sessionService');
 const path = require('path');

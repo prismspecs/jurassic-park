@@ -21,6 +21,7 @@ The **AI director** orchestrates the performance and ensures that each shot clos
 - Originally this was intended to have an AI generated voice, but for the first performance we will have a real human comedian speaking to the participants in real-time. There are some parts in the code which are still using the AI voice. I will leave them in but generally not use them for now.
 - Calls actors to the **stage area** by name via the main teleprompter. When initializing a scene, the main teleprompter first displays "Initializing scene...". Then, as actors are called, it displays the actor's name, their assigned character, their **headshot**, the **prop(s)** associated with the character (reading from the `props` key in `scenes.json`, which can be a string or an array, and displaying corresponding images from `/database/props/`), and a **QR code** which links directly to that character's specific teleprompter view (e.g., `http://<host>:<port>/teleprompter/<characterName>`).
 - Displays dialogue and blocking cues on **mobile character teleprompters** (accessed via the QR code on the main teleprompter or by manually navigating to the URL).
+- **[COMPLETED] Live Video on Teleprompter**: The main recorder canvas (including live video with optional pose effects) can be streamed to the main teleprompter page. This is initiated from the home page and includes controls to show/hide the live feed on the teleprompter.
 - Directs camera movements to align with the shot.
 - Records actor **dialogue** and **audience sound effects** in separate audio files.
 - Orchestrates the recording of a **musical soundtrack** by the audience post-performance.
@@ -155,3 +156,4 @@ The application is built with **Node.js**, acting as the core event controller:
 
 - `GET /api/sessions`: Returns a list of existing session IDs (directory names in `recordings/`).
 - `POST /api/select-session`: Sets the active session ID for the application. Expects `sessionId` in the body.
+- `POST /loadActors`: Handles uploading actor files (JSON, images) and updating the callsheet. **Currently under investigation for hanging requests.**
