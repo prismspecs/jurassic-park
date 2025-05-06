@@ -30,11 +30,47 @@ import { VideoCompositor } from './modules/video-compositor.js';
 let currentSceneData = null;
 let cameraManager;
 let mainRecordingCompositor;
-let teleprompterOutputCompositor;
-let teleprompterStreamActive = false;
-let currentTeleprompterSourceCanvas = null;
-let voiceBypassEnabled = true; // Moved to global for access by control-actions if needed
+let voiceBypassEnabled = true;
 
+// Helper function to set up the stream in the teleprompter window
+function setupTeleprompterStream(win, streamToPlay) {
+  logToConsole(`Teleprompter window details: URL='${win.location.href}', readyState='${win.document.readyState}'`, 'debug');
+  try {
+    const bodySnippet = win.document.body ? win.document.body.innerHTML.substring(0, 500) : "document.body is null";
+    logToConsole(`Teleprompter window body (snippet): ${bodySnippet}`, 'debug');
+
+    const liveFeedEl = win.document.getElementById('teleprompterLiveFeed');
+    if (liveFeedEl) {
+      logToConsole('Found teleprompterLiveFeed element in teleprompter window.', 'info', liveFeedEl);
+      liveFeedEl.srcObject = streamToPlay;
+      logToConsole('srcObject assigned to teleprompterLiveFeed element. Attempting to play after a short delay...', 'debug');
+
+      setTimeout(() => {
+        if (!win || win.closed) {
+          logToConsole('Teleprompter window closed before delayed play could execute.', 'warn');
+          return;
+        }
+        logToConsole('Attempting to play teleprompter live feed now...', 'info');
+        liveFeedEl.currentTime = 0;
+        liveFeedEl.play()
+          .then(() => {
+            logToConsole('Teleprompter live feed playing successfully (after delay).', 'success');
+          })
+          .catch(e => {
+            logToConsole(`Error playing teleprompter live feed (after delay): ${e.message}. Video muted: ${liveFeedEl.muted}`, 'error', e);
+            alert(`Could not automatically play the video feed in the teleprompter (after delay): ${e.message}.`);
+          });
+      }, 100);
+
+    } else {
+      logToConsole('teleprompterLiveFeed element NOT FOUND in teleprompter window. Expected id "teleprompterLiveFeed".', 'error');
+      alert('Could not find the video player element (teleprompterLiveFeed) in the teleprompter window. Check console for details.');
+    }
+  } catch (err) {
+    logToConsole(`Error in setupTeleprompterStream: ${err.message}`, 'error', err);
+    alert(`An error occurred while trying to set up the video in the teleprompter: ${err.message}`);
+  }
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   logToConsole("DOM loaded. Initializing components...", "info");
@@ -48,14 +84,6 @@ document.addEventListener('DOMContentLoaded', () => {
     logToConsole('main-output-canvas not found. Main recording compositor NOT initialized.', 'error');
   }
 
-  const teleprompterDisplaySourceCanvasElement = document.getElementById('teleprompter-display-source-canvas');
-  if (teleprompterDisplaySourceCanvasElement) {
-    teleprompterOutputCompositor = new VideoCompositor('teleprompter-display-source-canvas');
-    logToConsole('Teleprompter output compositor initialized.', 'info');
-  } else {
-    logToConsole('#teleprompter-display-source-canvas not found. Teleprompter output compositor NOT initialized.', 'warn');
-  }
-
   // --- UI Update Functions (Local to DOMContentLoaded) ---
   function updateVoiceBypassButton() {
     const btn = document.getElementById("voiceBypassBtn");
@@ -64,10 +92,9 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.style.backgroundColor = voiceBypassEnabled ? "#ff4444" : "#4CAF50";
     }
   }
-  updateVoiceBypassButton(); // Initial state
+  updateVoiceBypassButton();
 
   // --- Core Event Listeners for Buttons etc. ---
-  // (Assuming control-actions.js handles the actual logic for these buttons)
   document.getElementById('voiceBypassBtn')?.addEventListener('click', async () => {
     voiceBypassEnabled = await toggleVoiceBypass(voiceBypassEnabled);
     updateVoiceBypassButton();
@@ -98,11 +125,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const shotCard = event.target.closest('.shot-card');
       if (shotCard && shotCard.dataset.sceneDir && shotCard.dataset.shotId) {
         initShot(shotCard.dataset.sceneDir, shotCard.dataset.shotId);
-        // ... (rest of scene detail fetching and assembly UI update as before) ...
       }
     });
   }
-  // Actor Loading (assuming this references elements within a specific section)
+  // Actor Loading 
   const loadActorsBtn = document.getElementById('loadActorsBtn');
   const actorFilesInput = document.getElementById('actorFiles');
   const loadActorsStatus = document.getElementById('loadActorsStatus');
@@ -112,10 +138,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Source Selector Logic ---
   const recordingSourceSelector = document.getElementById('recording-source-selector');
-  const teleprompterSourceSelector = document.getElementById('teleprompter-source-selector');
 
   function populateSelector(selectorElement, type) {
     if (!selectorElement || !cameraManager || !cameraManager.cameras) return;
+
     const currentVal = selectorElement.value;
     selectorElement.innerHTML = `<option value="">Select Camera for ${type}</option>`;
     cameraManager.cameras.forEach(camera => {
@@ -128,17 +154,14 @@ document.addEventListener('DOMContentLoaded', () => {
       selectorElement.value = currentVal;
     } else {
       // If previous selection invalid, clear relevant compositor/source
-      if (type === 'Recording' && mainRecordingCompositor) mainRecordingCompositor.removeFrameSource();
-      if (type === 'Teleprompter') {
-        if (teleprompterOutputCompositor) teleprompterOutputCompositor.removeFrameSource();
-        currentTeleprompterSourceCanvas = null;
+      if (type === 'Recording' && mainRecordingCompositor) {
+        mainRecordingCompositor.removeFrameSource();
       }
     }
   }
 
   function populateAllSourceSelectors() {
     populateSelector(recordingSourceSelector, 'Recording');
-    populateSelector(teleprompterSourceSelector, 'Teleprompter');
   }
 
   if (recordingSourceSelector) {
@@ -148,39 +171,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const processedCanvas = selectedCameraName ? cameraManager.getProcessedCanvas(selectedCameraName) : null;
         if (processedCanvas) mainRecordingCompositor.setCurrentFrameSource(processedCanvas);
         else mainRecordingCompositor.removeFrameSource();
-      }
-    });
-  }
-
-  if (teleprompterSourceSelector) {
-    teleprompterSourceSelector.addEventListener('change', () => {
-      const selectedCameraName = teleprompterSourceSelector.value;
-      currentTeleprompterSourceCanvas = null; // Reset
-      if (teleprompterOutputCompositor) teleprompterOutputCompositor.removeFrameSource();
-
-      if (cameraManager && selectedCameraName) {
-        const processedCanvas = cameraManager.getProcessedCanvas(selectedCameraName);
-        if (processedCanvas) {
-          if (teleprompterOutputCompositor) {
-            teleprompterOutputCompositor.setCurrentFrameSource(processedCanvas);
-            currentTeleprompterSourceCanvas = teleprompterDisplaySourceCanvasElement;
-          } else {
-            currentTeleprompterSourceCanvas = processedCanvas;
-          }
-        }
-      }
-      if (teleprompterStreamActive) logToConsole('Teleprompter source changed while stream active. WebRTC stream needs update.', 'info');
-    });
-  }
-
-  const sendToTeleprompterBtn = document.getElementById('sendToTeleprompterBtn');
-  if (sendToTeleprompterBtn) {
-    sendToTeleprompterBtn.addEventListener('click', () => {
-      if (currentTeleprompterSourceCanvas) {
-        if (!teleprompterStreamActive) alert('WebRTC streaming to teleprompter not yet implemented.');
-        else alert('Stream already active. Change source via dropdown.');
-      } else {
-        alert('Please select a camera source for the teleprompter first.');
       }
     });
   }
@@ -204,6 +194,67 @@ document.addEventListener('DOMContentLoaded', () => {
   let mainMediaRecorder;
   let mainRecordedChunks = [];
   let isMainCanvasRecording = false;
+
+  // --- Stream Main Output to Teleprompter Logic (Reverted to use /teleprompter and setupTeleprompterStream) ---
+  const streamMainOutputToTeleprompterBtn = document.getElementById('streamMainOutputToTeleprompterBtn');
+  if (streamMainOutputToTeleprompterBtn && mainOutputCanvasElement && mainRecordingCompositor) {
+    streamMainOutputToTeleprompterBtn.addEventListener('click', () => {
+      logToConsole('Attempting to stream main output canvas to /teleprompter page...', 'info');
+      if (!mainRecordingCompositor.currentFrameSource) {
+        alert('Please select a camera source for the main output first.');
+        logToConsole('Streaming to /teleprompter aborted: No source for mainRecordingCompositor.', 'warn');
+        return;
+      }
+
+      try {
+        const teleprompterWin = window.open('/teleprompter', 'TeleprompterView'); // Changed from MinimalTeleprompterView, back to TeleprompterView or a unique name for /teleprompter
+        if (!teleprompterWin) {
+          alert('Failed to open teleprompter window. Please check popup blocker settings.');
+          logToConsole('Failed to open /teleprompter window.', 'error');
+          return;
+        }
+
+        const stream = mainOutputCanvasElement.captureStream(25);
+        logToConsole('Captured stream from mainOutputCanvasElement for /teleprompter.', 'debug', stream);
+
+        teleprompterWin.onerror = (eventOrMessage, source, lineno, colno, error) => {
+          const errorMessage = error ? error.message : eventOrMessage;
+          logToConsole(`Teleprompter window onerror: ${errorMessage}`, 'error', { eventOrMessage, source, lineno, colno, error });
+          alert('The teleprompter window encountered an error while loading its content. Check its console.');
+        };
+
+        logToConsole('Setting up onload listener for /teleprompter window.', 'debug');
+        teleprompterWin.onload = () => {
+          logToConsole('Teleprompter (/teleprompter) window ONLOAD event fired. Current URL: ' + (teleprompterWin ? teleprompterWin.location.href : 'teleprompterWin is null/closed'), 'info');
+          if (!teleprompterWin || teleprompterWin.closed) {
+            logToConsole('Teleprompter (/teleprompter) window was closed before onload handler could fully execute.', 'warn');
+            return;
+          }
+          if (teleprompterWin.location.href === 'about:blank') {
+            logToConsole('Teleprompter (/teleprompter) window onload fired but URL is still about:blank.', 'error');
+            return;
+          }
+          setupTeleprompterStream(teleprompterWin, stream); // Use the helper function
+        };
+
+        if (!teleprompterWin || teleprompterWin.closed) {
+          logToConsole('Teleprompter (/teleprompter) window was not opened or was closed immediately.', 'error');
+          if (teleprompterWin === null) {
+            alert('Popup window for /teleprompter failed to open. Please check your browser\'s popup blocker settings.');
+          }
+          return;
+        }
+
+      } catch (error) {
+        logToConsole(`Error initiating stream to /teleprompter: ${error.message}`, 'error', error);
+        alert(`Error setting up /teleprompter stream: ${error.message}`);
+      }
+    });
+  } else {
+    if (!streamMainOutputToTeleprompterBtn) logToConsole('streamMainOutputToTeleprompterBtn not found.', 'warn');
+    if (!mainOutputCanvasElement) logToConsole('mainOutputCanvasElement not found (for minimal test).', 'warn');
+    if (!mainRecordingCompositor) logToConsole('mainRecordingCompositor not found (for minimal test).', 'warn');
+  }
 
   if (recordCanvasBtn) {
     recordCanvasBtn.addEventListener('click', async () => {
@@ -252,13 +303,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- WebSocket Initialization ---
   const handleWebSocketOpen = () => {
-    fetch("/getVoiceBypass") // Example: fetch initial state if needed
+    fetch("/getVoiceBypass")
       .then((res) => res.json())
       .then((data) => { voiceBypassEnabled = data.enabled; updateVoiceBypassButton(); })
       .catch((err) => console.error("Error fetching voice bypass state:", err));
   };
   const wsUrl = `ws://${window.location.host}`;
-  initializeWebSocket(wsUrl, cameraManager /* or null if not directly needed by handler */, handleWebSocketOpen);
+  initializeWebSocket(wsUrl, cameraManager, handleWebSocketOpen);
 
   // --- Other UI Initializations ---
   initializeResizers();
@@ -276,22 +327,20 @@ function initializeCollapsibleSections() {
     const section = header.closest('.collapsible-section');
     const content = section.querySelector('.collapsible-content');
 
-    // Determine initial state (assume expanded unless 'start-collapsed' class is present)
     const startCollapsed = section.classList.contains('start-collapsed');
     if (!startCollapsed) {
-      header.classList.add('expanded'); // Add 'expanded' class if not starting collapsed
-      if (content) content.style.display = ''; // Ensure content is shown
+      header.classList.add('expanded');
+      if (content) content.style.display = '';
     } else {
-      if (content) content.style.display = 'none'; // Ensure content is hidden
+      if (content) content.style.display = 'none';
     }
 
     header.addEventListener('click', () => {
-      // Toggle 'expanded' class directly on the header
       const isExpanding = !header.classList.contains('expanded');
       header.classList.toggle('expanded', isExpanding);
 
       if (content) {
-        content.style.display = isExpanding ? '' : 'none'; // Toggle content display
+        content.style.display = isExpanding ? '' : 'none';
       }
     });
   });
@@ -308,12 +357,9 @@ function initializeFullscreenToggles() {
       if (!targetPanel || !pageLayout) return;
 
       const isCurrentlyFullscreen = targetPanel.classList.contains('fullscreen');
-
-      // Get all direct children of page-layout (panels and resizers)
       const children = Array.from(pageLayout.children);
 
       if (isCurrentlyFullscreen) {
-        // Exit fullscreen
         targetPanel.classList.remove('fullscreen');
         children.forEach(child => {
           if (child !== targetPanel) {
@@ -321,7 +367,6 @@ function initializeFullscreenToggles() {
           }
         });
       } else {
-        // Enter fullscreen
         targetPanel.classList.add('fullscreen');
         children.forEach(child => {
           if (child !== targetPanel) {
@@ -346,25 +391,20 @@ function initializeSecretPanel() {
     return;
   }
 
-  // Function to toggle header visibility and sync checkbox
   function toggleHeadersVisibility() {
     const headersHidden = body.classList.toggle('hide-headers');
     toggleHeadersCheckbox.checked = headersHidden;
     logToConsole(`Headers ${headersHidden ? 'hidden' : 'visible'}`, 'info');
   }
 
-  // Toggle panel visibility on button click
   toggleBtn.addEventListener('click', () => {
     secretPanel.classList.toggle('secret-panel-visible');
     logToConsole(`Secret panel ${secretPanel.classList.contains('secret-panel-visible') ? 'shown' : 'hidden'}`, 'info');
   });
 
-  // Toggle headers on checkbox change
   toggleHeadersCheckbox.addEventListener('change', toggleHeadersVisibility);
 
-  // Toggle headers on 'H' key press
   document.addEventListener('keydown', (event) => {
-    // Ignore if typing in an input field
     if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'SELECT') {
       return;
     }
@@ -373,12 +413,10 @@ function initializeSecretPanel() {
     }
   });
 
-  // Handle Invert Colors Button Click
   if (invertColorsBtn) {
     invertColorsBtn.addEventListener('click', () => {
       document.body.classList.toggle('color-scheme-inverted');
-      console.log('Toggled inverted color scheme.'); // Optional: Log action
-      // You might want to save this preference in localStorage
+      console.log('Toggled inverted color scheme.');
       if (document.body.classList.contains('color-scheme-inverted')) {
         localStorage.setItem('colorScheme', 'inverted');
       } else {
@@ -387,7 +425,6 @@ function initializeSecretPanel() {
     });
   }
 
-  // Restore color scheme preference on load
   if (localStorage.getItem('colorScheme') === 'inverted') {
     document.body.classList.add('color-scheme-inverted');
   }
@@ -407,22 +444,21 @@ function updateAssemblyUI(sceneData, sceneDisplayName) {
     return;
   }
 
-  // Reset and hide by default
   takeSelectionArea.innerHTML = '<p><em>Loading assembly info...</em></p>';
   assembleButton.disabled = true;
   assemblySection.style.display = 'none';
   sceneNameSpan.textContent = '';
-  currentSceneData = sceneData; // Update global reference
+  currentSceneData = sceneData;
 
   if (sceneData && sceneData.assembly && Array.isArray(sceneData.assembly) && sceneData.assembly.length > 0) {
     logToConsole(`Found assembly data for scene: ${sceneDisplayName}`, 'info');
     sceneNameSpan.textContent = sceneDisplayName;
-    takeSelectionArea.innerHTML = ''; // Clear loading message
+    takeSelectionArea.innerHTML = '';
 
     sceneData.assembly.forEach((segment, index) => {
       const segmentDiv = document.createElement('div');
       segmentDiv.className = 'assembly-segment mb-2 p-2 border rounded';
-      segmentDiv.dataset.index = index; // Store original index
+      segmentDiv.dataset.index = index;
 
       const description = `Segment ${index + 1}: Shot "${segment.shot}", Cam "${segment.camera}", In Frame: ${segment.in}, Out Frame: ${segment.out}`;
       const label = document.createElement('label');
@@ -434,11 +470,11 @@ function updateAssemblyUI(sceneData, sceneDisplayName) {
       input.type = 'number';
       input.id = `take-input-${index}`;
       input.className = 'form-control form-control-sm d-inline-block take-input';
-      input.style.width = '80px'; // Adjust width as needed
+      input.style.width = '80px';
       input.min = '1';
-      input.value = '1'; // Default to Take 1
+      input.value = '1';
       input.required = true;
-      input.dataset.shot = segment.shot; // Store segment data on input for easier access later
+      input.dataset.shot = segment.shot;
       input.dataset.camera = segment.camera;
       input.dataset.inFrame = segment.in;
       input.dataset.outFrame = segment.out;
@@ -448,12 +484,12 @@ function updateAssemblyUI(sceneData, sceneDisplayName) {
       takeSelectionArea.appendChild(segmentDiv);
     });
 
-    assembleButton.disabled = false; // Enable the button
-    assemblySection.style.display = 'block'; // Show the section
+    assembleButton.disabled = false;
+    assemblySection.style.display = 'block';
   } else {
     logToConsole(`No assembly data found or scene not loaded for: ${sceneDisplayName || 'selected scene'}`, 'warn');
     takeSelectionArea.innerHTML = '<p><em>No assembly definition found for this scene.</em></p>';
-    assemblySection.style.display = 'block'; // Show section but with message
+    assemblySection.style.display = 'block';
     assembleButton.disabled = true;
   }
 }
@@ -476,7 +512,7 @@ if (assembleBtn) {
       const takeNumber = parseInt(input.value, 10);
       if (isNaN(takeNumber) || takeNumber < 1) {
         isValid = false;
-        input.classList.add('is-invalid'); // Add validation feedback
+        input.classList.add('is-invalid');
       } else {
         input.classList.remove('is-invalid');
         assemblyTakes.push({
@@ -501,24 +537,16 @@ if (assembleBtn) {
     };
 
     logToConsole('Initiating scene assembly with payload:', 'info', assemblyPayload);
-    assembleBtn.disabled = true; // Disable button during processing
+    assembleBtn.disabled = true;
     assembleBtn.textContent = 'Assembling...';
 
     try {
-      // TODO: Replace log with actual API call
-      // console.log("--- WOULD SEND TO BACKEND ---", assemblyPayload);
-      // alert(`Assembly requested for scene: ${currentSceneData.directory}\nTakes: ${JSON.stringify(assemblyTakes, null, 2)}`);
-      // Simulating backend call delay
-      // await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // --- UNCOMMENT THIS BLOCK TO SEND TO BACKEND ---
       const response = await fetch('/api/assemble-scene', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(assemblyPayload)
       });
       if (!response.ok) {
-        // Try to get error message from backend response body
         let errorMsg = `Assembly request failed with status: ${response.status}`;
         try {
           const errorResult = await response.json();
@@ -526,18 +554,14 @@ if (assembleBtn) {
         } catch (e) { /* Ignore if response body is not JSON */ }
         throw new Error(errorMsg);
       }
-      const result = await response.json(); // Get success message
+      const result = await response.json();
       logToConsole('Assembly request successful:', 'success', result);
-      alert(result.message || 'Scene assembly process initiated successfully!'); // Show backend message
-      // --- END UNCOMMENT ---
-
-      // logToConsole('Simulated assembly request finished.', 'info');
-      // alert('Simulated assembly request finished.'); // Placeholder
-
+      alert(result.message || 'Scene assembly process initiated successfully!');
     } catch (error) {
       logToConsole(`Error during scene assembly request: ${error}`, 'error');
       alert(`Error starting assembly: ${error.message}`);
     } finally {
+      assembleBtn.disabled = false;
       assembleBtn.disabled = false; // Re-enable button
       assembleBtn.textContent = 'Assemble Scene';
     }

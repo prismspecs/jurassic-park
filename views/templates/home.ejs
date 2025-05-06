@@ -117,20 +117,23 @@
             </select>
           </div>
 
-          <!-- New: Teleprompter Source Selector -->
+          <!-- New: Teleprompter Source Selector -- REMOVE THIS SECTION -->
+          <!--
           <div class="form-group mb-2">
             <label for="teleprompter-source-selector" class="form-label">Teleprompter Source:</label>
             <select id="teleprompter-source-selector" class="form-select form-select-sm">
               <option value="">Select Camera for Teleprompter</option>
-              <!-- Options will be populated by JS -->
             </select>
           </div>
           <button id="sendToTeleprompterBtn" class="btn btn-primary btn-sm mb-2">Send to Teleprompter</button>
+          -->
 
-          <!-- Hidden canvas for the teleprompter compositor's output -->
+          <!-- Hidden canvas for the teleprompter compositor's output -- REMOVE THIS -->
+          <!--
           <div id="teleprompter-output-canvas-container" style="display:none;">
             <canvas id="teleprompter-display-source-canvas"></canvas>
           </div>
+          -->
           <!-- End New Elements -->
 
           <button id="actionBtn" style="
@@ -149,8 +152,9 @@
               ">
             Actors are Ready
           </button>
-          <button id="testRecordBtn">Test Record Video & Process Pose</button>
           <button id="recordCanvasBtn" class="btn btn-success">Record Output Canvas</button>
+          <button id="streamMainOutputToTeleprompterBtn" class="btn btn-info">Stream Main Output to
+            Teleprompter</button>
           <button id="voiceBypassBtn">Enable Voice Bypass</button>
           <button id="testConsoleBtn">Test Console</button>
           <button id="clearTeleprompterBtn">Clear Teleprompter</button>
