@@ -153,19 +153,32 @@
             Actors are Ready
           </button>
           <button id="recordCanvasBtn" class="btn btn-success">Record Output Canvas</button>
+
+          <!-- START: Move Actor Loading section here -->
+          <div class="actor-loading form-group mb-2">
+            <label for="actorFiles" class="form-label">Load Actors:</label>
+            <input type="file" id="actorFiles" name="actorFiles" multiple accept=".json,.txt,.jpg,.jpeg,.png"
+              class="form-control form-control-sm">
+            <button id="loadActorsBtn" class="btn btn-info btn-sm mt-1">Load Selected Actors</button>
+            <div id="loadActorsStatus" style="margin-top: 5px; font-size: 0.8rem;"></div>
+          </div>
+          <!-- END: Move Actor Loading section here -->
+
           <button id="streamMainOutputToTeleprompterBtn" class="btn btn-info">Stream Main Output to
             Teleprompter</button>
+          <button id="toggleTeleprompterFeedBtn" class="btn btn-secondary" style="display: none;">Hide Teleprompter Live
+            Feed</button>
           <button id="voiceBypassBtn">Enable Voice Bypass</button>
-          <button id="testConsoleBtn">Test Console</button>
+          <!-- <button id="testConsoleBtn">Test Console</button> -->
           <button id="clearTeleprompterBtn">Clear Teleprompter</button>
           <button id="openTeleprompterBtn">Open Main Teleprompter</button>
           <button id="openAlanTeleprompterBtn">Open Alan Teleprompter</button>
           <button id="openEllieTeleprompterBtn">Open Ellie Teleprompter</button>
-          <button id="testTeleprompterBtn">Test Teleprompter Text</button>
-          <button id="testTeleprompterVideoBtn">Test Teleprompter Video</button>
-          <button id="pauseTeleprompterBtn">Pause Teleprompters</button>
-          <button id="playTeleprompterBtn">Play Teleprompters</button>
-          <button id="loadScenesBtn" class="btn btn-secondary">Load Scenes</button>
+          <!-- <button id="testTeleprompterBtn">Test Teleprompter Text</button> -->
+          <!-- <button id="testTeleprompterVideoBtn">Test Teleprompter Video</button> -->
+          <!-- <button id="pauseTeleprompterBtn">Pause Teleprompters</button> -->
+          <!-- <button id="playTeleprompterBtn">Play Teleprompters</button> -->
+          <!-- <button id="loadScenesBtn" class="btn btn-secondary">Load Scenes</button> -->
         </div>
       </div>
       <!-- End MOVED Controls -->

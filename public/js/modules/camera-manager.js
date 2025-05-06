@@ -341,75 +341,48 @@ export class CameraManager {
     controlsDiv.className = "camera-controls-grid"; // Main div for all selectors and toggles
 
     // --- Preview Device Selector ---
-    const previewDeviceOptions = [{ value: "", text: "Select Preview Device" }];
-    const currentPreviewBrowserDeviceId = this.serverToBrowserDeviceMap.get(camera.previewDevice);
+    const previewDeviceOptions = this.availableDevices.map(d => ({ value: d.deviceId, text: d.label || d.deviceId }));
+    const initialBrowserPreviewDeviceId = this.serverToBrowserDeviceMap.get(camera.previewDevice) || ""; // Get initial mapped device ID
 
-    this.availableDevices.forEach(browserDevice => {
-      previewDeviceOptions.push({ value: browserDevice.deviceId, text: browserDevice.label || `Camera ${browserDevice.deviceId.substring(0, 6)}...` });
-    });
-    if (camera.previewDevice && !currentPreviewBrowserDeviceId && this.serverDevices.length > 0) {
-      const originalServerDevice = this.serverDevices.find(sd => sd.id === camera.previewDevice);
-      if (originalServerDevice) {
-        previewDeviceOptions.push({ value: "", text: `${originalServerDevice.name} (Not Mapped)`, disabled: true });
-      }
-    }
-
-    const previewSelectorGroup = this._createSelectGroup(
-      'Preview Device:',
-      `preview-device-selector-${camera.name}`,
+    const previewSelectGroup = this._createSelectGroup(
+      'Preview Device (Browser):',
+      `preview-device-${camera.name}`,
       previewDeviceOptions,
-      currentPreviewBrowserDeviceId || "",
-      (e) => {
-        const selectedBrowserDeviceId = e.target.value;
-        const livePreviewCheckbox = document.getElementById(`live-preview-${camera.name}`);
-        if (livePreviewCheckbox) {
-          livePreviewCheckbox.disabled = !selectedBrowserDeviceId;
-          if (!selectedBrowserDeviceId) {
-            livePreviewCheckbox.checked = false;
-            this.stopVideoStream(camera.name);
-            if (deviceInfoElement) deviceInfoElement.textContent = 'No device selected';
-          } else {
-            if (livePreviewCheckbox.checked) {
-              this.updatePreviewDevice(camera.name, selectedBrowserDeviceId);
+      initialBrowserPreviewDeviceId, // Set the initial value for the dropdown
+      async (e) => await this.updatePreviewDevice(camera.name, e.target.value)
+    );
+    controlsDiv.appendChild(previewSelectGroup);
+
+    // Auto-start preview if a valid initial device is set
+    if (initialBrowserPreviewDeviceId) {
+      logToConsole(`Camera ${camera.name} has default preview device ID: ${initialBrowserPreviewDeviceId}. Auto-starting preview.`, "info");
+      // Use a timeout to allow DOM to settle and other elements (like toggle button) to be created.
+      setTimeout(async () => {
+        try {
+          // Check if the select element still reflects this initial device, in case of rapid user interaction.
+          const selectEl = document.getElementById(`preview-device-${camera.name}`);
+          if (selectEl && selectEl.value === initialBrowserPreviewDeviceId) {
+            await this.updatePreviewDevice(camera.name, initialBrowserPreviewDeviceId);
+            // updatePreviewDevice should handle starting the stream and updating the VideoCompositor.
+            // Now, let's try to update the toggle button if it exists.
+            const toggleBtn = document.getElementById(`toggle-preview-${camera.name}`);
+            const videoEl = document.getElementById(`video-${camera.name}`); // Assuming videoEl ID structure
+            if (toggleBtn && videoEl && videoEl.srcObject && !videoEl.paused) {
+              toggleBtn.textContent = 'Stop Preview';
+              toggleBtn.classList.remove('btn-success');
+              toggleBtn.classList.add('btn-danger');
+            } else if (toggleBtn) {
+              // If for some reason it didn't start, or button state is off
+              toggleBtn.textContent = 'Start Preview';
+              toggleBtn.classList.remove('btn-danger');
+              toggleBtn.classList.add('btn-success');
             }
           }
+        } catch (err) {
+          logToConsole(`Error auto-starting preview for ${camera.name}: ${err.message}`, "error");
         }
-        let serverIdToUpdate = null;
-        if (selectedBrowserDeviceId) {
-          for (const [serverID, bID] of this.serverToBrowserDeviceMap.entries()) {
-            if (bID === selectedBrowserDeviceId) { serverIdToUpdate = serverID; break; }
-          }
-        }
-        this._updateCameraConfig(camera.name, { previewDevice: serverIdToUpdate || '' });
-      }
-    );
-    controlsDiv.appendChild(previewSelectorGroup);
-
-    // --- Live Preview Toggle ---
-    const livePreviewInitialChecked = !!(currentPreviewBrowserDeviceId && videoElement.srcObject && !videoElement.paused);
-    const livePreviewToggleGroup = this._createToggleSwitch(
-      'Show Live Preview',
-      `live-preview-${camera.name}`,
-      livePreviewInitialChecked,
-      async (isChecked) => {
-        const selector = document.getElementById(`preview-device-selector-${camera.name}`);
-        const selectedBrowserDeviceId = selector ? selector.value : null;
-        if (isChecked && selectedBrowserDeviceId) {
-          await this.updatePreviewDevice(camera.name, selectedBrowserDeviceId);
-        } else if (!isChecked) {
-          this.stopVideoStream(camera.name);
-          if (deviceInfoElement) deviceInfoElement.textContent = 'Preview stopped.';
-        } else if (isChecked && !selectedBrowserDeviceId) {
-          logToConsole(`Cannot start preview for ${camera.name}: No device selected.`, 'warn');
-          const checkboxInput = livePreviewToggleGroup.querySelector('input[type="checkbox"]');
-          if (checkboxInput) checkboxInput.checked = false;
-        }
-      }
-    );
-
-    const livePreviewCheckboxInput = livePreviewToggleGroup.querySelector('input[type="checkbox"]');
-    if (livePreviewCheckboxInput) livePreviewCheckboxInput.disabled = !currentPreviewBrowserDeviceId;
-    controlsDiv.appendChild(livePreviewToggleGroup);
+      }, 250); // Increased delay slightly just in case
+    }
 
     // --- Recording Device Selector ---
     const recordingDeviceOptions = [{ value: "", text: "Select Rec. Device (Server)" }];
@@ -500,15 +473,6 @@ export class CameraManager {
       this.renderPTZControlsForCamera(camera.name, camera.ptzDevice, ptzControlsContainerOriginal);
     }
 
-    if (currentPreviewBrowserDeviceId && livePreviewInitialChecked) {
-      setTimeout(() => {
-        this.updatePreviewDevice(camera.name, currentPreviewBrowserDeviceId);
-      }, 100);
-    } else if (currentPreviewBrowserDeviceId && !livePreviewInitialChecked) {
-      const device = this.availableDevices.find(d => d.deviceId === currentPreviewBrowserDeviceId);
-      if (deviceInfoElement) deviceInfoElement.textContent = `Device: ${device?.label || 'Unknown'}. Preview off.`;
-    }
-
     this.cameraElements.set(camera.name, card);
     return card;
   }
@@ -590,7 +554,7 @@ export class CameraManager {
       logToConsole(`Error starting preview for ${cameraName}: ${err.message}`, "error");
       if (deviceInfoElement) deviceInfoElement.textContent = `Error: ${err.message.split(':')[0]}`;
       this.stopVideoStream(cameraName); // Ensure cleanup on error
-      const previewSelect = document.getElementById(`preview-device-selector-${cameraName}`);
+      const previewSelect = document.getElementById(`preview-device-${cameraName}`);
       if (previewSelect) previewSelect.value = ''; // Reset dropdown
       const livePreviewCheckbox = document.getElementById(`live-preview-${cameraName}`);
       if (livePreviewCheckbox) { livePreviewCheckbox.checked = false; livePreviewCheckbox.disabled = true; } // Reset toggle

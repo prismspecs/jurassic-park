@@ -32,6 +32,9 @@ let cameraManager;
 let mainRecordingCompositor;
 let voiceBypassEnabled = true;
 
+let activeTeleprompterFeedWindow = null; // Keep track of the teleprompter window for live feed
+let isTeleprompterFeedVisibleState = false; // Keep track of visibility
+
 // Helper function to set up the stream in the teleprompter window
 function setupTeleprompterStream(win, streamToPlay) {
   logToConsole(`Teleprompter window details: URL='${win.location.href}', readyState='${win.document.readyState}'`, 'debug');
@@ -55,6 +58,15 @@ function setupTeleprompterStream(win, streamToPlay) {
         liveFeedEl.play()
           .then(() => {
             logToConsole('Teleprompter live feed playing successfully (after delay).', 'success');
+            if (win && !win.closed && typeof win.showLiveVideo === 'function') {
+              win.showLiveVideo();
+            }
+            isTeleprompterFeedVisibleState = true;
+            const toggleBtn = document.getElementById('toggleTeleprompterFeedBtn');
+            if (toggleBtn) {
+              toggleBtn.textContent = 'Hide Teleprompter Live Feed';
+              toggleBtn.style.display = 'inline-block';
+            }
           })
           .catch(e => {
             logToConsole(`Error playing teleprompter live feed (after delay): ${e.message}. Video muted: ${liveFeedEl.muted}`, 'error', e);
@@ -102,12 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('openTeleprompterBtn')?.addEventListener('click', openTeleprompter);
   document.getElementById('openAlanTeleprompterBtn')?.addEventListener('click', () => openCharacterTeleprompter('alan'));
   document.getElementById('openEllieTeleprompterBtn')?.addEventListener('click', () => openCharacterTeleprompter('ellie'));
-  document.getElementById('testTeleprompterBtn')?.addEventListener('click', testTeleprompter);
-  document.getElementById('testTeleprompterVideoBtn')?.addEventListener('click', testTeleprompterVideo);
   document.getElementById('clearTeleprompterBtn')?.addEventListener('click', clearTeleprompter);
-  document.getElementById('pauseTeleprompterBtn')?.addEventListener('click', pauseAllTeleprompters);
-  document.getElementById('playTeleprompterBtn')?.addEventListener('click', playAllTeleprompters);
-  document.getElementById('testConsoleBtn')?.addEventListener('click', testConsole);
   document.getElementById('actionBtn')?.addEventListener('click', action);
   document.getElementById('actorsReadyBtn')?.addEventListener('click', actorsReady);
   document.getElementById('recording-pipeline')?.addEventListener('change', (e) => handlePipelineChange(e.target.value));
@@ -133,7 +140,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const actorFilesInput = document.getElementById('actorFiles');
   const loadActorsStatus = document.getElementById('loadActorsStatus');
   if (loadActorsBtn && actorFilesInput && loadActorsStatus) {
-    loadActorsBtn.addEventListener('click', async () => { /* ... loadActors logic ... */ });
+    loadActorsBtn.addEventListener('click', async () => {
+      const files = actorFilesInput.files;
+      if (!files || files.length === 0) {
+        loadActorsStatus.textContent = 'Please select files to load.';
+        loadActorsStatus.style.color = 'orange';
+        return;
+      }
+      const formData = new FormData();
+      for (const file of files) { formData.append('files', file); }
+      loadActorsStatus.textContent = 'Loading...';
+      loadActorsStatus.style.color = '#aaa';
+      try {
+        const response = await fetch('/loadActors', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.message || `HTTP error ${response.status}`);
+        }
+        loadActorsStatus.textContent = result.message || 'Actors loaded!';
+        loadActorsStatus.style.color = 'green';
+        actorFilesInput.value = '';
+      } catch (error) {
+        console.error("Actor Load Error:", error);
+        loadActorsStatus.textContent = `Error: ${error.message}`;
+        loadActorsStatus.style.color = 'red';
+      }
+    });
   }
 
   // --- Source Selector Logic ---
@@ -180,6 +212,28 @@ document.addEventListener('DOMContentLoaded', () => {
   cameraManager.initialize().then(() => {
     logToConsole('CameraManager initialized.', 'info');
     populateAllSourceSelectors();
+    // ---- START: Set default recording source ----
+    if (recordingSourceSelector && recordingSourceSelector.options.length > 1) { // Ensure there's more than the "Select..." option
+      let firstCameraOptionValue = null;
+      // Find the first actual camera option (value is not empty)
+      for (let i = 0; i < recordingSourceSelector.options.length; i++) {
+        if (recordingSourceSelector.options[i].value) {
+          firstCameraOptionValue = recordingSourceSelector.options[i].value;
+          break;
+        }
+      }
+      if (firstCameraOptionValue) {
+        logToConsole(`Setting default recording source to: ${firstCameraOptionValue}`, 'info');
+        recordingSourceSelector.value = firstCameraOptionValue;
+        // Dispatch change event to trigger source update for compositor
+        recordingSourceSelector.dispatchEvent(new Event('change'));
+      } else {
+        logToConsole('No suitable first camera option found to set as default recording source.', 'warn');
+      }
+    } else {
+      logToConsole('Recording source selector not ready or no cameras available for default selection.', 'warn');
+    }
+    // ---- END: Set default recording source ----
     document.addEventListener('cameramanagerupdate', () => {
       logToConsole('cameramanagerupdate event received.', 'info');
       populateAllSourceSelectors();
@@ -197,6 +251,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Stream Main Output to Teleprompter Logic (Reverted to use /teleprompter and setupTeleprompterStream) ---
   const streamMainOutputToTeleprompterBtn = document.getElementById('streamMainOutputToTeleprompterBtn');
+  const toggleTeleprompterFeedBtn = document.getElementById('toggleTeleprompterFeedBtn'); // Get the new button
+
   if (streamMainOutputToTeleprompterBtn && mainOutputCanvasElement && mainRecordingCompositor) {
     streamMainOutputToTeleprompterBtn.addEventListener('click', () => {
       logToConsole('Attempting to stream main output canvas to /teleprompter page...', 'info');
@@ -207,7 +263,17 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       try {
-        const teleprompterWin = window.open('/teleprompter', 'TeleprompterView'); // Changed from MinimalTeleprompterView, back to TeleprompterView or a unique name for /teleprompter
+        // Close any existing live feed teleprompter before opening a new one
+        if (activeTeleprompterFeedWindow && !activeTeleprompterFeedWindow.closed) {
+          activeTeleprompterFeedWindow.close();
+          logToConsole('Closed previous live feed teleprompter window.', 'info');
+        }
+
+        const teleprompterWin = window.open('/teleprompter', 'LiveStreamTeleprompter_' + Date.now(), 'width=640,height=480,menubar=no,toolbar=no,location=no,status=no');
+        activeTeleprompterFeedWindow = teleprompterWin; // Store reference
+        isTeleprompterFeedVisibleState = false; // Reset state, it will be shown by setupTeleprompterStream
+        if (toggleTeleprompterFeedBtn) toggleTeleprompterFeedBtn.style.display = 'none'; // Hide toggle until feed is confirmed playing
+
         if (!teleprompterWin) {
           alert('Failed to open teleprompter window. Please check popup blocker settings.');
           logToConsole('Failed to open /teleprompter window.', 'error');
@@ -228,22 +294,32 @@ document.addEventListener('DOMContentLoaded', () => {
           logToConsole('Teleprompter (/teleprompter) window ONLOAD event fired. Current URL: ' + (teleprompterWin ? teleprompterWin.location.href : 'teleprompterWin is null/closed'), 'info');
           if (!teleprompterWin || teleprompterWin.closed) {
             logToConsole('Teleprompter (/teleprompter) window was closed before onload handler could fully execute.', 'warn');
+            activeTeleprompterFeedWindow = null; // Clear reference
+            if (toggleTeleprompterFeedBtn) toggleTeleprompterFeedBtn.style.display = 'none';
             return;
           }
           if (teleprompterWin.location.href === 'about:blank') {
             logToConsole('Teleprompter (/teleprompter) window onload fired but URL is still about:blank.', 'error');
+            activeTeleprompterFeedWindow = null; // Clear reference
+            if (toggleTeleprompterFeedBtn) toggleTeleprompterFeedBtn.style.display = 'none';
             return;
           }
-          setupTeleprompterStream(teleprompterWin, stream); // Use the helper function
+          setupTeleprompterStream(teleprompterWin, stream);
         };
 
-        if (!teleprompterWin || teleprompterWin.closed) {
-          logToConsole('Teleprompter (/teleprompter) window was not opened or was closed immediately.', 'error');
-          if (teleprompterWin === null) {
-            alert('Popup window for /teleprompter failed to open. Please check your browser\'s popup blocker settings.');
+        // Monitor if the window is closed by the user
+        const teleprompterWinClosedCheckInterval = setInterval(() => {
+          if (activeTeleprompterFeedWindow && activeTeleprompterFeedWindow.closed) {
+            logToConsole('Live feed teleprompter window was closed by user.', 'info');
+            activeTeleprompterFeedWindow = null;
+            isTeleprompterFeedVisibleState = false;
+            if (toggleTeleprompterFeedBtn) {
+              toggleTeleprompterFeedBtn.style.display = 'none';
+              toggleTeleprompterFeedBtn.textContent = 'Hide Teleprompter Live Feed'; // Reset text
+            }
+            clearInterval(teleprompterWinClosedCheckInterval);
           }
-          return;
-        }
+        }, 1000);
 
       } catch (error) {
         logToConsole(`Error initiating stream to /teleprompter: ${error.message}`, 'error', error);
@@ -254,6 +330,32 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!streamMainOutputToTeleprompterBtn) logToConsole('streamMainOutputToTeleprompterBtn not found.', 'warn');
     if (!mainOutputCanvasElement) logToConsole('mainOutputCanvasElement not found (for minimal test).', 'warn');
     if (!mainRecordingCompositor) logToConsole('mainRecordingCompositor not found (for minimal test).', 'warn');
+  }
+
+  // Add listener for the toggle button
+  if (toggleTeleprompterFeedBtn) {
+    toggleTeleprompterFeedBtn.addEventListener('click', () => {
+      if (activeTeleprompterFeedWindow && !activeTeleprompterFeedWindow.closed) {
+        if (isTeleprompterFeedVisibleState) {
+          if (typeof activeTeleprompterFeedWindow.hideLiveVideo === 'function') {
+            activeTeleprompterFeedWindow.hideLiveVideo();
+            toggleTeleprompterFeedBtn.textContent = 'Show Teleprompter Live Feed';
+            isTeleprompterFeedVisibleState = false;
+            logToConsole('User toggled live feed OFF.', 'info');
+          }
+        } else {
+          if (typeof activeTeleprompterFeedWindow.showLiveVideo === 'function') {
+            activeTeleprompterFeedWindow.showLiveVideo();
+            toggleTeleprompterFeedBtn.textContent = 'Hide Teleprompter Live Feed';
+            isTeleprompterFeedVisibleState = true;
+            logToConsole('User toggled live feed ON.', 'info');
+          }
+        }
+      } else {
+        logToConsole('Toggle button clicked but no active/open teleprompter feed window.', 'warn');
+        toggleTeleprompterFeedBtn.style.display = 'none'; // Hide if window is not there
+      }
+    });
   }
 
   if (recordCanvasBtn) {

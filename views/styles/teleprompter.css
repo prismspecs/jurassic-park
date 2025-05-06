@@ -7,6 +7,30 @@ body {
     overflow: hidden;
 }
 
+/* Live Feed Video Styling */
+#teleprompterLiveFeed {
+    display: none;
+    /* Hidden by default */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: #000;
+    /* Background for letter/pillarboxing */
+    object-fit: contain;
+    /* Or 'cover' if you prefer filling */
+    z-index: 100;
+    /* Ensure it's on top when visible */
+    border: none;
+    /* Remove the temporary limegreen border */
+}
+
+#teleprompterLiveFeed.visible {
+    display: block;
+    /* Show the video */
+}
+
 #teleprompter {
     position: fixed;
     top: 0;
