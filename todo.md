@@ -11,6 +11,10 @@
 + Do skeleton analysis and masking live
 
 + I want to shift everything to a new sort of rendering pipeline. The idea is to draw to a canvas which then provides the option of rendering that canvas to another screen (like via the teleprompter) and also the option of recording that canvas as a video. This way I can do things like live skeletal tracking, emotional analysis, etc. and display that to the audience live. I need certain things to be different between the "teleprompter canvas" and the recording pipeline. Perhaps some things are applied before it gets shipped to the recording mechanism and then some things after. This is important because I want the option to do live skeletal masking (using the skeletal or pose tracking data and using it as a mask to "cut out" multiple human bodies to a transparent background video) which is saved in the generated video file.
++ Each camera has its own canvas. There is some optional processing which takes place such as drawing the skeleton from the pose estimator on top of the image, and using the bounding box from the detected body to create a mask which is then "cut out" from the total video. I would like to "record" that canvas to a video file, but only with certain effects applied (such as the crop feature). I would also like to be able to then display that canvas via the /teleprompter, but also with certain options (if it is possible) as in, only with skeletal rendering on top. I should be able to "forward" either the front or the back camera to the teleprompter at the click of a button.
++ Right now what is working is that one webcam (the first one) is rendering to a canvas in the middle panel, with optional Pose FX enabled. I can also save this video, which works well.
+
+
 
 + Console Output and console logging in general are totally inconsistent. It should be that ALL debug messages appear in the browser console. Those messages should ALSO appear in the "Console Output" on the HTML page. Some messages are only appearing there, while others are only appearing in the dev console. The Console Output area should also auto scroll so the user can see the newest messages.
 
