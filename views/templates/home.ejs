@@ -107,6 +107,32 @@
               <option value="640x480">640x480 (VGA)</option>
             </select>
           </div>
+
+          <!-- New: Main Recording Source Selector -->
+          <div class="form-group mb-2">
+            <label for="recording-source-selector" class="form-label">Main Recording Source:</label>
+            <select id="recording-source-selector" class="form-select form-select-sm">
+              <option value="">Select Camera for Main Recording</option>
+              <!-- Options will be populated by JS -->
+            </select>
+          </div>
+
+          <!-- New: Teleprompter Source Selector -->
+          <div class="form-group mb-2">
+            <label for="teleprompter-source-selector" class="form-label">Teleprompter Source:</label>
+            <select id="teleprompter-source-selector" class="form-select form-select-sm">
+              <option value="">Select Camera for Teleprompter</option>
+              <!-- Options will be populated by JS -->
+            </select>
+          </div>
+          <button id="sendToTeleprompterBtn" class="btn btn-primary btn-sm mb-2">Send to Teleprompter</button>
+
+          <!-- Hidden canvas for the teleprompter compositor's output -->
+          <div id="teleprompter-output-canvas-container" style="display:none;">
+            <canvas id="teleprompter-display-source-canvas"></canvas>
+          </div>
+          <!-- End New Elements -->
+
           <button id="actionBtn" style="
                 display: none;
                 background-color: #e8f5e9;
@@ -124,43 +150,18 @@
             Actors are Ready
           </button>
           <button id="testRecordBtn">Test Record Video & Process Pose</button>
+          <button id="recordCanvasBtn" class="btn btn-success">Record Output Canvas</button>
           <button id="voiceBypassBtn">Enable Voice Bypass</button>
           <button id="testConsoleBtn">Test Console</button>
-          <button id="recordCanvasBtn">Record Output Canvas</button>
-
-          <div class="actor-loading">
-            <label for="actorFiles">Load Actors:</label>
-            <input type="file" id="actorFiles" multiple accept=".json, .jpg, .jpeg, .png" />
-            <button id="loadActorsBtn">Load Selected</button>
-            <p id="loadActorsStatus"></p>
-          </div>
-
-          <!-- Collapsible Teleprompter Controls -->
-          <div class="collapsible-section" id="teleprompter-controls-section">
-            <h3 class="collapsible-header">
-              <span>Teleprompter Controls</span>
-            </h3>
-            <div class="teleprompter-button-group collapsible-content">
-              <button id="openTeleprompterBtn">Open Teleprompter</button>
-              <button id="openAlanTeleprompterBtn">
-                Open Alan's Teleprompter
-              </button>
-              <button id="openEllieTeleprompterBtn">
-                Open Ellie's Teleprompter
-              </button>
-              <button id="testTeleprompterBtn">Test Teleprompter</button>
-              <button id="testTeleprompterVideoBtn">
-                Test Teleprompter Video
-              </button>
-              <button id="clearTeleprompterBtn">Clear Teleprompter</button>
-              <button id="pauseTeleprompterBtn" class="warning-btn">
-                ⏸️ Pause All Teleprompters
-              </button>
-              <button id="playTeleprompterBtn" class="success-btn">
-                ▶️ Resume All Teleprompters
-              </button>
-            </div>
-          </div>
+          <button id="clearTeleprompterBtn">Clear Teleprompter</button>
+          <button id="openTeleprompterBtn">Open Main Teleprompter</button>
+          <button id="openAlanTeleprompterBtn">Open Alan Teleprompter</button>
+          <button id="openEllieTeleprompterBtn">Open Ellie Teleprompter</button>
+          <button id="testTeleprompterBtn">Test Teleprompter Text</button>
+          <button id="testTeleprompterVideoBtn">Test Teleprompter Video</button>
+          <button id="pauseTeleprompterBtn">Pause Teleprompters</button>
+          <button id="playTeleprompterBtn">Play Teleprompters</button>
+          <button id="loadScenesBtn" class="btn btn-secondary">Load Scenes</button>
         </div>
       </div>
       <!-- End MOVED Controls -->

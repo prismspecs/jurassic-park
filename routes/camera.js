@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Worker } = require('worker_threads'); // Import Worker
 const CameraControl = require('../services/cameraControl');
-const cameraControl = new CameraControl();
+const cameraControl = require('../services/cameraControl').getInstance();
 const ffmpegHelper = require('../services/ffmpegHelper');
 const gstreamerHelper = require('../services/gstreamerHelper');
 const poseTracker = require('../services/poseTracker');
@@ -74,17 +74,21 @@ router.post('/add', async (req, res) => {
 });
 
 // Remove a camera
-router.post('/remove', (req, res) => {
-    const { name } = req.body;
-    if (!name) {
-        return res.status(400).json({ success: false, message: 'Camera name is required' });
+router.delete('/:cameraName', (req, res) => {
+    const { cameraName } = req.params;
+    if (!cameraName) {
+        return res.status(400).json({ success: false, message: 'Camera name parameter is required' });
     }
-
-    const success = cameraControl.removeCamera(name);
-    if (success) {
-        res.json({ success: true, message: `Camera ${name} removed` });
-    } else {
-        res.status(400).json({ success: false, message: `Camera ${name} not found` });
+    try {
+        const success = cameraControl.removeCamera(cameraName);
+        if (success) {
+            res.json({ success: true, message: `Camera ${cameraName} removed` });
+        } else {
+            res.status(404).json({ success: false, message: `Camera ${cameraName} not found` });
+        }
+    } catch (err) {
+        console.error(`Error removing camera ${cameraName}:`, err);
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 
@@ -317,6 +321,52 @@ router.post('/:cameraName/record', (req, res) => { // Remove async, no top-level
         // Catch synchronous errors during setup before worker starts
         console.error(`[Record Route] Pre-worker error for ${cameraName}:`, err);
         broadcastConsole(`[Record Route] Failed to start recording for ${cameraName}: ${err.message}`, 'error');
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// Update camera configuration
+router.post('/:cameraName/config', async (req, res) => {
+    const { cameraName } = req.params;
+    const updates = req.body; // e.g., { previewDevice: '...', recordingDevice: '...' }
+
+    if (!cameraName) {
+        return res.status(400).json({ success: false, message: 'Camera name parameter required.' });
+    }
+    if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ success: false, message: 'No configuration updates provided.' });
+    }
+
+    console.log(`[Route /config] Received config update for ${cameraName}:`, updates);
+    broadcastConsole(`Received config update for ${cameraName}: ${JSON.stringify(updates)}`, 'debug');
+
+    try {
+        const camera = cameraControl.getCamera(cameraName);
+        if (!camera) {
+            return res.status(404).json({ success: false, message: `Camera ${cameraName} not found.` });
+        }
+
+        // Apply updates - Add more setters to CameraControl as needed
+        if (updates.previewDevice !== undefined) {
+            cameraControl.setPreviewDevice(cameraName, updates.previewDevice);
+            broadcastConsole(`Preview device updated for ${cameraName}.`, 'info');
+        }
+        if (updates.recordingDevice !== undefined) {
+            cameraControl.setRecordingDevice(cameraName, updates.recordingDevice);
+            broadcastConsole(`Recording device updated for ${cameraName}.`, 'info');
+        }
+        if (updates.ptzDevice !== undefined) {
+            cameraControl.setPTZDevice(cameraName, updates.ptzDevice);
+            broadcastConsole(`PTZ device updated for ${cameraName}.`, 'info');
+        }
+        // Add other config updates here (e.g., showSkeleton, showMask if managed server-side)
+        // if (updates.showSkeleton !== undefined) camera.setShowSkeleton(updates.showSkeleton);
+
+        res.json({ success: true, message: `Configuration updated for ${cameraName}` });
+
+    } catch (err) {
+        console.error(`Error updating config for ${cameraName}:`, err);
+        broadcastConsole(`Error updating config for ${cameraName}: ${err.message}`, 'error');
         res.status(500).json({ success: false, message: err.message });
     }
 });

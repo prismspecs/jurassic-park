@@ -21,23 +21,31 @@ const POSE_COLORS = ['lime', 'cyan', 'magenta', 'yellow', 'orange', 'red'];
  * Initially handles only one primary video source.
  */
 export class VideoCompositor {
-    constructor(canvasId) {
-        this.canvas = document.getElementById(canvasId);
-        if (!this.canvas) {
-            logToConsole(`VideoCompositor: Canvas element with ID '${canvasId}' not found.`, 'error');
-            throw new Error(`Canvas element with ID '${canvasId}' not found.`);
+    constructor(canvasIdOrElement) {
+        if (typeof canvasIdOrElement === 'string') {
+            this.canvas = document.getElementById(canvasIdOrElement);
+            if (!this.canvas) {
+                logToConsole(`VideoCompositor: Canvas element with ID '${canvasIdOrElement}' not found.`, 'error');
+                throw new Error(`Canvas element with ID '${canvasIdOrElement}' not found.`);
+            }
+        } else if (canvasIdOrElement instanceof HTMLCanvasElement) {
+            this.canvas = canvasIdOrElement;
+        } else {
+            logToConsole('VideoCompositor: Invalid constructor argument. Must provide canvas ID string or HTMLCanvasElement.', 'error');
+            throw new Error('Invalid constructor argument for VideoCompositor.');
         }
 
         this.ctx = this.canvas.getContext('2d');
         if (!this.ctx) {
-            logToConsole(`VideoCompositor: Failed to get 2D context for canvas '${canvasId}'.`, 'error');
-            throw new Error(`Failed to get 2D context for canvas '${canvasId}'.`);
+            logToConsole(`VideoCompositor: Failed to get 2D context for canvas '${this.canvas.id || '[no id]'}'.`, 'error');
+            throw new Error(`Failed to get 2D context for canvas '${this.canvas.id || '[no id]'}'.`);
         }
 
-        // For now, just one source. Later, this will be a list/map of layers.
-        this.primaryVideoSource = null;
+        this.currentFrameSource = null; // Can be HTMLVideoElement or HTMLCanvasElement
+        this.sourceType = null; // 'video' or 'canvas'
         this.animationFrameId = null;
         this.isDrawing = false;
+        this.frameCount = 0; // Add frame counter
 
         // --- New/Modified Pose Detection State ---
         this.poseDetector = null;
@@ -49,7 +57,7 @@ export class VideoCompositor {
         this._initializeTfjsAndDetector();
         // --- End New/Modified State ---
 
-        logToConsole(`VideoCompositor initialized for canvas '#${canvasId}'.`, 'info');
+        logToConsole(`VideoCompositor initialized for canvas '#${this.canvas.id || '(no ID yet)'}'.`, 'info');
     }
 
     // --- New TFJS/Detector Methods (from CameraManager) ---
@@ -61,8 +69,7 @@ export class VideoCompositor {
                 return;
             }
             logToConsole("VideoCompositor: Initializing TensorFlow.js backend...", "info");
-            // await tf.setBackend('webgl'); // Switch to WebGPU
-            await tf.setBackend('webgpu');
+            await tf.setBackend('webgpu'); // Switch back to WebGPU
             await tf.ready();
             this.tfjsBackendReady = true;
             logToConsole(`VideoCompositor: TensorFlow.js backend ready (${tf.getBackend()}).`, "success");
@@ -114,7 +121,17 @@ export class VideoCompositor {
         if (changed && !this.enablePoseDetection) {
             this.lastDetectedPoses = []; // Clear poses when disabling
             // Trigger a redraw without effects if needed
-            if (this.isDrawing) this._drawFrame(true);
+            if (this.isDrawing) this._drawFrame(true); // force a clear redraw
+        }
+    }
+
+    _updatePoseDetectionState() {
+        const shouldEnablePose = this.drawSkeletonOverlay || this.drawBoundingBoxMask;
+        // Only call setPoseDetectionEnabled if the state actually needs to change
+        if (shouldEnablePose && !this.enablePoseDetection) {
+            this.setPoseDetectionEnabled(true);
+        } else if (!shouldEnablePose && this.enablePoseDetection) {
+            this.setPoseDetectionEnabled(false);
         }
     }
 
@@ -122,128 +139,207 @@ export class VideoCompositor {
         const changed = this.drawSkeletonOverlay !== !!enabled;
         this.drawSkeletonOverlay = !!enabled;
         logToConsole(`VideoCompositor: Skeleton overlay set to ${this.drawSkeletonOverlay}.`, 'info');
-        // Trigger redraw if state changed and detection is active
-        if (changed && this.enablePoseDetection && this.isDrawing) this._drawFrame(true);
+
+        this._updatePoseDetectionState();
+
+        if (changed && this.isDrawing) {
+            this._drawFrame(true);
+        }
     }
 
     setDrawBoundingBoxMask(enabled) {
         const changed = this.drawBoundingBoxMask !== !!enabled;
         this.drawBoundingBoxMask = !!enabled;
         logToConsole(`VideoCompositor: Bounding box mask set to ${this.drawBoundingBoxMask}.`, 'info');
-        // Trigger redraw if state changed and detection is active
-        if (changed && this.enablePoseDetection && this.isDrawing) this._drawFrame(true);
+
+        this._updatePoseDetectionState();
+
+        if (changed && this.isDrawing) {
+            this._drawFrame(true);
+        }
     }
     // --- End Control Methods ---
 
-    // Sets the main video source to be drawn
-    setPrimaryVideoSource(videoElement) {
-        if (!videoElement || !(videoElement instanceof HTMLVideoElement)) {
-            logToConsole('VideoCompositor: Invalid video element provided.', 'error');
+    // Sets the main video/canvas source to be drawn
+    setCurrentFrameSource(sourceElement) {
+        if (!sourceElement ||
+            (!(sourceElement instanceof HTMLVideoElement) && !(sourceElement instanceof HTMLCanvasElement))) {
+            logToConsole('VideoCompositor: Invalid source element provided. Must be HTMLVideoElement or HTMLCanvasElement.', 'error');
+            this.removeFrameSource(); // Clear existing source if invalid one is provided
             return;
         }
-        logToConsole(`VideoCompositor: Setting primary video source (${videoElement.id || 'no id'}).`, 'info');
-        this.primaryVideoSource = videoElement;
 
-        // Ensure canvas is initially sized correctly if video is ready
-        const checkVideoReady = () => {
-            if (this.primaryVideoSource.readyState >= 2) { // HAVE_CURRENT_DATA or higher
-                const width = this.primaryVideoSource.videoWidth;
-                const height = this.primaryVideoSource.videoHeight;
+        const sourceId = sourceElement.id || 'no id';
+        logToConsole(`VideoCompositor: Setting current frame source (${sourceId}).`, 'info');
+
+        if (sourceElement instanceof HTMLVideoElement) {
+            this.sourceType = 'video';
+            logToConsole(`VideoCompositor: Source type is HTMLVideoElement.`, 'info');
+        } else if (sourceElement instanceof HTMLCanvasElement) {
+            this.sourceType = 'canvas';
+            logToConsole(`VideoCompositor: Source type is HTMLCanvasElement.`, 'info');
+        }
+
+        this.currentFrameSource = sourceElement;
+
+        // Ensure canvas is initially sized correctly
+        const checkSourceReady = () => {
+            if (!this.currentFrameSource) return; // Source might have been removed
+
+            let width = 0;
+            let height = 0;
+            let ready = false;
+
+            if (this.sourceType === 'video') {
+                if (this.currentFrameSource.readyState >= 2) { // HAVE_CURRENT_DATA or higher
+                    width = this.currentFrameSource.videoWidth;
+                    height = this.currentFrameSource.videoHeight;
+                    ready = true;
+                }
+            } else if (this.sourceType === 'canvas') {
+                width = this.currentFrameSource.width;
+                height = this.currentFrameSource.height;
+                ready = true; // Canvas is always considered ready in terms of dimensions
+            }
+
+            if (ready) {
                 if (width > 0 && height > 0) {
-                    logToConsole(`VideoCompositor: Source video ready with resolution ${width}x${height}.`, 'info');
-                    this._sizeCanvasToVideo();
+                    logToConsole(`VideoCompositor: Source ready with resolution ${width}x${height}.`, 'info');
+                    this._sizeCanvasToSource();
                 } else {
-                    logToConsole(`VideoCompositor: Source video ready but resolution is ${width}x${height}. Retrying...`, 'warn');
-                    setTimeout(checkVideoReady, 100); // Retry shortly
+                    logToConsole(`VideoCompositor: Source ready but resolution is ${width}x${height}. Retrying...`, 'warn');
+                    if (this.currentFrameSource) setTimeout(checkSourceReady, 100); // Retry shortly only if source still exists
                 }
             } else {
                 logToConsole('VideoCompositor: Waiting for video source to become ready...', 'debug');
-                setTimeout(checkVideoReady, 100); // Retry shortly
+                if (this.currentFrameSource) setTimeout(checkSourceReady, 100); // Retry shortly
             }
         };
 
-        checkVideoReady(); // Initial check
+        checkSourceReady(); // Initial check
 
         if (!this.isDrawing) {
             this.startDrawingLoop();
         }
     }
 
-    _sizeCanvasToVideo() {
-        if (!this.primaryVideoSource) return;
+    _sizeCanvasToSource() {
+        if (!this.currentFrameSource) return;
 
-        const videoWidth = this.primaryVideoSource.videoWidth;
-        const videoHeight = this.primaryVideoSource.videoHeight;
+        let sourceWidth = 0;
+        let sourceHeight = 0;
 
-        if (videoWidth > 0 && videoHeight > 0) {
-            if (this.canvas.width !== videoWidth || this.canvas.height !== videoHeight) {
-                this.canvas.width = videoWidth;
-                this.canvas.height = videoHeight;
-                logToConsole(`VideoCompositor: Resized canvas to ${videoWidth}x${videoHeight}`, 'debug');
+        if (this.sourceType === 'video') {
+            sourceWidth = this.currentFrameSource.videoWidth;
+            sourceHeight = this.currentFrameSource.videoHeight;
+        } else if (this.sourceType === 'canvas') {
+            sourceWidth = this.currentFrameSource.width;
+            sourceHeight = this.currentFrameSource.height;
+        }
+
+        if (sourceWidth > 0 && sourceHeight > 0) {
+            if (this.canvas.width !== sourceWidth || this.canvas.height !== sourceHeight) {
+                this.canvas.width = sourceWidth;
+                this.canvas.height = sourceHeight;
+                logToConsole(`VideoCompositor: Resized target canvas '${this.canvas.id}' to ${sourceWidth}x${sourceHeight} to match source.`, 'debug');
             }
         } else {
-            logToConsole(`VideoCompositor: Video source has zero dimensions (${videoWidth}x${videoHeight}), canvas not resized.`, 'warn');
+            logToConsole(`VideoCompositor: Source has zero dimensions (${sourceWidth}x${sourceHeight}), target canvas not resized.`, 'warn');
         }
     }
 
     _drawFrame(forceClearEffects = false) {
-        if (!this.isDrawing) return;
-        this.animationFrameId = requestAnimationFrame(() => this._drawFrame());
-        if (!this.primaryVideoSource) return;
-        if (this.primaryVideoSource.paused || this.primaryVideoSource.ended || this.primaryVideoSource.readyState < 2) {
-            // Clear canvas if video stops?
-            // this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.frameCount = (this.frameCount + 1) % 1000; // Increment and wrap frame counter
+
+        if (!this.isDrawing || !this.currentFrameSource) {
+            if (!this.currentFrameSource && this.isDrawing) {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            }
+            if (this.isDrawing) {
+                this.animationFrameId = requestAnimationFrame(() => this._drawFrame());
+            }
             return;
         }
-        this._sizeCanvasToVideo();
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // --- Refactored Drawing Logic ---
-        let posesToDraw = null;
-        let drawPlainVideo = true; // Assume plain video draw initially
-
-        // 1. Estimate Poses (if enabled)
-        if (this.enablePoseDetection && this.poseDetector && !forceClearEffects) {
-            // Use last frame's poses for immediate drawing to reduce lag
-            posesToDraw = this.lastDetectedPoses;
-            // Start estimation for the *next* frame (don't await)
-            this.poseDetector.estimatePoses(this.primaryVideoSource)
-                .then(poses => {
-                    // Log the number of poses detected in THIS batch
-                    console.debug(`[Pose Detection] Detected ${poses ? poses.length : 0} poses this frame.`);
-                    this.lastDetectedPoses = poses;
-                })
-                .catch(err => {
-                    logToConsole(`VideoCompositor: Error estimating poses: ${err.message}`, 'error');
-                    this.lastDetectedPoses = [];
-                });
-        } else {
-            this.lastDetectedPoses = []; // Clear poses if detection off
-            posesToDraw = [];
+        let sourceIsReady = false;
+        try {
+            if (this.sourceType === 'video') {
+                const video = this.currentFrameSource;
+                if (!video.paused && !video.ended && video.readyState >= 2) {
+                    sourceIsReady = true;
+                }
+            } else if (this.sourceType === 'canvas') {
+                sourceIsReady = true;
+            }
+        } catch (e) {
+            logToConsole(`Error checking source readiness: ${e}`, 'error');
+            sourceIsReady = false;
         }
 
-        // 2. Draw Base Video Frame
-        this.ctx.drawImage(this.primaryVideoSource, 0, 0, this.canvas.width, this.canvas.height);
-        drawPlainVideo = false; // Video has been drawn
-
-        // 3. Apply Mask (if enabled and poses exist)
-        if (this.drawBoundingBoxMask && posesToDraw && posesToDraw.length > 0) {
-            this._applyMaskShapes(posesToDraw); // Apply mask shapes
-            drawPlainVideo = false; // Mask was applied, no need for plain draw
+        if (!sourceIsReady) {
+            this.animationFrameId = requestAnimationFrame(() => this._drawFrame());
+            return;
         }
 
-        // 4. Draw Skeleton Overlay (if enabled and poses exist)
-        // Note: Draw skeleton *after* potential masking
-        if (this.drawSkeletonOverlay && posesToDraw && posesToDraw.length > 0) {
-            this._drawSkeleton(posesToDraw);
-            drawPlainVideo = false; // Skeleton drawn, no need for plain draw
+        try {
+            this._sizeCanvasToSource();
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+            if (this.canvas.width > 0 && this.canvas.height > 0) {
+                try {
+                    this.ctx.drawImage(this.currentFrameSource, 0, 0, this.canvas.width, this.canvas.height);
+                } catch (e) {
+                    logToConsole(`Error drawing source image: ${e}`, 'error');
+                }
+            }
+
+            let posesToDraw = null;
+
+            if (this.enablePoseDetection && this.poseDetector && !forceClearEffects) {
+                // Always use the last available poses for drawing
+                posesToDraw = this.lastDetectedPoses;
+
+                // Only run estimation every other frame (or adjust N as needed)
+                const ESTIMATION_INTERVAL = 2; // Run every 2 frames
+                if (this.frameCount % ESTIMATION_INTERVAL === 0) {
+                    try {
+                        // console.debug(`[${this.canvas.id}] Running pose estimation (frame ${this.frameCount})...`); // Uncomment for verbose debug
+                        this.poseDetector.estimatePoses(this.currentFrameSource)
+                            .then(poses => {
+                                this.lastDetectedPoses = poses; // Update last poses when estimation runs
+                            })
+                            .catch(err => {
+                                logToConsole(`[${this.canvas.id}] Error during pose estimation: ${err.message}`, 'error');
+                                this.lastDetectedPoses = [];
+                            });
+                    } catch (estimationError) {
+                        logToConsole(`[${this.canvas.id}] Synchronous error calling estimatePoses: ${estimationError}`, 'error');
+                    }
+                }
+            } else {
+                this.lastDetectedPoses = [];
+                posesToDraw = [];
+            }
+
+            // Apply Mask (using last detected poses)
+            if (this.drawBoundingBoxMask && posesToDraw && posesToDraw.length > 0) {
+                try { this._applyMaskShapes(posesToDraw); }
+                catch (maskError) { logToConsole(`Error applying mask shapes: ${maskError}`, 'error'); }
+            }
+
+            // Draw Skeleton Overlay (using last detected poses)
+            if (this.drawSkeletonOverlay && posesToDraw && posesToDraw.length > 0) {
+                try { this._drawSkeleton(posesToDraw); }
+                catch (skeletonError) { logToConsole(`Error drawing skeleton: ${skeletonError}`, 'error'); }
+            }
+
+        } catch (drawError) {
+            logToConsole(`[${this.canvas.id}] Error during main drawing block: ${drawError}`, 'error');
         }
 
-        // Redundant check, drawImage is always called above now.
-        // if (drawPlainVideo) {
-        //     this.ctx.drawImage(this.primaryVideoSource, 0, 0, this.canvas.width, this.canvas.height);
-        // }
-        // --- End Refactored Logic ---
+        if (this.isDrawing) {
+            this.animationFrameId = requestAnimationFrame(() => this._drawFrame());
+        }
     }
 
     // --- Refactored Masking Method (Applies shapes only) ---
@@ -253,8 +349,8 @@ export class VideoCompositor {
         const ctx = this.ctx;
         const canvasWidth = this.canvas.width;
         const canvasHeight = this.canvas.height;
-        const scaleX = canvasWidth / this.primaryVideoSource.videoWidth;
-        const scaleY = canvasHeight / this.primaryVideoSource.videoHeight;
+        const scaleX = canvasWidth / this.currentFrameSource.videoWidth;
+        const scaleY = canvasHeight / this.currentFrameSource.videoHeight;
 
         if (!isFinite(scaleX) || !isFinite(scaleY) || scaleX === 0 || scaleY === 0) return;
 
@@ -303,8 +399,8 @@ export class VideoCompositor {
     _drawSkeleton(poses) { // UNCOMMENTED
         if (!poses || poses.length === 0) return;
         const ctx = this.ctx;
-        const scaleX = this.canvas.width / this.primaryVideoSource.videoWidth;
-        const scaleY = this.canvas.height / this.primaryVideoSource.videoHeight;
+        const scaleX = this.canvas.width / this.currentFrameSource.videoWidth;
+        const scaleY = this.canvas.height / this.currentFrameSource.videoHeight;
         if (!isFinite(scaleX) || !isFinite(scaleY) || scaleX === 0 || scaleY === 0) {
             return;
         }
@@ -344,8 +440,8 @@ export class VideoCompositor {
 
     startDrawingLoop() {
         if (this.isDrawing) return;
-        if (!this.primaryVideoSource) {
-            logToConsole('VideoCompositor: Cannot start drawing loop - no primary video source.', 'warn');
+        if (!this.currentFrameSource) {
+            logToConsole('VideoCompositor: Cannot start drawing loop - no current frame source.', 'warn');
             return;
         }
         logToConsole('VideoCompositor: Starting drawing loop.', 'info');
@@ -354,13 +450,33 @@ export class VideoCompositor {
     }
 
     stopDrawingLoop() {
-        if (!this.isDrawing) return;
-        logToConsole('VideoCompositor: Stopping drawing loop.', 'info');
+        logToConsole(`VideoCompositor: Stopping drawing loop for canvas '${this.canvas.id}'.`, 'info');
         this.isDrawing = false;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
         }
+        // Optionally clear the canvas when stopping
+        // if (this.canvas.width > 0 && this.canvas.height > 0) { 
+        //     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        // }
+    }
+
+    removeFrameSource() {
+        logToConsole(`VideoCompositor: Removing frame source from canvas '${this.canvas.id}'.`, 'info');
+        // this.stopDrawingLoop(); // Stop loop before clearing source
+        this.currentFrameSource = null;
+        this.sourceType = null;
+        // Clear the canvas when source is removed
+        if (this.canvas.width > 0 && this.canvas.height > 0) {
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+        // If drawing loop was active, it will now skip drawing due to no source
+        // and continue to request frames until explicitly stopped by stopDrawingLoop(),
+        // or a new source is set which would restart meaningful drawing.
+        // Consider if stopDrawingLoop should always be called here or if it's okay for it to idle.
+        // For now, let it idle. If a new source is set, drawing will resume.
+        // If we want to explicitly stop drawing until a new source, call stopDrawingLoop() then startDrawingLoop() in setCurrentFrameSource.
     }
 
     // Method to potentially add other layers later

@@ -1,4 +1,5 @@
 import { logToConsole } from './logger.js';
+import { VideoCompositor } from './video-compositor.js'; // Import VideoCompositor
 // Remove TF.js imports - they are now loaded globally via CDN script tags
 // import * as poseDetection from '@tensorflow-models/pose-detection';
 // import * as tf from '@tensorflow/tfjs-core';
@@ -22,33 +23,26 @@ const POSE_CONNECTIONS = [
 const POSE_COLORS = ['lime', 'cyan', 'magenta', 'yellow', 'orange', 'red'];
 
 export class CameraManager {
-  constructor() { // Removed socket parameter
+  constructor() {
     this.cameras = [];
     this.cameraElements = new Map();
-    this.availableDevices = []; // Browser devices { deviceId, label, kind }
-    this.ptzDevices = [];       // Server PTZ devices { id, name, path }
-    this.serverDevices = [];    // Server video devices { id, name }
+    this.availableDevices = [];
+    this.ptzDevices = [];
+    this.serverDevices = [];
     this.cameraDefaults = [];
-    this.serverToBrowserDeviceMap = new Map(); // Map<serverID, browserDeviceId>
-    // Removed latestPoseData map
-    // this.drawingLoops = new Map();
-    // this.poseDetector = null;
-    // this.tfjsBackendReady = false;
-    // this.initializeTfjs();
+    this.serverToBrowserDeviceMap = new Map();
+    this.cameraCompositors = new Map(); // <cameraName, VideoCompositor instance>
+    this.processedCanvases = new Map(); // <cameraName, HTMLCanvasElement for processed video>
+    this.ptzUpdateTimeout = null; // For debouncing PTZ updates
   }
-
-  // Removed setupWebSocketListener()
 
   async initialize() {
     try {
       // --- Get Browser Devices and Request Permissions FIRST ---
       logToConsole("Attempting to enumerate browser devices...", "info");
       let browserDevicesRaw = await navigator.mediaDevices.enumerateDevices();
-      this.availableDevices = browserDevicesRaw.filter(
-        (device) => device.kind === "videoinput"
-      );
+      this.availableDevices = browserDevicesRaw.filter(d => d.kind === "videoinput");
       logToConsole(`Initial browser devices found: ${this.availableDevices.length}`, "info");
-      // Ensure labels are available
       if (this.availableDevices.length > 0 && !this.availableDevices[0].label) {
         logToConsole("Labels missing, requesting camera access for labels...", "info");
         try {
@@ -60,78 +54,36 @@ export class CameraManager {
           this.availableDevices.forEach(d => logToConsole(` -> Device: ${d.label} (${d.deviceId})`, "info"));
         } catch (err) {
           logToConsole(`Error requesting camera permission: ${err.message}`, "error");
-          // Proceeding without labels might still work if names match, but log error
         }
       }
 
       // --- Get Server Configuration & Devices ---
       logToConsole("Fetching server configuration and devices...", "info");
-      const camerasResponse = await fetch("/camera/cameras");
-      if (!camerasResponse.ok) throw new Error(`HTTP error! status: ${camerasResponse.status}`);
-      this.cameras = await camerasResponse.json(); // Includes showSkeleton
-      // Initialize showSkeleton state locally for each camera
-      this.cameras.forEach(cam => cam.showSkeleton = false);
+      const [camerasRes, configRes, devicesRes, ptzRes] = await Promise.all([
+        fetch("/camera/cameras").catch(e => { logToConsole('Error fetching cameras: ' + e.message, 'error'); return null; }),
+        fetch("/config").catch(e => { logToConsole('Error fetching config: ' + e.message, 'error'); return null; }),
+        fetch("/camera/devices").catch(e => { logToConsole('Error fetching devices: ' + e.message, 'error'); return null; }),
+        fetch("/camera/ptz-devices").catch(e => { logToConsole('Error fetching PTZ devices: ' + e.message, 'error'); return null; })
+      ]);
 
-      const configResponse = await fetch("/config");
-      if (!configResponse.ok) throw new Error(`HTTP error! status: ${configResponse.status}`);
-      const config = await configResponse.json();
-      this.cameraDefaults = config.cameraDefaults || [];
+      if (camerasRes?.ok) this.cameras = await camerasRes.json();
+      else logToConsole('Failed to load cameras configuration.', 'warn');
+      this.cameras.forEach(cam => { cam.showSkeleton = false; cam.showMask = false; }); // Initialize client-side state
 
-      const devicesResponse = await fetch("/camera/devices");
-      if (!devicesResponse.ok) throw new Error(`HTTP error! status: ${devicesResponse.status}`);
-      this.serverDevices = await devicesResponse.json();
+      if (configRes?.ok) this.cameraDefaults = (await configRes.json()).cameraDefaults || [];
+      else logToConsole('Failed to load config defaults.', 'warn');
+
+      if (devicesRes?.ok) this.serverDevices = await devicesRes.json();
+      else logToConsole('Failed to load server devices.', 'warn');
       logToConsole(`Server reported ${this.serverDevices.length} devices`, "info");
       this.serverDevices.forEach(d => logToConsole(` -> Server Device: ${d.name} (ID: ${d.id})`, "info"));
 
-
-      // --- Get PTZ Devices ---
-      logToConsole("Fetching PTZ devices...", "info");
-      try {
-        const ptzResponse = await fetch("/camera/ptz-devices");
-        if (ptzResponse.ok) {
-          this.ptzDevices = await ptzResponse.json();
-          logToConsole(`Found ${this.ptzDevices.length} PTZ devices`, "info");
-        } else {
-          this.ptzDevices = [];
-          logToConsole(`Could not fetch PTZ devices: ${ptzResponse.statusText}`, "warn");
-        }
-      } catch (ptzError) {
-        this.ptzDevices = [];
-        logToConsole(`Error fetching PTZ devices: ${ptzError.message}`, "error");
-      }
+      if (ptzRes?.ok) this.ptzDevices = await ptzRes.json();
+      else logToConsole('Failed to load PTZ devices.', 'warn');
+      logToConsole(`Found ${this.ptzDevices.length} PTZ devices`, "info");
 
       // --- Map Server Devices to Browser Devices ---
-      logToConsole("Attempting to map server devices to browser devices...", "info");
-      this.serverToBrowserDeviceMap.clear();
-      const browserVideoDevices = this.availableDevices; // Already filtered
-
-      this.serverDevices.forEach(serverDevice => {
-        // Attempt to find matching browser device (heuristic based on name)
-        const serverDeviceNamePart = serverDevice.name?.split(' (')[0]; // e.g., "OBSBOT Tiny 2 Lite StreamCamera"
-        let matchedBrowserDevice = null;
-
-        if (serverDeviceNamePart && browserVideoDevices.length > 0) {
-          matchedBrowserDevice = browserVideoDevices.find(bd =>
-            bd.label && bd.label.startsWith(serverDeviceNamePart)
-          );
-        }
-
-        // Fallback: Try matching by index if names fail? (Only reliable if order is guaranteed)
-        // if (!matchedBrowserDevice && typeof serverDevice.id === 'number' && browserVideoDevices[serverDevice.id]) {
-        //     logToConsole(`Warning: Falling back to index-based mapping for server device ${serverDevice.id}`, "warn");
-        //     matchedBrowserDevice = browserVideoDevices[serverDevice.id];
-        // }
-
-        if (matchedBrowserDevice) {
-          this.serverToBrowserDeviceMap.set(serverDevice.id, matchedBrowserDevice.deviceId);
-          logToConsole(`Mapped server device ${serverDevice.id} (${serverDevice.name}) to browser device ${matchedBrowserDevice.deviceId} (${matchedBrowserDevice.label})`, "success");
-        } else {
-          logToConsole(`Could not find matching browser device for server device ${serverDevice.id} (${serverDevice.name || 'No Name'}). Preview might not work.`, "warn");
-          this.serverToBrowserDeviceMap.set(serverDevice.id, null); // Store null to indicate no match
-        }
-      });
-      logToConsole("Finished mapping server devices.", "info");
-
+      this._mapServerToBrowserDevices();
 
       this.renderCameraControls();
       logToConsole(`Camera manager initialized with ${this.cameras.length} cameras`, "success");
@@ -141,102 +93,84 @@ export class CameraManager {
     }
   }
 
+  _mapServerToBrowserDevices() {
+    logToConsole("Attempting to map server devices to browser devices...", "info");
+    this.serverToBrowserDeviceMap.clear();
+    const browserVideoDevices = this.availableDevices;
+
+    this.serverDevices.forEach(serverDevice => {
+      const serverDeviceNamePart = serverDevice.name?.split(' (')[0];
+      let matchedBrowserDevice = null;
+      if (serverDeviceNamePart && browserVideoDevices.length > 0) {
+        matchedBrowserDevice = browserVideoDevices.find(bd =>
+          bd.label && bd.label.startsWith(serverDeviceNamePart)
+        );
+      }
+      if (matchedBrowserDevice) {
+        this.serverToBrowserDeviceMap.set(serverDevice.id, matchedBrowserDevice.deviceId);
+        logToConsole(`Mapped server ${serverDevice.id} (${serverDevice.name}) to browser ${matchedBrowserDevice.deviceId} (${matchedBrowserDevice.label})`, "success");
+      } else {
+        logToConsole(`Could not map server device ${serverDevice.id} (${serverDevice.name || 'No Name'}).`, "warn");
+        this.serverToBrowserDeviceMap.set(serverDevice.id, null);
+      }
+    });
+    logToConsole("Finished mapping server devices.", "info");
+  }
+
   async addCamera() {
     const cameraIndex = this.cameras.length;
     const name = `Camera_${cameraIndex + 1}`;
+    const defaults = this.cameraDefaults[cameraIndex] || { previewDevice: "", recordingDevice: "", ptzDevice: "" };
 
-    // Get the defaults for this camera index, or use empty defaults if none exist
-    const defaults = this.cameraDefaults[cameraIndex] || {
-      previewDevice: "", // Expecting server ID or path here initially
-      recordingDevice: "",
-      ptzDevice: "",
-    };
-
-    // --- Determine the default SERVER ID based on the default previewDevice path/name ---
-    let defaultServerId = '';
-    if (defaults.previewDevice) {
-      // Find the server device that matches the default path/name string
-      const matchingServerDevice = this.serverDevices.find(sd => sd.id === defaults.previewDevice || sd.name === defaults.previewDevice);
-      if (matchingServerDevice) {
-        defaultServerId = matchingServerDevice.id;
-        logToConsole(`Using default Server ID: ${defaultServerId} for new camera based on config value: ${defaults.previewDevice}`);
-      } else {
-        logToConsole(`Warning: Could not find server device matching default preview value: ${defaults.previewDevice}`);
-      }
-    }
-
+    // The values from `defaults` (from config.json) are assumed to be device NAMES.
+    // The backend /camera/add route expects device names.
+    const previewDeviceName = defaults.previewDevice;
+    const recordingDeviceName = defaults.recordingDevice;
+    const ptzDeviceName = defaults.ptzDevice;
 
     try {
-      logToConsole(`Adding new camera: ${name}...`, "info");
-      // Step 1: Send POST request to add the camera on the server
+      logToConsole(`Adding new camera: ${name} with default names - Preview: '${previewDeviceName}', Record: '${recordingDeviceName}', PTZ: '${ptzDeviceName}'`, "info");
       const addResponse = await fetch("/camera/add", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
-          // Send the determined server ID (or empty string)
-          previewDevice: defaultServerId,
-          recordingDevice: defaults.recordingDevice, // Keep these as potentially paths/indices for now
-          ptzDevice: defaults.ptzDevice,
+          previewDevice: previewDeviceName,
+          recordingDevice: recordingDeviceName,
+          ptzDevice: ptzDeviceName
         }),
       });
 
       if (addResponse.ok) {
-        logToConsole(`Camera ${name} added on server. Fetching updated list...`, "success");
-
-        // --- MODIFICATION START ---
-        // Step 2: Fetch the complete updated list of cameras
         const camerasResponse = await fetch("/camera/cameras");
-        if (!camerasResponse.ok) {
-          throw new Error(`Failed to fetch updated camera list: ${camerasResponse.status}`);
-        }
+        if (!camerasResponse.ok) throw new Error(`Failed to fetch updated camera list: ${camerasResponse.status}`);
         const updatedCameras = await camerasResponse.json();
-
-        // Step 3: Identify the newly added camera
         const existingNames = new Set(this.cameras.map(cam => cam.name));
         const newCamera = updatedCameras.find(cam => !existingNames.has(cam.name));
 
-        if (!newCamera) {
-          logToConsole("Could not identify the newly added camera in the updated list.", "error");
-          return;
-        }
+        if (!newCamera) throw new Error("Could not identify the newly added camera.");
         logToConsole(`Identified new camera: ${newCamera.name}`, "info");
 
-        // Get the container
         const container = document.getElementById("cameraControls");
-        if (!container) {
-          logToConsole("Error: Camera controls container missing from DOM.", "error");
-          return;
-        }
+        if (!container) throw new Error("Camera controls container missing from DOM.");
+        if (this.cameras.length === 0) container.innerHTML = '';
 
-        // Clear "No cameras" message if necessary
-        if (this.cameras.length === 0 && container.querySelector('p')) {
-          container.innerHTML = '';
-        }
-
-        // Step 4 & 5: Create and append the element for ONLY the new camera
-        newCamera.showSkeleton = false; // Initialize client-side state for new camera
+        newCamera.showSkeleton = false; newCamera.showMask = false; // Initialize client state
         const cameraElement = this.createCameraElement(newCamera);
         container.appendChild(cameraElement);
-        this.cameraElements.set(newCamera.name, cameraElement); // Add to map
+        this.cameraElements.set(newCamera.name, cameraElement);
+        if (newCamera.ptzDevice) this.renderPTZControlsForCamera(newCamera.name, newCamera.ptzDevice);
 
-        // Render PTZ controls for the new camera if needed
-        if (newCamera.ptzDevice) {
-          this.renderPTZControlsForCamera(newCamera.name, newCamera.ptzDevice);
-        }
-
-        // Step 6: Update the internal list to match the server state
+        // Update internal list, preserving existing client-side state (like showSkeleton/showMask)
+        const clientStateMap = new Map(this.cameras.map(c => [c.name, { showSkeleton: c.showSkeleton, showMask: c.showMask }]));
         this.cameras = updatedCameras.map(cam => ({
-          ...cam, // Keep server data
-          showSkeleton: this.cameras.find(c => c.name === cam.name)?.showSkeleton ?? false
+          ...cam,
+          ...(clientStateMap.get(cam.name) || { showSkeleton: false, showMask: false })
         }));
 
-        logToConsole(`Camera ${newCamera.name} UI added incrementally.`, "success");
-        // --- MODIFICATION END ---
-
+        logToConsole(`Camera ${newCamera.name} UI added.`, "success");
+        document.dispatchEvent(new CustomEvent('cameramanagerupdate', { detail: { action: 'added', cameraName: newCamera.name } }));
       } else {
-        const error = await addResponse.json();
-        throw new Error(error.message || `HTTP error ${addResponse.status}`);
+        const error = await addResponse.json(); throw new Error(error.message || `HTTP error ${addResponse.status}`);
       }
     } catch (err) {
       logToConsole(`Error adding camera: ${err.message}`, "error");
@@ -244,803 +178,669 @@ export class CameraManager {
   }
 
   async removeCamera(name) {
-    if (!confirm(`Are you sure you want to remove camera '${name}'?`)) {
-      return;
-    }
-
+    if (!confirm(`Are you sure you want to remove camera '${name}'?`)) return;
+    logToConsole(`Attempting to remove camera: ${name}`, "info");
     try {
-      logToConsole(`Removing camera: ${name}...`, "warn");
-      // Stop preview if running
-      const videoElement = document.getElementById(`preview-${name}`);
-      if (videoElement?.srcObject) {
-        videoElement.srcObject.getTracks().forEach(track => track.stop());
-        videoElement.srcObject = null;
-        logToConsole(`Stopped preview for removed camera ${name}.`, "info");
-      }
-      // Stop skeleton drawing loop if running
-      this.updateSkeletonDrawing(name, false); // Ensure loop stops and cleans up
-      // this.drawingLoops.delete(name); // Remove from map
+      this.stopVideoStream(name);
 
-      const response = await fetch("/camera/remove", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
+      // Use DELETE method and URL parameter
+      const response = await fetch(`/camera/${encodeURIComponent(name)}`, { method: "DELETE" });
 
       if (response.ok) {
-        logToConsole(`Camera ${name} removed successfully`, "success");
-        // --- Remove UI Element ---
+        logToConsole(`Camera ${name} removed on server.`, "success");
         const cameraElement = this.cameraElements.get(name);
-        if (cameraElement) {
-          cameraElement.remove();
-          this.cameraElements.delete(name);
+        if (cameraElement) { cameraElement.remove(); this.cameraElements.delete(name); }
+        this.cameras = this.cameras.filter((cam) => cam.name !== name);
+        this.cameraCompositors.delete(name);
+        this.processedCanvases.delete(name);
+        logToConsole(`Camera ${name} removed locally.`, "success");
+        if (this.cameras.length === 0) {
+          const container = document.getElementById("cameraControls");
+          if (container) container.innerHTML = '<p>No cameras configured.</p>';
         }
-        // Update internal list
-        this.cameras = this.cameras.filter(cam => cam.name !== name);
-
-        // Show "No cameras" message if needed
-        const container = document.getElementById("cameraControls");
-        if (this.cameras.length === 0 && container) {
-          container.innerHTML = '<p>No cameras configured. Click "Add Camera" to set up a camera.</p>';
-        }
-
-        // Don't need full re-initialize anymore
-        // await this.initialize();
+        document.dispatchEvent(new CustomEvent('cameramanagerupdate', { detail: { action: 'removed', cameraName: name } }));
       } else {
-        const error = await response.json();
-        throw new Error(error.message || `HTTP error ${response.status}`);
+        // Improved error handling for remove
+        let errorMsg = `Failed to remove camera: ${response.status}`;
+        try {
+          const errorResult = await response.json();
+          errorMsg = errorResult.message || errorMsg;
+        } catch (e) {
+          // If response wasn't JSON, use text
+          try { errorMsg = await response.text(); } catch (e2) { }
+        }
+        throw new Error(errorMsg);
       }
     } catch (err) {
-      logToConsole(`Error removing camera: ${err.message}`, "error");
+      logToConsole(`Error removing camera ${name}: ${err.message}`, "error");
+      alert(`Error removing camera: ${err.message}`); // Notify user
     }
   }
 
   renderCameraControls() {
     const container = document.getElementById("cameraControls");
-    if (!container) {
-      console.error("Camera controls container not found!");
-      logToConsole("Error: Camera controls container missing from DOM.", "error");
-      return;
-    }
+    if (!container) { console.error("Camera controls container not found!"); return; }
     container.innerHTML = "";
-    this.cameraElements.clear(); // Clear the map before re-rendering
-
+    this.cameraElements.clear();
     if (this.cameras.length === 0) {
-      container.innerHTML = '<p>No cameras configured. Click "Add Camera" to set up a camera.</p>';
-      return;
+      container.innerHTML = '<p>No cameras configured.</p>'; return;
     }
-
-    // --- Render controls for each camera ---
     this.cameras.forEach((camera) => {
       const cameraElement = this.createCameraElement(camera);
       container.appendChild(cameraElement);
-      this.cameraElements.set(camera.name, cameraElement); // Store element reference
+      this.cameraElements.set(camera.name, cameraElement);
     });
-
-    // --- Initial render of PTZ controls AFTER elements are in DOM ---
+    // Render PTZ controls after elements are in DOM
     this.cameras.forEach((camera) => {
-      if (camera.ptzDevice) {
-        // Check if the element exists before rendering
-        const cameraElement = this.cameraElements.get(camera.name);
-        if (cameraElement && container.contains(cameraElement)) {
-          this.renderPTZControlsForCamera(camera.name, camera.ptzDevice);
+      if (camera.ptzDevice && this.cameraElements.has(camera.name)) {
+        const cameraCard = this.cameraElements.get(camera.name);
+        const ptzContainer = cameraCard?.querySelector(`#ptz-controls-${camera.name}`);
+        if (ptzContainer) {
+          this.renderPTZControlsForCamera(camera.name, camera.ptzDevice, ptzContainer);
         } else {
-          console.warn(`Camera element for ${camera.name} not found in DOM for initial PTZ render.`);
+          logToConsole(`PTZ container not found for ${camera.name} during initial renderCameraControls.`, 'warn');
         }
       }
     });
+  }
+
+  // --- Helper to create select dropdown groups --- (Consolidated)
+  _createSelectGroup(labelText, selectId, options, selectedValue, changeCallback) {
+    const group = document.createElement('div');
+    group.className = 'form-group';
+    const label = document.createElement('label');
+    label.htmlFor = selectId; label.textContent = labelText; label.className = 'form-label';
+    const select = document.createElement('select');
+    select.id = selectId; select.className = 'form-select form-select-sm';
+    options.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt.value; option.textContent = opt.text;
+      if (opt.disabled) option.disabled = true;
+      if (String(opt.value) === String(selectedValue)) option.selected = true; // Ensure type consistency
+      select.appendChild(option);
+    });
+    select.addEventListener('change', changeCallback);
+    group.appendChild(label); group.appendChild(select);
+    return group;
+  }
+
+  // --- Helper to create toggle switches --- (Consolidated)
+  _createToggleSwitch(labelText, switchId, isChecked, changeCallback) {
+    const group = document.createElement('div');
+    group.className = 'form-group form-check form-switch';
+    const input = document.createElement('input');
+    input.type = 'checkbox'; input.className = 'form-check-input';
+    input.id = switchId; input.checked = isChecked;
+    const label = document.createElement('label');
+    label.className = 'form-check-label'; label.htmlFor = switchId;
+    label.textContent = labelText;
+
+    // Correctly pass the boolean state (event.target.checked) of the checkbox to the callback
+    input.addEventListener('change', (event) => {
+      changeCallback(event.target.checked);
+    });
+
+    group.appendChild(input); group.appendChild(label);
+    return group;
   }
 
   createCameraElement(camera) {
-    const div = document.createElement("div");
-    div.className = "camera-control";
-    div.id = `camera-control-${camera.name}`; // Add unique ID to the main div
+    const card = document.createElement("div");
+    card.className = "camera-card card"; card.id = `camera-card-${camera.name}`; card.dataset.cameraName = camera.name;
 
+    const header = document.createElement("div");
+    header.className = "camera-card-header";
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn btn-sm btn-danger remove-camera-btn'; removeBtn.title = `Remove ${camera.name}`;
+    removeBtn.innerHTML = '&times;'; removeBtn.addEventListener('click', () => this.removeCamera(camera.name));
+    header.innerHTML = `<h3>${camera.name.replace(/_/g, ' ')}</h3>`; header.appendChild(removeBtn);
+    card.appendChild(header);
 
-    // --- Build Preview Device Options using Browser Device IDs ---
-    let previewOptionsHtml = '<option value="">Select Preview Device</option>';
-    // Get the BROWSER device ID corresponding to the camera's saved SERVER previewDevice ID
+    const content = document.createElement("div");
+    content.className = "camera-card-content";
+
+    const videoContainer = document.createElement('div');
+    videoContainer.className = 'camera-video-container';
+    const videoElement = document.createElement("video");
+    videoElement.id = `video-${camera.name}`; videoElement.autoplay = true; videoElement.muted = true;
+    videoElement.playsInline = true; videoElement.style.width = "100%"; videoElement.style.backgroundColor = "#222"; // Ensure video element is visible if stream fails
+    const deviceInfoElement = document.createElement('div');
+    deviceInfoElement.className = 'device-info'; deviceInfoElement.textContent = 'No device selected';
+    videoContainer.appendChild(videoElement); videoContainer.appendChild(deviceInfoElement);
+    content.appendChild(videoContainer);
+
+    const processedCanvas = document.createElement('canvas');
+    processedCanvas.id = `processed-canvas-${camera.name}`; // Original ID for per-camera canvas
+    processedCanvas.style.display = 'block'; // Or 'none' if preferred, but block is good for debug
+    processedCanvas.style.width = '100%'; // Let CSS handle sizing, or set a specific debug size
+    processedCanvas.style.maxWidth = '320px';
+    processedCanvas.style.aspectRatio = '16/9';
+    processedCanvas.style.border = '1px solid green'; // For debugging
+    processedCanvas.style.marginTop = '5px';
+    content.appendChild(processedCanvas);
+
+    const compositor = new VideoCompositor(processedCanvas);
+    this.cameraCompositors.set(camera.name, compositor);
+    this.processedCanvases.set(camera.name, processedCanvas);
+
+    videoElement.onloadedmetadata = () => {
+      logToConsole(`Video metadata loaded for ${camera.name}: ${videoElement.videoWidth}x${videoElement.videoHeight}`, 'info');
+      if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+        compositor.setCurrentFrameSource(videoElement);
+      } else {
+        logToConsole(`Video dimensions zero for ${camera.name}, compositor may retry.`, 'warn');
+      }
+    };
+    videoElement.onerror = (e) => {
+      logToConsole(`Error loading video source for ${camera.name}: ${e.message || 'Unknown error'}`, 'error');
+      if (deviceInfoElement) deviceInfoElement.textContent = 'Error loading video.';
+    };
+
+    const controlsDiv = document.createElement("div");
+    controlsDiv.className = "camera-controls-grid"; // Main div for all selectors and toggles
+
+    // --- Preview Device Selector ---
+    const previewDeviceOptions = [{ value: "", text: "Select Preview Device" }];
     const currentPreviewBrowserDeviceId = this.serverToBrowserDeviceMap.get(camera.previewDevice);
 
-    this.serverDevices.forEach(serverDevice => {
-      const browserDeviceId = this.serverToBrowserDeviceMap.get(serverDevice.id);
-      const displayLabel = serverDevice.name || serverDevice.id; // User-friendly label
-
-      if (browserDeviceId) {
-        // Value is the BROWSER Device ID
-        // Check if this browserDeviceId matches the one mapped from the saved server ID
-        const selected = browserDeviceId === currentPreviewBrowserDeviceId ? "selected" : "";
-        previewOptionsHtml += `<option value="${browserDeviceId}" ${selected}>${displayLabel}</option>`;
-      } else {
-        // Option for server devices that couldn't be mapped to a browser device
-        previewOptionsHtml += `<option value="" disabled>${displayLabel} (Not found/mappable)</option>`;
+    this.availableDevices.forEach(browserDevice => {
+      previewDeviceOptions.push({ value: browserDevice.deviceId, text: browserDevice.label || `Camera ${browserDevice.deviceId.substring(0, 6)}...` });
+    });
+    if (camera.previewDevice && !currentPreviewBrowserDeviceId && this.serverDevices.length > 0) {
+      const originalServerDevice = this.serverDevices.find(sd => sd.id === camera.previewDevice);
+      if (originalServerDevice) {
+        previewDeviceOptions.push({ value: "", text: `${originalServerDevice.name} (Not Mapped)`, disabled: true });
       }
-    });
-
-
-    // Dynamically build the options for recording devices (using server ID)
-    let recordingOptionsHtml = '<option value="">Select Recording Device</option>';
-    this.serverDevices.forEach(serverDevice => {
-      // Value remains the server device ID (index or path)
-      const selected = serverDevice.id === camera.recordingDevice ? "selected" : "";
-      recordingOptionsHtml += `<option value="${serverDevice.id}" ${selected}>${serverDevice.name || serverDevice.id}</option>`;
-    });
-
-    // Dynamically build the options for PTZ devices (using server ID/path)
-    let ptzOptionsHtml = '<option value="">Select PTZ Device</option>';
-    this.ptzDevices.forEach(device => {
-      const value = device.id !== undefined ? device.id : device.path;
-      const selected = value === camera.ptzDevice ? "selected" : "";
-      ptzOptionsHtml += `<option value="${value}" ${selected}>${device.name || value}</option>`;
-    });
-
-    // Checkbox state - now managed purely client-side
-    const skeletonChecked = camera.showSkeleton ? 'checked' : '';
-
-    div.innerHTML = `
-          <div class="camera-header">
-            <h3>${camera.name.replace(/_/g, ' ')}</h3>
-            <button class="remove-btn" title="Remove ${camera.name}">❌</button>
-          </div>
-          <div class="camera-preview">
-            <video id="preview-${camera.name}" autoplay playsinline muted></video> <!-- Added muted -->
-            <!-- <canvas id="skeleton-canvas-${camera.name}" class="skeleton-overlay"></canvas> --> <!-- REMOVED -->
-            <div class="device-info">Using: No device selected</div>
-          </div>
-          <div class="camera-settings">
-            <div class="setting-group">
-              <label>Preview Device:</label>
-              <select class="preview-device">
-                ${previewOptionsHtml}
-              </select>
-            </div>
-            <div class="setting-group">
-              <label>Recording Device:</label>
-               <select class="recording-device">
-                ${recordingOptionsHtml}
-              </select>
-            </div>
-            <div class="setting-group">
-              <label>PTZ Device:</label>
-              <select class="ptz-device">
-                 ${ptzOptionsHtml}
-              </select>
-            </div>
-            <div class="setting-group pose-toggle-group">
-                <label for="pose-detection-toggle-${camera.name}">Enable Pose FX:</label>
-                <input type="checkbox" id="pose-detection-toggle-${camera.name}" class="pose-detection-toggle">
-            </div>
-            <div class="setting-group pose-fx-options" style="display: none;">
-                 <label for="skeleton-draw-toggle-${camera.name}">Draw Skeleton:</label>
-                <input type="checkbox" id="skeleton-draw-toggle-${camera.name}" class="skeleton-draw-toggle">
-            </div>
-             <div class="setting-group pose-fx-options" style="display: none;">
-                <label for="mask-apply-toggle-${camera.name}">Apply Simple Mask:</label>
-                <input type="checkbox" id="mask-apply-toggle-${camera.name}" class="mask-apply-toggle">
-            </div>
-            <div class="ptz-controls-container">
-              <!-- PTZ controls will be added here if a PTZ device is selected -->
-            </div>
-            <div class="camera-controls">
-               <button class="test-record-btn">Test Record Video (${camera.name.replace(/_/g, ' ')})</button>
-            </div>
-          </div>
-        `;
-
-    // Add event listeners programmatically
-    div.querySelector('.remove-btn').addEventListener('click', () => this.removeCamera(camera.name));
-    div.querySelector('.preview-device').addEventListener('change', (e) => this.updatePreviewDevice(camera.name, e.target.value));
-    div.querySelector('.recording-device').addEventListener('change', (e) => this.updateRecordingDevice(camera.name, e.target.value));
-    div.querySelector('.ptz-device').addEventListener('change', (e) => this.updatePTZDevice(camera.name, e.target.value));
-    div.querySelector('.test-record-btn').addEventListener('click', () => this.recordVideo(camera.name));
-
-    // --- New Pose FX Toggle Logic ---
-    const poseDetectionToggle = div.querySelector('.pose-detection-toggle');
-    const poseFxOptions = div.querySelectorAll('.pose-fx-options');
-    const skeletonDrawToggle = div.querySelector('.skeleton-draw-toggle');
-    const maskApplyToggle = div.querySelector('.mask-apply-toggle');
-
-    // Listener for the main Pose FX enable/disable toggle
-    poseDetectionToggle.addEventListener('change', (e) => {
-      const enabled = e.target.checked;
-      this.togglePoseDetection(camera.name, enabled); // Call new handler method
-      // Show/hide sub-options
-      poseFxOptions.forEach(opt => opt.style.display = enabled ? '' : 'none');
-      // Uncheck sub-options when disabling main toggle
-      if (!enabled) {
-        if (skeletonDrawToggle) skeletonDrawToggle.checked = false;
-        if (maskApplyToggle) maskApplyToggle.checked = false;
-        // Also tell compositor to disable specific effects
-        if (window.mainCompositor && camera.name === 'Camera_1') {
-          window.mainCompositor.setDrawSkeletonOverlay(false);
-          window.mainCompositor.setDrawBoundingBoxMask(false);
-        }
-      }
-    });
-
-    // Listener for Draw Skeleton toggle
-    if (skeletonDrawToggle) {
-      skeletonDrawToggle.addEventListener('change', (e) => {
-        if (window.mainCompositor && camera.name === 'Camera_1') {
-          window.mainCompositor.setDrawSkeletonOverlay(e.target.checked);
-        }
-      });
     }
-    // Listener for Apply Mask toggle
-    if (maskApplyToggle) {
-      maskApplyToggle.addEventListener('change', (e) => {
-        if (window.mainCompositor && camera.name === 'Camera_1') {
-          window.mainCompositor.setDrawBoundingBoxMask(e.target.checked);
-        }
-      });
-    }
-    // --- End New Pose FX Toggle Logic ---
 
-    // Initialize drawing state based on initial camera data
-    setTimeout(() => {
-      // if (this.poseDetector) {
-      //   this.updateSkeletonDrawing(camera.name, camera.showSkeleton);
-      // } else {
-      //   logToConsole(`Pose detector not ready for ${camera.name}, delaying skeleton init.`, "warn");
-      // }
-    }, 150);
-
-    // --- ADDED: Automatically start preview if a device is pre-selected ---
-    if (camera.previewDevice) { // camera.previewDevice holds the SERVER ID/path
-      const browserDeviceId = this.serverToBrowserDeviceMap.get(camera.previewDevice); // Get corresponding BROWSER ID
-      if (browserDeviceId) {
-        logToConsole(`[Auto Preview] Triggering preview for ${camera.name} with browser device ID: ${browserDeviceId} (mapped from server default: ${camera.previewDevice})`, "info");
-        setTimeout(() => {
-          // Check if the element still exists before updating
-          if (document.getElementById(div.id)) {
-            this.updatePreviewDevice(camera.name, browserDeviceId); // Pass BROWSER device ID
+    const previewSelectorGroup = this._createSelectGroup(
+      'Preview Device:',
+      `preview-device-selector-${camera.name}`,
+      previewDeviceOptions,
+      currentPreviewBrowserDeviceId || "",
+      (e) => {
+        const selectedBrowserDeviceId = e.target.value;
+        const livePreviewCheckbox = document.getElementById(`live-preview-${camera.name}`);
+        if (livePreviewCheckbox) {
+          livePreviewCheckbox.disabled = !selectedBrowserDeviceId;
+          if (!selectedBrowserDeviceId) {
+            livePreviewCheckbox.checked = false;
+            this.stopVideoStream(camera.name);
+            if (deviceInfoElement) deviceInfoElement.textContent = 'No device selected';
           } else {
-            logToConsole(`[Auto Preview] Camera element ${camera.name} removed before preview could start.`, "warn");
+            if (livePreviewCheckbox.checked) {
+              this.updatePreviewDevice(camera.name, selectedBrowserDeviceId);
+            }
           }
-        }, 100); // Small delay
-      } else {
-        logToConsole(`[Auto Preview] Could not find browser device mapping for default server device ${camera.previewDevice} on ${camera.name}. Preview not started.`, "warn");
+        }
+        let serverIdToUpdate = null;
+        if (selectedBrowserDeviceId) {
+          for (const [serverID, bID] of this.serverToBrowserDeviceMap.entries()) {
+            if (bID === selectedBrowserDeviceId) { serverIdToUpdate = serverID; break; }
+          }
+        }
+        this._updateCameraConfig(camera.name, { previewDevice: serverIdToUpdate || '' });
       }
-    }
-    // --- END ADDED ---
+    );
+    controlsDiv.appendChild(previewSelectorGroup);
 
-    // --- MODIFICATION START: Robust initial selection ---
-    logToConsole(`[${camera.name}] Setting initial preview. Server default ID: ${camera.previewDevice}`, 'debug');
-    // Re-check the map *now*
-    let initialBrowserDeviceId = this.serverToBrowserDeviceMap.get(camera.previewDevice);
-
-    if (initialBrowserDeviceId) {
-      logToConsole(`[${camera.name}] Found corresponding browser deviceId in map: ${initialBrowserDeviceId}`, 'debug');
-      // Check if this deviceId actually exists in the dropdown options
-      const optionExists = Array.from(div.querySelector('.preview-device').options).some(opt => opt.value === initialBrowserDeviceId);
-      if (optionExists) {
-        div.querySelector('.preview-device').value = initialBrowserDeviceId;
-        logToConsole(`[${camera.name}] Set preview dropdown to: ${initialBrowserDeviceId}`, 'debug');
-      } else {
-        logToConsole(`[${camera.name}] Warning: Mapped browser deviceId ${initialBrowserDeviceId} not found in dropdown options!`, 'warn');
-        initialBrowserDeviceId = null; // Reset if not found in dropdown
+    // --- Live Preview Toggle ---
+    const livePreviewInitialChecked = !!(currentPreviewBrowserDeviceId && videoElement.srcObject && !videoElement.paused);
+    const livePreviewToggleGroup = this._createToggleSwitch(
+      'Show Live Preview',
+      `live-preview-${camera.name}`,
+      livePreviewInitialChecked,
+      async (isChecked) => {
+        const selector = document.getElementById(`preview-device-selector-${camera.name}`);
+        const selectedBrowserDeviceId = selector ? selector.value : null;
+        if (isChecked && selectedBrowserDeviceId) {
+          await this.updatePreviewDevice(camera.name, selectedBrowserDeviceId);
+        } else if (!isChecked) {
+          this.stopVideoStream(camera.name);
+          if (deviceInfoElement) deviceInfoElement.textContent = 'Preview stopped.';
+        } else if (isChecked && !selectedBrowserDeviceId) {
+          logToConsole(`Cannot start preview for ${camera.name}: No device selected.`, 'warn');
+          const checkboxInput = livePreviewToggleGroup.querySelector('input[type="checkbox"]');
+          if (checkboxInput) checkboxInput.checked = false;
+        }
       }
-    } else {
-      logToConsole(`[${camera.name}] No corresponding browser deviceId found in map for server ID ${camera.previewDevice}.`, 'warn');
-    }
-
-    // Add change listener AFTER setting the initial value
-    div.querySelector('.preview-device').addEventListener('change', (e) =>
-      this.updatePreviewDevice(camera.name, e.target.value)
     );
 
-    // Call updatePreviewDevice slightly delayed *if* we found a valid initial device
-    if (initialBrowserDeviceId) {
-      logToConsole(`[${camera.name}] Scheduling initial updatePreviewDevice for ${initialBrowserDeviceId}...`, 'debug');
-      setTimeout(() => {
-        logToConsole(`[${camera.name}] Executing delayed initial updatePreviewDevice for ${initialBrowserDeviceId}...`, 'debug');
-        this.updatePreviewDevice(camera.name, initialBrowserDeviceId);
-      }, 200); // Delay by 200ms
-    } else {
-      logToConsole(`[${camera.name}] Skipping initial updatePreviewDevice call as no valid browser device was selected.`, 'info');
-    }
-    // --- MODIFICATION END ---
+    const livePreviewCheckboxInput = livePreviewToggleGroup.querySelector('input[type="checkbox"]');
+    if (livePreviewCheckboxInput) livePreviewCheckboxInput.disabled = !currentPreviewBrowserDeviceId;
+    controlsDiv.appendChild(livePreviewToggleGroup);
 
-    return div;
+    // --- Recording Device Selector ---
+    const recordingDeviceOptions = [{ value: "", text: "Select Rec. Device (Server)" }];
+    this.serverDevices.forEach(serverDevice => recordingDeviceOptions.push({ value: serverDevice.id, text: serverDevice.name || serverDevice.id }));
+    controlsDiv.appendChild(this._createSelectGroup(
+      'Recording Device (Server):',
+      `recording-device-selector-${camera.name}`,
+      recordingDeviceOptions,
+      camera.recordingDevice || "",
+      (e) => this.updateRecordingDevice(camera.name, e.target.value)
+    ));
+
+    // --- PTZ Device Selector ---
+    const ptzDeviceOptions = [{ value: "", text: "Select PTZ Device" }];
+    this.ptzDevices.forEach(ptzDevice => {
+      const value = ptzDevice.id !== undefined ? ptzDevice.id : ptzDevice.path;
+      ptzDeviceOptions.push({ value: value, text: ptzDevice.name || value });
+    });
+    const ptzControlsContainerOriginal = document.createElement('div');
+    ptzControlsContainerOriginal.id = `ptz-controls-${camera.name}`;
+    ptzControlsContainerOriginal.className = 'ptz-controls-container';
+    ptzControlsContainerOriginal.style.display = camera.ptzDevice ? 'block' : 'none';
+
+    const ptzSelectGroup = this._createSelectGroup(
+      'PTZ Device (Server):',
+      `ptz-device-selector-${camera.name}`,
+      ptzDeviceOptions,
+      camera.ptzDevice || "",
+      (e) => {
+        this.updatePTZDevice(camera.name, e.target.value);
+        this.renderPTZControlsForCamera(camera.name, e.target.value, ptzControlsContainerOriginal);
+      }
+    );
+    controlsDiv.appendChild(ptzSelectGroup);
+    controlsDiv.appendChild(ptzControlsContainerOriginal);
+
+
+    // --- Effect Toggles ---
+    const skeletonToggle = this._createToggleSwitch(
+      `Show Skeleton Overlay`,
+      `skeleton-toggle-${camera.name}`,
+      compositor.drawSkeletonOverlay,
+      (isChecked) => {
+        if (compositor) {
+          compositor.setDrawSkeletonOverlay(isChecked);
+          logToConsole(`Skeleton for ${camera.name} set to ${isChecked}`);
+        }
+      }
+    );
+    controlsDiv.appendChild(skeletonToggle);
+
+    const maskToggle = this._createToggleSwitch(
+      `Enable Background Mask`,
+      `mask-toggle-${camera.name}`,
+      compositor.drawBoundingBoxMask,
+      (isChecked) => {
+        if (compositor) {
+          compositor.setDrawBoundingBoxMask(isChecked);
+          logToConsole(`Mask for ${camera.name} set to ${isChecked}`);
+        }
+      }
+    );
+    controlsDiv.appendChild(maskToggle);
+
+    // --- Record Processed Canvas Button ---
+    const recordButton = document.createElement('button');
+    recordButton.id = `record-btn-${camera.name}`; recordButton.className = 'btn btn-info btn-sm';
+    recordButton.textContent = 'Record Processed';
+    recordButton.addEventListener('click', () => {
+      const comp = this.cameraCompositors.get(camera.name);
+      if (comp && comp.canvas && comp.canvas.dataset.isRecording === 'true') {
+        this.stopRecordProcessedCanvas(camera.name);
+      } else {
+        this.recordVideo(camera.name);
+      }
+    });
+    controlsDiv.appendChild(recordButton);
+
+    // --- Status Message Area ---
+    const statusElement = document.createElement('div');
+    statusElement.id = `status-${camera.name}`; statusElement.className = 'camera-status-message';
+    controlsDiv.appendChild(statusElement);
+
+    content.appendChild(controlsDiv);
+    card.appendChild(content);
+
+    if (camera.ptzDevice) {
+      this.renderPTZControlsForCamera(camera.name, camera.ptzDevice, ptzControlsContainerOriginal);
+    }
+
+    if (currentPreviewBrowserDeviceId && livePreviewInitialChecked) {
+      setTimeout(() => {
+        this.updatePreviewDevice(camera.name, currentPreviewBrowserDeviceId);
+      }, 100);
+    } else if (currentPreviewBrowserDeviceId && !livePreviewInitialChecked) {
+      const device = this.availableDevices.find(d => d.deviceId === currentPreviewBrowserDeviceId);
+      if (deviceInfoElement) deviceInfoElement.textContent = `Device: ${device?.label || 'Unknown'}. Preview off.`;
+    }
+
+    this.cameraElements.set(camera.name, card);
+    return card;
   }
 
-  // --- Updated updatePreviewDevice ---
-  async updatePreviewDevice(cameraName, browserDeviceId) { // Parameter is now BROWSER Device ID
-    logToConsole(`Updating preview device for ${cameraName} using browser device ID: ${browserDeviceId}`, "info");
+  // --- Device Update Methods ---
+  async updatePreviewDevice(cameraName, browserDeviceId) {
+    logToConsole(`Updating preview for ${cameraName} to browser device ID: ${browserDeviceId}`, "info");
+    const videoElement = document.getElementById(`video-${cameraName}`);
+    const cameraCard = this.cameraElements.get(cameraName);
+    const deviceInfoElement = cameraCard?.querySelector('.device-info');
+    const compositor = this.cameraCompositors.get(cameraName);
 
-    const videoElement = document.getElementById(`preview-${cameraName}`);
-    if (!videoElement) {
-      logToConsole(`Error: Video element preview-${cameraName} not found!`, "error");
-      return;
+    if (!videoElement || !cameraCard) {
+      logToConsole(`Preview update error: Video or card element for ${cameraName} not found.`, "error"); return;
     }
-
-    // Find the sibling device-info div MORE reliably
-    const cameraElement = this.cameraElements.get(cameraName); // Use the stored element reference
-    let deviceInfoElement = null;
-    if (cameraElement) {
-      deviceInfoElement = cameraElement.querySelector('.device-info');
-    } else {
-      logToConsole(`Could not find camera element wrapper for ${cameraName}`, "warn");
-    }
-
-
-    // Stop any existing stream
-    if (videoElement.srcObject) {
-      const tracks = videoElement.srcObject.getTracks();
-      tracks.forEach(track => track.stop());
-      videoElement.srcObject = null;
-      if (deviceInfoElement) deviceInfoElement.textContent = 'Using: No device selected';
-      logToConsole(`Stopped existing preview stream for ${cameraName}.`, "info");
-      // Also stop skeleton drawing if it was running for the old stream
-      this.updateSkeletonDrawing(cameraName, false);
-    }
+    // Stop existing stream before starting new one
+    this.stopVideoStream(cameraName);
 
     if (!browserDeviceId) {
       logToConsole(`No preview device selected for ${cameraName}. Clearing preview.`, "info");
-      // Update the camera object state locally (store empty server ID)
-      const cam = this.cameras.find(c => c.name === cameraName);
-      if (cam) cam.previewDevice = '';
-      // Optionally notify server (currently no endpoint for clearing)
-      // await fetch(`/camera/preview-device`, { method: "POST", ... body: { cameraName, deviceId: '' } });
+      if (deviceInfoElement) deviceInfoElement.textContent = 'No device selected';
+      this._updateCameraConfig(cameraName, { previewDevice: '' }); // Update local & server
       return;
     }
 
     try {
-      // Find the label for the selected browser device ID for display
       const selectedBrowserDevice = this.availableDevices.find(bd => bd.deviceId === browserDeviceId);
-      const browserDeviceLabel = selectedBrowserDevice ? (selectedBrowserDevice.label || `Unnamed Device (${browserDeviceId.substring(0, 6)}...)`) : `Unknown (${browserDeviceId.substring(0, 6)}...)`;
+      const browserDeviceLabel = selectedBrowserDevice?.label || `Device ${browserDeviceId.substring(0, 6)}...`;
+      if (deviceInfoElement) deviceInfoElement.textContent = `Connecting to: ${browserDeviceLabel}...`;
 
-      // --- Get Desired Resolution from UI ---
-      let requestedWidth = 1920; // Default width
-      let requestedHeight = 1080; // Default height
+      // Get desired resolution from UI
       const resolutionSelect = document.getElementById('recording-resolution');
-      if (resolutionSelect) {
-        const selectedValue = resolutionSelect.value;
-        const parts = selectedValue.split('x');
-        if (parts.length === 2) {
-          const parsedWidth = parseInt(parts[0], 10);
-          const parsedHeight = parseInt(parts[1], 10);
-          if (!isNaN(parsedWidth) && !isNaN(parsedHeight) && parsedWidth > 0 && parsedHeight > 0) {
-            requestedWidth = parsedWidth;
-            requestedHeight = parsedHeight;
-            console.info(`[${cameraName}] Using resolution from dropdown: ${requestedWidth}x${requestedHeight}`);
-          } else {
-            console.warn(`[${cameraName}] Invalid resolution value parsed: ${selectedValue}. Using defaults.`);
-          }
-        } else {
-          console.warn(`[${cameraName}] Invalid resolution format in dropdown: ${selectedValue}. Using defaults.`);
-        }
-      } else {
-        console.warn(`[${cameraName}] Recording resolution dropdown (#recording-resolution) not found. Using defaults.`);
+      let constraints = { video: { deviceId: { exact: browserDeviceId }, frameRate: { ideal: 30 } } };
+      if (resolutionSelect?.value && resolutionSelect.value.includes('x')) {
+        const [width, height] = resolutionSelect.value.split('x').map(Number);
+        if (width > 0 && height > 0) constraints.video.width = { ideal: width }; constraints.video.height = { ideal: height };
       }
-      // --- End Get Desired Resolution ---
 
-      // 1. Request the stream using the BROWSER device ID
-      console.info(`[${cameraName}] Attempting getUserMedia with browser device ID: ${browserDeviceId}`);
-      console.info(`[${cameraName}] Requesting getUserMedia with browser device ID: ${browserDeviceId}`);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          deviceId: { exact: browserDeviceId },
-          frameRate: { ideal: 30 },
-          width: { ideal: requestedWidth }, // Use value from UI
-          height: { ideal: requestedHeight } // Use value from UI
-        }
-      });
+      // Add event listener for loadedmetadata to log resolution BEFORE setting srcObject
+      const onMetadataLoaded = () => {
+        logToConsole(
+          `Preview for ${cameraName} (${browserDeviceLabel}): Metadata loaded. Video resolution: ${videoElement.videoWidth}x${videoElement.videoHeight}`,
+          "success"
+        );
+        // Clean up this specific listener after it fires
+        videoElement.removeEventListener('loadedmetadata', onMetadataLoaded);
+      };
+      videoElement.addEventListener('loadedmetadata', onMetadataLoaded);
 
-      // 2. Assign stream to video element
+      videoElement.onerror = (e) => {
+        logToConsole(`Error event on video element for ${cameraName}: ${e.message || 'Unknown video element error'}`, 'error');
+        if (deviceInfoElement) deviceInfoElement.textContent = 'Video error.';
+        // Clean up listener on error too
+        videoElement.removeEventListener('loadedmetadata', onMetadataLoaded);
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       videoElement.srcObject = stream;
-      // --- Logging Added ---
-      console.debug(`[${cameraName}] Stream assigned. Checking tracks...`);
-      const videoTracks = stream.getVideoTracks();
-      console.debug(`[${cameraName}] videoTracks:`, videoTracks);
-      if (videoTracks.length > 0) {
-        console.debug(`[${cameraName}] Track found. Getting settings...`);
-        const settings = videoTracks[0].getSettings();
-        console.debug(`[${cameraName}] Settings object:`, settings);
-        console.info(`[${cameraName}] Native stream resolution: ${settings.width}x${settings.height}`);
-      } else {
-        console.warn(`[${cameraName}] No video tracks found on the stream.`);
-      }
-      // --- End Logging ---
-      await videoElement.play().catch(e => console.error(`Error playing preview video for ${cameraName}: ${e.message}`));
-      console.info(`Preview started successfully for ${cameraName} using ${browserDeviceLabel}`);
+      await videoElement.play();
+      // Note: Actual frame rate might be available from stream.getVideoTracks()[0].getSettings().frameRate after play()
+      // but videoWidth/videoHeight from the element is reliable after loadedmetadata.
 
-      if (deviceInfoElement) {
-        // Find server device associated with this browser device for display text
-        let serverInfo = 'Unknown Server Device';
-        let serverIdFound = null;
-        for (const [serverID, bID] of this.serverToBrowserDeviceMap.entries()) {
-          if (bID === browserDeviceId) {
-            const serverDevice = this.serverDevices.find(sd => sd.id === serverID);
-            serverInfo = serverDevice ? (serverDevice.name || serverDevice.id) : serverID;
-            serverIdFound = serverID; // Keep track of the server ID
-            break;
-          }
-        }
-        deviceInfoElement.textContent = `Using: ${browserDeviceLabel} (Server: ${serverInfo})`;
-      } else {
-        logToConsole(`Device info element not found for ${cameraName}`, "warn");
-      }
+      if (deviceInfoElement) deviceInfoElement.textContent = `Using: ${browserDeviceLabel}`;
 
-      // 3. Update server (Send SERVER ID/Path corresponding to the selected BROWSER ID)
+      // Find corresponding server ID
       let serverIdToUpdate = null;
       for (const [serverID, bID] of this.serverToBrowserDeviceMap.entries()) {
-        if (bID === browserDeviceId) {
-          serverIdToUpdate = serverID;
-          break;
-        }
+        if (bID === browserDeviceId) { serverIdToUpdate = serverID; break; }
       }
+      this._updateCameraConfig(cameraName, { previewDevice: serverIdToUpdate }); // Update local & server
 
-      // Log values *before* the check
-      console.log(`[Preview Update] Checking server update. browserDeviceId: ${browserDeviceId}, mapped serverIdToUpdate: ${serverIdToUpdate}`);
-
-      if (serverIdToUpdate !== null) {
-        console.info(`Updating server: ${cameraName} preview set to server device ID: ${serverIdToUpdate}`);
-        try {
-          console.debug(`[Fetch /preview-device] Sending body: ${JSON.stringify({ cameraName, deviceId: serverIdToUpdate })}`);
-          const response = await fetch("/camera/preview-device", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            // Send the SERVER ID
-            body: JSON.stringify({ cameraName, deviceId: serverIdToUpdate }),
-          });
-          if (!response.ok) {
-            console.warn(`Failed to update server preview device for ${cameraName}: ${response.statusText}`);
-          } else {
-            console.info(`Server updated successfully for ${cameraName} preview device.`);
-          }
-        } catch (serverUpdateError) {
-          console.error(`Error updating server preview device for ${cameraName}: ${serverUpdateError.message}`);
-        }
+      if (compositor) {
+        compositor.setCurrentFrameSource(videoElement);
       } else {
-        console.warn(`Could not find server ID mapping for browser device ${browserDeviceId}. Cannot update server.`);
-      }
-
-
-      // 4. Update the camera object state locally with the SERVER ID
-      const cam = this.cameras.find(c => c.name === cameraName);
-      if (cam) {
-        cam.previewDevice = serverIdToUpdate ?? ''; // Store the corresponding server ID or empty if not found
-        console.info(`Stored server device ID ${cam.previewDevice} locally for ${cameraName}`);
-      } else {
-        console.warn(`Camera ${cameraName} not found to store server device ID locally.`);
-      }
-
-      // 5. Restart skeleton drawing if it was enabled
-      if (cam?.showSkeleton) {
-        console.info(`Restarting skeleton drawing for ${cameraName} on new stream.`);
-        // this.updateSkeletonDrawing(cameraName, true); // updateSkeletonDrawing method seems to be removed
+        logToConsole(`Compositor not found for ${cameraName} after starting stream.`, 'warn');
       }
 
     } catch (err) {
-      console.error(`Error updating preview device for ${cameraName}: ${err.message}`);
-      if (deviceInfoElement) deviceInfoElement.textContent = `Error: ${err.message.split(':')[0]}`; // Show shorter error
-      // Optionally clear the dropdown selection or show an error state
-      const previewSelect = cameraElement?.querySelector('.preview-device');
-      if (previewSelect) previewSelect.value = ''; // Reset dropdown on error
-      // Clear local state as well
-      const cam = this.cameras.find(c => c.name === cameraName);
-      if (cam) cam.previewDevice = '';
+      logToConsole(`Error starting preview for ${cameraName}: ${err.message}`, "error");
+      if (deviceInfoElement) deviceInfoElement.textContent = `Error: ${err.message.split(':')[0]}`;
+      this.stopVideoStream(cameraName); // Ensure cleanup on error
+      const previewSelect = document.getElementById(`preview-device-selector-${cameraName}`);
+      if (previewSelect) previewSelect.value = ''; // Reset dropdown
+      const livePreviewCheckbox = document.getElementById(`live-preview-${cameraName}`);
+      if (livePreviewCheckbox) { livePreviewCheckbox.checked = false; livePreviewCheckbox.disabled = true; } // Reset toggle
+      this._updateCameraConfig(cameraName, { previewDevice: '' }); // Clear config
     }
   }
 
-  // --- NEW METHOD ---
+  async updateRecordingDevice(cameraName, serverDeviceId) {
+    logToConsole(`Updating recording device for ${cameraName} to server ID: ${serverDeviceId}`, "info");
+    this._updateCameraConfig(cameraName, { recordingDevice: serverDeviceId });
+  }
+
+  async updatePTZDevice(cameraName, serverDeviceId) {
+    logToConsole(`Updating PTZ device for ${cameraName} to server ID/path: ${serverDeviceId}`, "info");
+    this._updateCameraConfig(cameraName, { ptzDevice: serverDeviceId });
+
+    // Find the specific PTZ container for this camera
+    const cameraCard = this.cameraElements.get(cameraName);
+    const ptzContainer = cameraCard?.querySelector(`#ptz-controls-${cameraName}`);
+
+    this.renderPTZControlsForCamera(cameraName, serverDeviceId, ptzContainer); // Pass the found container
+  }
+
+  // Consolidated method to update local camera state and push to server
+  async _updateCameraConfig(cameraName, updates) {
+    const camera = this.cameras.find(c => c.name === cameraName);
+    if (!camera) {
+      logToConsole(`Cannot update config: Camera ${cameraName} not found locally.`, 'warn');
+      return; // Exit if camera doesn't exist locally
+    }
+
+    // Store original values to revert on error
+    const originalValues = {};
+    for (const key in updates) {
+      if (Object.hasOwnProperty.call(updates, key) && Object.hasOwnProperty.call(camera, key)) {
+        originalValues[key] = camera[key];
+        camera[key] = updates[key]; // Update local state optimistically
+      } else {
+        logToConsole(`Skipping update for unknown property: ${key}`, 'warn');
+        delete updates[key]; // Don't send unknown properties
+      }
+    }
+
+    if (Object.keys(updates).length === 0) return; // Don't fetch if no valid updates
+
+    logToConsole(`Updating local config for ${cameraName}:`, 'debug', updates);
+
+    // Persist change(s) to the server
+    try {
+      const response = await fetch(`/camera/${encodeURIComponent(cameraName)}/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+
+      if (!response.ok) {
+        // Improved error handling: Check content type before parsing
+        let errorMsg = `Failed to update config: ${response.status}`;
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+          try {
+            const errorResult = await response.json();
+            errorMsg = errorResult.message || errorMsg;
+          } catch (e) { logToConsole('Error parsing JSON error response', 'warn', e); }
+        } else {
+          try { errorMsg = await response.text(); } catch (e) { /* Ignore */ }
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json(); // Should be { success: true, message: '...' }
+      logToConsole(`Camera config updated on server for ${cameraName}: ${result.message}`, "success");
+
+    } catch (err) {
+      logToConsole(`Error updating camera config for ${cameraName} on server: ${err.message}`, "error");
+      // Revert local changes on error
+      for (const key in originalValues) {
+        camera[key] = originalValues[key];
+      }
+      logToConsole(`Reverted local config changes for ${cameraName} due to server error.`, 'warn');
+
+      // TODO: Optionally revert UI elements (e.g., dropdowns) if needed
+      alert(`Failed to save camera settings for ${cameraName}: ${err.message}`);
+    }
+  }
+
+  stopVideoStream(cameraName) {
+    const videoElement = document.getElementById(`video-${cameraName}`);
+    const compositor = this.cameraCompositors.get(cameraName);
+    if (videoElement?.srcObject) {
+      videoElement.srcObject.getTracks().forEach(track => track.stop());
+      videoElement.srcObject = null;
+      logToConsole(`Stopped video stream for ${cameraName}.`, "info");
+      if (compositor) compositor.removeFrameSource();
+      const cameraCard = this.cameraElements.get(cameraName);
+      const deviceInfoElement = cameraCard?.querySelector('.device-info');
+      if (deviceInfoElement) deviceInfoElement.textContent = 'Preview stopped';
+      videoElement.style.backgroundColor = "#222";
+    }
+  }
+
   async updateAllPreviewsResolution() {
-    console.info("Recording resolution changed in UI. Updating active previews...");
+    logToConsole("Resolution changed. Updating active previews...", "info");
     for (const camera of this.cameras) {
-      const videoElement = document.getElementById(`preview-${camera.name}`);
-      // Check if video element exists AND has an active stream
-      if (videoElement && videoElement.srcObject) {
-        // Ensure tracks exist before trying to access them
+      const videoElement = document.getElementById(`video-${camera.name}`);
+      if (videoElement?.srcObject) {
         const videoTracks = videoElement.srcObject.getVideoTracks();
         if (videoTracks.length > 0) {
           const currentBrowserDeviceId = videoTracks[0].getSettings().deviceId;
           if (currentBrowserDeviceId) {
-            console.info(`Updating preview for ${camera.name} with new resolution.`);
-            // Call updatePreviewDevice with the current browser device ID.
-            // This function now reads the new resolution from the dropdown internally.
+            logToConsole(`Re-starting preview for ${camera.name} with new resolution.`, "info");
             await this.updatePreviewDevice(camera.name, currentBrowserDeviceId);
-          } else {
-            console.warn(`Could not get current device ID from track settings for active preview ${camera.name}. Skipping update.`);
           }
-        } else {
-          console.warn(`No video tracks found for active preview ${camera.name}. Skipping update.`);
         }
       }
     }
-    console.info("Finished updating active previews for new resolution.");
-  }
-  // --- END NEW METHOD ---
-
-  async updateRecordingDevice(cameraName, serverDeviceId) { // Stays serverDeviceId
-    console.info(`Setting recording device for ${cameraName} with server device ID: ${serverDeviceId}`);
-    try {
-      // Update server
-      const response = await fetch("/camera/recording-device", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cameraName, deviceId: serverDeviceId }), // Send Server ID/Path
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        logToConsole(`Error setting recording device: ${errorText}`, "error");
-        throw new Error(`Server error: ${response.status}`);
-      }
-
-      // Update local state
-      const cam = this.cameras.find(c => c.name === cameraName);
-      if (cam) cam.recordingDevice = serverDeviceId;
-
-      logToConsole(`Recording device set for ${cameraName}`, "success");
-    } catch (err) {
-      logToConsole(`Error updating recording device: ${err.message}`, "error");
-      // Optionally revert dropdown
-      const cameraElement = this.cameraElements.get(cameraName);
-      const recordingSelect = cameraElement?.querySelector('.recording-device');
-      if (recordingSelect) {
-        const cam = this.cameras.find(c => c.name === cameraName);
-        recordingSelect.value = cam ? cam.recordingDevice : ''; // Revert to previous state
-      }
-    }
+    logToConsole("Finished updating previews for new resolution.", "info");
   }
 
-  async updatePTZDevice(cameraName, serverDeviceId) { // Stays serverDeviceId
-    logToConsole(`Setting PTZ device for ${cameraName} with server device ID/path: ${serverDeviceId}`, "info");
-    const originalPTZDevice = this.cameras.find(c => c.name === cameraName)?.ptzDevice ?? '';
-    try {
-      // Update server
-      const response = await fetch("/camera/ptz-device", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cameraName, deviceId: serverDeviceId }), // Send Server ID/Path
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        logToConsole(`Error setting PTZ device: ${errorText}`, "error");
-        throw new Error(`Server error: ${response.status}`);
-      }
-
-      // Update local state
-      const cam = this.cameras.find(c => c.name === cameraName);
-      if (cam) cam.ptzDevice = serverDeviceId;
-
-      logToConsole(`PTZ device set for ${cameraName}`, "success");
-
-      // Render PTZ controls after setting a device
-      this.renderPTZControlsForCamera(cameraName, serverDeviceId);
-
-    } catch (err) {
-      logToConsole(`Error updating PTZ device: ${err.message}`, "error");
-      // Revert local state and dropdown
-      const cam = this.cameras.find(c => c.name === cameraName);
-      if (cam) cam.ptzDevice = originalPTZDevice; // Revert local state
-
-      const cameraElement = this.cameraElements.get(cameraName);
-      const ptzSelect = cameraElement?.querySelector('.ptz-device');
-      if (ptzSelect) ptzSelect.value = originalPTZDevice; // Revert dropdown
-
-      // Re-render PTZ controls based on reverted value
-      this.renderPTZControlsForCamera(cameraName, originalPTZDevice);
-
-    }
-  }
-
-  // Function to render PTZ controls for a specific camera
-  renderPTZControlsForCamera(cameraName, ptzDeviceId) {
-    const cameraElement = this.cameraElements.get(cameraName);
-    if (!cameraElement) return;
-
-    const ptzContainer = cameraElement.querySelector('.ptz-controls-container');
+  // --- PTZ Methods ---
+  renderPTZControlsForCamera(cameraName, ptzDeviceId, ptzContainer) {
     if (!ptzContainer) return;
-
-    // Clear previous controls
-    ptzContainer.innerHTML = '';
-
-    // Only render controls if a valid PTZ device is selected
-    if (ptzDeviceId) {
-      // Use unique IDs per camera instance
-      const panId = `ptz-pan-${cameraName}`;
-      const tiltId = `ptz-tilt-${cameraName}`;
-      const zoomId = `ptz-zoom-${cameraName}`;
-      const panValueId = `ptz-pan-value-${cameraName}`;
-      const tiltValueId = `ptz-tilt-value-${cameraName}`;
-      const zoomValueId = `ptz-zoom-value-${cameraName}`;
-
-      ptzContainer.innerHTML = `
-          <div class="ptz-control-group">
-            <label for="${panId}">Pan:</label>
-            <input type="range" id="${panId}" name="pan" min="-468000" max="468000" step="3600" value="0" 
-                   title="Pan">
-            <span id="${panValueId}" class="ptz-value-display">0.0°</span> 
-          </div>
-          <div class="ptz-control-group">
-            <label for="${tiltId}">Tilt:</label>
-            <input type="range" id="${tiltId}" name="tilt" min="-324000" max="324000" step="3600" value="0"
-                   title="Tilt">
-            <span id="${tiltValueId}" class="ptz-value-display">0.0°</span> 
-          </div>
-          <div class="ptz-control-group">
-            <label for="${zoomId}">Zoom:</label>
-            <input type="range" id="${zoomId}" name="zoom" min="0" max="100" step="1" value="0"
-                   title="Zoom">
-            <span id="${zoomValueId}" class="ptz-value-display">0%</span> 
-          </div>
-        `;
-
-      // Add event listeners programmatically
-      document.getElementById(panId).addEventListener('input', (e) => this.handlePTZInputChange(cameraName, 'pan', e.target.value));
-      document.getElementById(tiltId).addEventListener('input', (e) => this.handlePTZInputChange(cameraName, 'tilt', e.target.value));
-      document.getElementById(zoomId).addEventListener('input', (e) => this.handlePTZInputChange(cameraName, 'zoom', e.target.value));
-
-      // TODO: Fetch current PTZ state from server and set initial slider values?
-      // This would require a new backend endpoint GET /camera/:cameraName/ptz-state
-
-    } else {
-      ptzContainer.innerHTML = '<p class="ptz-placeholder">Select a PTZ device to enable controls.</p>';
+    ptzContainer.innerHTML = ''; // Clear previous
+    if (!ptzDeviceId) {
+      ptzContainer.innerHTML = '<p class="ptz-placeholder text-muted small">No PTZ device selected.</p>'; return;
     }
+
+    const controls = [
+      { name: 'pan', min: -468000, max: 468000, step: 3600, unit: '°', scale: 3600 },
+      { name: 'tilt', min: -324000, max: 324000, step: 3600, unit: '°', scale: 3600 },
+      { name: 'zoom', min: 0, max: 100, step: 1, unit: '%', scale: 1 },
+    ];
+
+    controls.forEach(c => {
+      const groupId = `ptz-${c.name}-group-${cameraName}`;
+      const inputId = `ptz-${c.name}-input-${cameraName}`;
+      const valueId = `ptz-${c.name}-value-${cameraName}`;
+
+      const group = document.createElement('div');
+      group.className = 'ptz-control-group'; group.id = groupId;
+      group.innerHTML = `
+            <label for="${inputId}" class="form-label">${c.name.charAt(0).toUpperCase() + c.name.slice(1)}:</label>
+            <input type="range" class="form-range" id="${inputId}" name="${c.name}" 
+                   min="${c.min}" max="${c.max}" step="${c.step}" value="0" title="${c.name}">
+            <span id="${valueId}" class="ptz-value-display">${(0 / c.scale).toFixed(c.scale === 1 ? 0 : 1)}${c.unit}</span>`;
+      ptzContainer.appendChild(group);
+
+      group.querySelector(`#${inputId}`).addEventListener('input', (e) =>
+        this.handlePTZInputChange(cameraName, c.name, e.target.value, c.scale, c.unit, valueId)
+      );
+    });
+
+    // TODO: Fetch current PTZ state from server to set initial slider values?
   }
 
-  // Handler for PTZ slider input changes
-  handlePTZInputChange(cameraName, control, value) {
+  handlePTZInputChange(cameraName, control, value, scale, unit, valueSpanId) {
     const rawValue = parseInt(value);
-    let displayValue = '';
-    let displaySpanId = '';
+    const displayValue = (rawValue / scale).toFixed(scale === 1 ? 0 : 1) + unit;
+    const displaySpan = document.getElementById(valueSpanId);
+    if (displaySpan) displaySpan.textContent = displayValue;
 
-    // Update display span based on control type
-    switch (control) {
-      case 'pan':
-        displayValue = (rawValue / 3600).toFixed(1) + '°';
-        displaySpanId = `ptz-pan-value-${cameraName}`;
-        break;
-      case 'tilt':
-        displayValue = (rawValue / 3600).toFixed(1) + '°';
-        displaySpanId = `ptz-tilt-value-${cameraName}`;
-        break;
-      case 'zoom':
-        displayValue = rawValue + '%';
-        displaySpanId = `ptz-zoom-value-${cameraName}`;
-        break;
-    }
-
-    const displaySpan = document.getElementById(displaySpanId);
-    if (displaySpan) {
-      displaySpan.textContent = displayValue;
-    }
-
-    // Debounce sending updates to the server
-    clearTimeout(this.ptzUpdateTimeout); // Clear existing timeout
-    this.ptzUpdateTimeout = setTimeout(() => {
-      this.updatePTZ(cameraName, control, rawValue);
-    }, 150); // Send update 150ms after the last input change
+    clearTimeout(this.ptzUpdateTimeout);
+    this.ptzUpdateTimeout = setTimeout(() => this.updatePTZ(cameraName, control, rawValue), 150);
   }
 
-
-  // Method to send PTZ command to server
   async updatePTZ(cameraName, control, value) {
-    // Check if camera exists and has a ptz device configured
     const camera = this.cameras.find(c => c.name === cameraName);
-    if (!camera || !camera.ptzDevice) {
-      logToConsole(`Cannot send PTZ command for ${cameraName}: No PTZ device configured.`, "warn");
-      return;
-    }
-
-    logToConsole(`Sending PTZ command for ${cameraName}: ${control}=${value}`, "info");
+    if (!camera?.ptzDevice) return;
+    logToConsole(`Sending PTZ command: ${cameraName} ${control}=${value}`, "info");
     try {
       const response = await fetch("/camera/ptz", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cameraName,
-          [control]: parseInt(value) // Ensure value is integer
-        }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cameraName, [control]: value })
       });
-      // Log success/failure based on response.ok
-      if (!response.ok) {
-        logToConsole(`PTZ update failed for ${cameraName}: ${response.statusText}`, 'warn');
-      }
+      if (!response.ok) logToConsole(`PTZ update failed: ${response.statusText}`, 'warn');
     } catch (err) {
       logToConsole(`Error sending PTZ command: ${err.message}`, "error");
     }
   }
 
-  // Specific method to trigger test recording for ONE camera
+  // --- Recording Methods (Per-Camera Processed Canvas) ---
   async recordVideo(cameraName) {
-    logToConsole(`Starting test recording for ${cameraName}...`, "info");
-    const statusElement = document.getElementById("status"); // Assuming a global status element exists
-    if (statusElement) statusElement.innerText = `Recording from ${cameraName}...`;
+    logToConsole(`Attempting to record processed canvas for ${cameraName}`, 'info');
+    const statusElement = document.getElementById(`status-${cameraName}`);
+    const recordButton = document.getElementById(`record-btn-${cameraName}`);
+    const processedCanvas = this.processedCanvases.get(cameraName);
 
-    // Get pipeline and resolution from potential global settings (or use defaults)
-    const pipelineElement = document.getElementById("recording-pipeline");
-    const resolutionElement = document.getElementById("recording-resolution");
-    const pipeline = pipelineElement ? pipelineElement.value : 'ffmpeg'; // Default if element not found
-    const useFfmpeg = pipeline === "ffmpeg";
-    const resolution = resolutionElement ? resolutionElement.value : '1920x1080'; // Default
+    if (!processedCanvas) {
+      logToConsole(`Error: Processed canvas for ${cameraName} not found.`, 'error');
+      if (statusElement) statusElement.innerText = "Error: Canvas not found."; return;
+    }
+    if (processedCanvas.dataset.isRecording === 'true') {
+      logToConsole(`Canvas ${cameraName} already recording.`, 'warn'); return;
+    }
+    if (processedCanvas.width === 0 || processedCanvas.height === 0) {
+      logToConsole(`Canvas ${cameraName} has zero dimensions. Cannot record.`, 'warn');
+      if (statusElement) statusElement.innerText = "Error: Canvas has no size."; return;
+    }
 
     try {
-      const response = await fetch(
-        `/camera/${encodeURIComponent(cameraName)}/record?useFfmpeg=${useFfmpeg}&resolution=${resolution}`,
-        { method: "POST" }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text(); // Get error details
-        throw new Error(`HTTP error ${response.status}: ${errorText}`);
+      const stream = processedCanvas.captureStream(30);
+      const mimeType = 'video/webm;codecs=vp9'; // VP9 preferred for potential alpha
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        logToConsole(`VP9 mimeType not supported for MediaRecorder. Recording may fail or lack alpha.`, 'warn');
+        // Could fallback here if needed: mimeType = 'video/webm';
       }
 
-      const result = await response.json();
-      logToConsole(`Recording complete for ${cameraName}. Output: ${result.outputPath}`, "success"); // Assuming result has outputPath
-      if (statusElement) statusElement.innerText = `Recording finished: ${result.outputPath}`;
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const recordedChunks = [];
+      mediaRecorder.ondataavailable = (event) => { if (event.data.size > 0) recordedChunks.push(event.data); };
 
-      // Construct correct video path using current session ID
-      const sessionIdElement = document.getElementById('current-session-id');
-      const currentSessionId = sessionIdElement ? sessionIdElement.textContent.trim() : null;
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `${cameraName}_processed_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        logToConsole(`Recording stopped for ${cameraName}. File downloaded.`, 'success');
+        if (statusElement) statusElement.innerText = "Recording finished.";
+        processedCanvas.dataset.isRecording = 'false';
+        if (recordButton) { recordButton.textContent = 'Record Processed Canvas'; recordButton.classList.remove('btn-danger'); recordButton.classList.add('btn-info'); }
+        delete processedCanvas.mediaRecorder; // Clean up reference
+      };
 
-      const vidDiv = document.getElementById("videos"); // Assuming a global video display div
+      mediaRecorder.start();
+      processedCanvas.dataset.isRecording = 'true';
+      processedCanvas.mediaRecorder = mediaRecorder; // Store recorder instance
+      logToConsole(`Recording started for ${cameraName}.`, 'info');
+      if (statusElement) statusElement.innerText = "Recording...";
+      if (recordButton) { recordButton.textContent = 'Stop Recording Canvas'; recordButton.classList.remove('btn-info'); recordButton.classList.add('btn-danger'); }
 
-      if (vidDiv && currentSessionId && result.outputPath) {
-        // Assuming outputPath is relative to the session dir, e.g., "Camera_1/test_overlay.mp4"
-        const videoPath = `/recordings/${encodeURIComponent(currentSessionId)}/${result.outputPath}`;
-        logToConsole(`Displaying video: ${videoPath}`, "info");
-        // Display the video - PREPEND new video instead of replacing all
-        const videoContainer = document.createElement('div');
-        videoContainer.innerHTML = `
-            <h3>Test Overlay Video (${cameraName.replace(/_/g, ' ')})</h3>
-            <video controls src="${videoPath}" style="max-width: 320px; margin-bottom: 10px;"></video>
-          `;
-        vidDiv.prepend(videoContainer); // Add the new video at the beginning
-
-      } else if (!currentSessionId) {
-        logToConsole("Could not find current session ID to display video", "error");
-      } else if (!vidDiv) {
-        logToConsole("Video display container '#videos' not found.", "error");
-      }
-    } catch (error) {
-      logToConsole(`Recording error for ${cameraName}: ${error.message}`, "error");
-      if (statusElement) statusElement.innerText = `Recording failed: ${error.message}`;
+    } catch (e) {
+      logToConsole(`Error starting canvas recording for ${cameraName}: ${e}`, 'error');
+      if (statusElement) statusElement.innerText = "Error starting recording.";
+      processedCanvas.dataset.isRecording = 'false';
+      if (recordButton) { recordButton.textContent = 'Record Processed Canvas'; recordButton.classList.remove('btn-danger'); recordButton.classList.add('btn-info'); }
+      delete processedCanvas.mediaRecorder;
     }
   }
 
-  // Updated method to handle skeleton toggle - NO backend call
-  async togglePoseDetection(cameraName, show) {
-    logToConsole(`Toggling pose detection for ${cameraName} to ${show}`, "info");
-
-    // --- MODIFICATION START: Control Compositor ---
-    // Update local state directly
-    const camera = this.cameras.find(c => c.name === cameraName);
-    if (camera) {
-      camera.showSkeleton = show;
+  stopRecordProcessedCanvas(cameraName) {
+    const processedCanvas = this.processedCanvases.get(cameraName);
+    if (processedCanvas?.mediaRecorder && processedCanvas.dataset.isRecording === 'true') {
+      processedCanvas.mediaRecorder.stop(); // onstop handler will do the rest
     } else {
-      logToConsole(`Camera ${cameraName} not found locally for pose detection toggle.`, "warn");
-      return; // Don't proceed if camera isn't found
+      logToConsole(`No active recording found for ${cameraName} to stop.`, 'warn');
     }
-
-    // Find the main compositor (exposed globally from home.js for now)
-    // We assume Camera_1 maps to the main compositor for this example
-    // A more robust solution would map cameras to compositors/render targets
-    if (cameraName === 'Camera_1' && window.mainCompositor) {
-      logToConsole(`Calling mainCompositor.setPoseDetectionEnabled(${show})`, 'info');
-      window.mainCompositor.setPoseDetectionEnabled(show);
-    } else if (cameraName === 'Camera_1') {
-      logToConsole('Could not find window.mainCompositor to toggle pose detection.', 'error');
-    } else {
-      logToConsole(`Pose detection toggle for non-primary camera (${cameraName}) not linked to compositor yet.`, 'warn');
-    }
-    // --- MODIFICATION END ---
   }
 
-  // Starts or stops the pose detection and drawing loop
-  /* --- REMOVE OLD METHOD ---
-  updateSkeletonDrawing(cameraName, show) {
-     // ... Entire method removed ...
+  // Method to get processed canvas for external use (e.g., main output)
+  getProcessedCanvas(cameraName) {
+    return this.processedCanvases.get(cameraName);
   }
-  */
-
-  // Actual drawing logic for a single frame - ACCEPTS POSES
-  /* --- REMOVE OLD METHOD ---
-  drawSkeletonFrame(cameraName, canvas, video, poses) {
-    // ... Entire method removed ...
-  }
-  */
 }
