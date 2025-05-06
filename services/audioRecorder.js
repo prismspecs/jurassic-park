@@ -1,4 +1,4 @@
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -246,17 +246,16 @@ class AudioRecorder {
         console.log(`Starting recording for ${deviceData.name} (${deviceId}) -> ${filePath}`);
 
         let recorderProcess;
-        // Build arecord command with optional duration
-        let command = `arecord -D ${deviceId} -f cd -t wav`;
-        if (durationSec && durationSec > 0) {
-            command += ` -d ${Math.ceil(durationSec)}`; // Use ceil to ensure full duration
-            console.log(`Recording duration set to ${Math.ceil(durationSec)} seconds.`);
-        } else {
-            console.warn(`No duration specified for recording ${filePath}. It may run indefinitely until manually stopped.`);
-        }
-        command += ` "${filePath}"`; // Add file path at the end, quoted
-
         if (this.platform === 'linux') {
+            // Build arecord command with optional duration
+            let command = `arecord -D ${deviceId} -f cd -t wav`;
+            if (durationSec && durationSec > 0) {
+                command += ` -d ${Math.ceil(durationSec)}`; // Use ceil to ensure full duration
+                console.log(`Recording duration set to ${Math.ceil(durationSec)} seconds.`);
+            } else {
+                console.warn(`No duration specified for recording ${filePath}. It may run indefinitely until manually stopped.`);
+            }
+            command += ` \"${filePath}\"`;
             console.log(`Executing: ${command}`);
             recorderProcess = exec(command, (error, stdout, stderr) => {
                 // This callback executes when the process *finishes* or errors *during* execution.
@@ -269,9 +268,9 @@ class AudioRecorder {
                 }
             });
         } else if (this.platform === 'darwin') {
-            // Use ffmpeg for actual macOS recording, trying default audio device index ":0"
-            console.warn(`Using ffmpeg for macOS recording. Trying default audio device index ":0". Ensure ffmpeg is installed.`);
-            let macCommand = `ffmpeg -f avfoundation -i ":0" -ar 44100 -ac 1`;
+            // Use ffmpeg for actual macOS recording
+            console.warn(`Using ffmpeg for macOS recording with device: ":${deviceData.name}". Ensure ffmpeg is installed.`);
+            let macCommand = `ffmpeg -y -f avfoundation -i ":${deviceData.name}" -c:a pcm_s16le -ar 44100 -ac 1`;
             if (durationSec && durationSec > 0) {
                 macCommand += ` -t ${Math.ceil(durationSec)}`;
                 console.log(`Recording duration set to ${Math.ceil(durationSec)} seconds.`);
@@ -356,13 +355,30 @@ class AudioRecorder {
             const duration = 3; // seconds
 
             if (this.platform === 'linux') {
-                testProcess = exec(`arecord -D ${deviceId} -f cd -t wav -d ${duration} ${tempFilePath}`);
+                testProcess = exec(`arecord -D ${deviceId} -f cd -t wav -d ${duration} \"${tempFilePath}\"`);
             } else if (this.platform === 'darwin') {
-                console.warn(`Using ffmpeg for macOS test recording. Trying default audio device index ":0". Ensure ffmpeg is installed.`);
-                // Use ":0" to specify the default audio device index
-                const macCommand = `ffmpeg -f avfoundation -i ":0" -t ${duration} -ar 44100 -ac 1 "${tempFilePath}"`;
-                console.log(`Executing macOS test command: ${macCommand}`);
-                testProcess = exec(macCommand);
+                console.warn(`Using ffmpeg (spawn) for macOS test recording with device: ":${deviceId}". Ensure ffmpeg is installed.`);
+
+                const ffmpegArgs = [
+                    '-y', // Add -y flag to overwrite output file without prompting
+                    '-f', 'avfoundation',
+                    '-i', `:${deviceId}`, // Use ":audioDeviceName" format
+                    '-t', duration.toString(),
+                    '-c:a', 'pcm_s16le', // Explicitly set audio codec to signed 16-bit PCM
+                    '-ar', '44100', // Audio sample rate
+                    '-ac', '1',     // Audio channels (mono)
+                    tempFilePath    // Output file path
+                ];
+
+                console.log(`Executing macOS test command: ffmpeg ${ffmpegArgs.join(' ')}`);
+                try {
+                    testProcess = spawn('ffmpeg', ffmpegArgs);
+                } catch (spawnError) {
+                    console.error(`Failed to spawn ffmpeg process for ${deviceId}:`, spawnError);
+                    this.recordingProcesses.delete(deviceId); // Clean up
+                    return reject(new Error(`Failed to start test recording (spawn error): ${spawnError.message}`));
+                }
+
             } else {
                 console.error(`Test recording not supported on platform: ${this.platform}`);
                 return reject(new Error(`Test recording not supported on platform: ${this.platform}`));
@@ -371,10 +387,24 @@ class AudioRecorder {
             this.recordingProcesses.set(deviceId, { process: testProcess, filePath: tempFilePath }); // Track test recording temporarily
 
             testProcess.on('error', (err) => {
-                console.error(`Failed to start test recording process for ${deviceId}:`, err);
+                // This 'error' event for spawn typically means the process could not be spawned
+                // or was killed, or there was an error sending a message to it.
+                console.error(`Test recording process error for ${deviceId} (spawn):`, err);
                 this.recordingProcesses.delete(deviceId); // Clean up
-                reject(new Error(`Failed to start test recording: ${err.message}`));
+                reject(new Error(`Test recording process failed (spawn error): ${err.message}`));
             });
+
+            // For spawn, it's good to listen to stderr to catch ffmpeg errors
+            if (testProcess.stderr) {
+                testProcess.stderr.on('data', (data) => {
+                    console.error(`ffmpeg stderr (test ${deviceId}): ${data}`);
+                });
+            }
+            if (testProcess.stdout) { // Though ffmpeg usually logs to stderr
+                testProcess.stdout.on('data', (data) => {
+                    console.log(`ffmpeg stdout (test ${deviceId}): ${data}`);
+                });
+            }
 
             testProcess.on('exit', (code, signal) => {
                 this.recordingProcesses.delete(deviceId); // Clean up tracker
