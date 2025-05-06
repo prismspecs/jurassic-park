@@ -2,8 +2,7 @@ const { exec, spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
-// TODO: Choose and import an audio recording library (e.g., node-record-lpcm16)
-// const record = require('node-record-lpcm16');
+// const record = require('node-record-lpcm16'); // Reverted: Commenting out node-record-lpcm16
 
 class AudioRecorder {
     constructor() {
@@ -139,49 +138,58 @@ class AudioRecorder {
     // Internal helper to stop a specific device's recording
     _stopDeviceRecording(deviceId) {
         if (this.recordingProcesses.has(deviceId)) {
-            const { process, filePath } = this.recordingProcesses.get(deviceId);
+            const { process, filePath, stopping } = this.recordingProcesses.get(deviceId); // Removed type, re-added stopping
             console.log(`Stopping recording for device ${deviceId}...`);
 
-            // Mark the process as being stopped so we don't double-handle cleanup
-            this.recordingProcesses.set(deviceId, { process, filePath, stopping: true });
+            // If already stopping (e.g. kill signal sent), don't try again
+            if (stopping) {
+                console.log(`Device ${deviceId} recording is already in the process of stopping.`);
+                return;
+            }
 
-            // Send SIGTERM first for graceful shutdown
-            try {
-                process.kill('SIGTERM');
+            // For command-line processes (ffmpeg, arecord)
+            if (process && typeof process.kill === 'function') {
+                // Mark the process as being stopped so we don't double-handle cleanup
+                this.recordingProcesses.set(deviceId, { process, filePath, stopping: true });
 
-                // Set a timeout to forcefully kill if it doesn't terminate
-                const killTimeout = setTimeout(() => {
-                    try {
-                        if (!process.killed) {
-                            console.warn(`Recording process for ${deviceId} did not exit gracefully, sending SIGKILL.`);
-                            process.kill('SIGKILL');
+                // Send SIGTERM first for graceful shutdown
+                try {
+                    process.kill('SIGTERM');
+
+                    // Set a timeout to forcefully kill if it doesn't terminate
+                    const killTimeout = setTimeout(() => {
+                        try {
+                            if (!process.killed) {
+                                console.warn(`Recording process for ${deviceId} did not exit gracefully, sending SIGKILL.`);
+                                process.kill('SIGKILL');
+                            }
+                        } catch (killError) {
+                            console.error(`Error sending SIGKILL to process for ${deviceId}:`, killError);
                         }
-                    } catch (killError) {
-                        console.error(`Error sending SIGKILL to process for ${deviceId}:`, killError);
-                    }
-                    // Ensure we clean up even if there's a problem with the kill
-                    this.recordingProcesses.delete(deviceId);
-                }, 2000); // 2 seconds grace period
+                        // Ensure we clean up even if there's a problem with the kill
+                        this.recordingProcesses.delete(deviceId);
+                    }, 2000); // 2 seconds grace period
 
-                // Ensure timeout is cleared if process exits normally
-                process.once('exit', (code, signal) => {
-                    clearTimeout(killTimeout);
-                    if (code === 0 || signal === 'SIGTERM') {
-                        console.log(`Recording stopped successfully for device ${deviceId}. File saved to: ${filePath}`);
-                    } else {
-                        console.error(`Recording process for ${deviceId} exited with code ${code}, signal ${signal}. File might be incomplete: ${filePath}`);
-                    }
-                    this.recordingProcesses.delete(deviceId); // Remove from tracking
-                });
+                    // Ensure timeout is cleared if process exits normally
+                    process.once('exit', (code, signal) => {
+                        clearTimeout(killTimeout);
+                        if (code === 0 || signal === 'SIGTERM') {
+                            console.log(`Recording stopped successfully for device ${deviceId}. File saved to: ${filePath}`);
+                        } else {
+                            console.error(`Recording process for ${deviceId} exited with code ${code}, signal ${signal}. File might be incomplete: ${filePath}`);
+                        }
+                        this.recordingProcesses.delete(deviceId); // Remove from tracking
+                    });
 
-                process.once('error', (err) => {
-                    clearTimeout(killTimeout);
-                    console.error(`Error in recording process for ${deviceId}:`, err);
+                    process.once('error', (err) => {
+                        clearTimeout(killTimeout);
+                        console.error(`Error in recording process for ${deviceId}:`, err);
+                        this.recordingProcesses.delete(deviceId);
+                    });
+                } catch (error) {
+                    console.error(`Failed to stop recording for ${deviceId}:`, error);
                     this.recordingProcesses.delete(deviceId);
-                });
-            } catch (error) {
-                console.error(`Failed to stop recording for ${deviceId}:`, error);
-                this.recordingProcesses.delete(deviceId);
+                }
             }
         } else {
             console.log(`No active recording process found for device ${deviceId} to stop.`);
@@ -268,25 +276,50 @@ class AudioRecorder {
                 }
             });
         } else if (this.platform === 'darwin') {
-            // Use ffmpeg for actual macOS recording
-            console.warn(`Using ffmpeg for macOS recording with device: ":${deviceData.name}". Ensure ffmpeg is installed.`);
-            let macCommand = `ffmpeg -y -f avfoundation -i ":${deviceData.name}" -c:a pcm_s16le -ar 44100 -ac 1`;
+            // Reverted to ffmpeg for macOS recording
+            console.warn(`Using ffmpeg (spawn) for macOS recording with device: ":${deviceData.name}". Ensure ffmpeg is installed.`);
+            const ffmpegArgs = [
+                '-y',
+                '-thread_queue_size', '1024',
+                '-f', 'avfoundation',
+                '-i', `:${deviceData.name}`,
+                '-c:a', 'pcm_s16le',
+                '-ar', '44100',
+                '-ac', '1'
+            ];
+
             if (durationSec && durationSec > 0) {
-                macCommand += ` -t ${Math.ceil(durationSec)}`;
+                ffmpegArgs.push('-t', Math.ceil(durationSec).toString());
                 console.log(`Recording duration set to ${Math.ceil(durationSec)} seconds.`);
             } else {
-                // For non-timed recordings, ffmpeg will run until stopped by SIGTERM/
                 console.log(`Recording ${filePath} without a fixed duration. Will record until stopped.`);
             }
-            macCommand += ` "${filePath}"`;
-            console.log(`Executing macOS recording command: ${macCommand}`);
-            recorderProcess = exec(macCommand);
+            ffmpegArgs.push(filePath);
+
+            console.log(`Executing macOS recording command: ffmpeg ${ffmpegArgs.join(' ')}`);
+            try {
+                recorderProcess = spawn('ffmpeg', ffmpegArgs);
+            } catch (spawnError) {
+                console.error(`Failed to spawn ffmpeg process for ${deviceData.name} (${deviceId}):`, spawnError);
+                return;
+            }
+
+            if (recorderProcess.stderr) {
+                recorderProcess.stderr.on('data', (data) => {
+                    console.error(`ffmpeg stderr (recording ${deviceData.name} - ${deviceId}): ${data}`);
+                });
+            }
+            if (recorderProcess.stdout) {
+                recorderProcess.stdout.on('data', (data) => {
+                    console.log(`ffmpeg stdout (recording ${deviceData.name} - ${deviceId}): ${data}`);
+                });
+            }
+            // The process object is stored below, outside the platform-specific block.
         } else {
             console.error(`Recording not supported on platform: ${this.platform}`);
-            return; // Skip this device
+            return;
         }
 
-        // Store the process handle and file path
         this.recordingProcesses.set(deviceId, { process: recorderProcess, filePath, stopping: false });
 
         // Set exit handler early to ensure we catch any unexpected exits
@@ -349,7 +382,6 @@ class AudioRecorder {
             return { success: false, message: `Device ${deviceId} is already recording.` };
         }
 
-
         return new Promise((resolve, reject) => {
             let testProcess;
             const duration = 3; // seconds
@@ -357,34 +389,35 @@ class AudioRecorder {
             if (this.platform === 'linux') {
                 testProcess = exec(`arecord -D ${deviceId} -f cd -t wav -d ${duration} \"${tempFilePath}\"`);
             } else if (this.platform === 'darwin') {
+                // Reverted to ffmpeg for macOS test recording
                 console.warn(`Using ffmpeg (spawn) for macOS test recording with device: ":${deviceId}". Ensure ffmpeg is installed.`);
-
                 const ffmpegArgs = [
-                    '-y', // Add -y flag to overwrite output file without prompting
+                    '-y',
+                    '-thread_queue_size', '1024',
                     '-f', 'avfoundation',
-                    '-i', `:${deviceId}`, // Use ":audioDeviceName" format
+                    '-i', `:${deviceId}`,
                     '-t', duration.toString(),
-                    '-c:a', 'pcm_s16le', // Explicitly set audio codec to signed 16-bit PCM
-                    '-ar', '44100', // Audio sample rate
-                    '-ac', '1',     // Audio channels (mono)
-                    tempFilePath    // Output file path
+                    '-c:a', 'pcm_s16le',
+                    '-ar', '44100',
+                    '-ac', '1',
+                    tempFilePath
                 ];
 
                 console.log(`Executing macOS test command: ffmpeg ${ffmpegArgs.join(' ')}`);
                 try {
                     testProcess = spawn('ffmpeg', ffmpegArgs);
                 } catch (spawnError) {
-                    console.error(`Failed to spawn ffmpeg process for ${deviceId}:`, spawnError);
-                    this.recordingProcesses.delete(deviceId); // Clean up
+                    console.error(`Failed to spawn ffmpeg process for test ${deviceId}:`, spawnError);
+                    this.recordingProcesses.delete(deviceId); // Clean up if spawn fails
                     return reject(new Error(`Failed to start test recording (spawn error): ${spawnError.message}`));
                 }
-
+                // Event listeners for testProcess (error, stderr, stdout, exit) will be set outside this if/else block.
             } else {
                 console.error(`Test recording not supported on platform: ${this.platform}`);
                 return reject(new Error(`Test recording not supported on platform: ${this.platform}`));
             }
 
-            this.recordingProcesses.set(deviceId, { process: testProcess, filePath: tempFilePath }); // Track test recording temporarily
+            this.recordingProcesses.set(deviceId, { process: testProcess, filePath: tempFilePath, stopping: false });
 
             testProcess.on('error', (err) => {
                 // This 'error' event for spawn typically means the process could not be spawned
@@ -418,11 +451,9 @@ class AudioRecorder {
                     reject(new Error(`Test recording failed (code: ${code}, signal: ${signal})`));
                 }
             });
-
             console.log(`Test recording process started for ${deviceId} with PID: ${testProcess.pid}, duration: ${duration}s`);
         });
     }
-
 }
 
 module.exports = AudioRecorder;
