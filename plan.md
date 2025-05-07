@@ -109,9 +109,22 @@ The application is built with **Node.js**, acting as the core event controller:
 ├── /public             # Static assets served by Express
 │   └── favicon.ico     # Favicon for web interfaces
 │   └── /js             # Client-side JavaScript files
-│       └── home.js       # Main client-side logic for home.ejs
-│       └── /modules    # Reusable JS modules (logger, camera-manager, etc.)
+│       └── home.js       # Main client-side logic for home.ejs (now primarily an initializer)
+│       └── /modules    # Reusable JS modules
+│           └── logger.js
+│           └── layout-resizer.js
 │           └── camera-manager.js # Handles camera previews, controls, and CLIENT-SIDE POSE DETECTION
+│           └── session-manager.js
+│           └── websocket-handler.js
+│           └── control-actions.js
+│           └── audio-manager.js
+│           └── video-compositor.js
+│           └── teleprompter-handler.js # Handles teleprompter streaming logic
+│           └── actor-loader.js         # Handles actor loading UI and logic
+│           └── source-selector.js      # Handles recording source selection UI and logic
+│           └── canvas-recorder.js      # Handles main canvas recording logic
+│           └── ui-initializer.js       # Initializes UI components (collapsibles, fullscreen, secret panel)
+│           └── scene-assembly.js       # Handles scene assembly UI and logic
 ├── /recordings         # Stored video and audio files per session
 │   └── /<session_id>   # Directory for each session (e.g., 20231027_103000)
 │       └── /<camera_name> # Directory for each camera's recordings

@@ -7,6 +7,10 @@ import {
   populateSessionList
 } from './modules/session-manager.js';
 import { initializeWebSocket, sendWebSocketMessage } from './modules/websocket-handler.js';
+import { initializeTeleprompterStreaming } from './modules/teleprompter-handler.js';
+import { initializeActorLoader } from './modules/actor-loader.js';
+import { initializeSourceSelector, populateAllSourceSelectors } from './modules/source-selector.js';
+import { initializeCanvasRecorder } from './modules/canvas-recorder.js';
 import {
   toggleVoiceBypass,
   openTeleprompter,
@@ -25,64 +29,17 @@ import {
 } from './modules/control-actions.js';
 import { AudioManager } from './modules/audio-manager.js';
 import { VideoCompositor } from './modules/video-compositor.js';
+import {
+  initializeCollapsibleSections,
+  initializeFullscreenToggles,
+  initializeSecretPanel
+} from './modules/ui-initializer.js';
+import { initializeSceneAssembly, updateAssemblyUI as updateAssemblyUIFromModule } from './modules/scene-assembly.js';
 
 // --- Globals ---
-let currentSceneData = null;
 let cameraManager;
 let mainRecordingCompositor;
 let voiceBypassEnabled = true;
-
-let activeTeleprompterFeedWindow = null; // Keep track of the teleprompter window for live feed
-let isTeleprompterFeedVisibleState = false; // Keep track of visibility
-
-// Helper function to set up the stream in the teleprompter window
-function setupTeleprompterStream(win, streamToPlay) {
-  logToConsole(`Teleprompter window details: URL='${win.location.href}', readyState='${win.document.readyState}'`, 'debug');
-  try {
-    const bodySnippet = win.document.body ? win.document.body.innerHTML.substring(0, 500) : "document.body is null";
-    logToConsole(`Teleprompter window body (snippet): ${bodySnippet}`, 'debug');
-
-    const liveFeedEl = win.document.getElementById('teleprompterLiveFeed');
-    if (liveFeedEl) {
-      logToConsole('Found teleprompterLiveFeed element in teleprompter window.', 'info', liveFeedEl);
-      liveFeedEl.srcObject = streamToPlay;
-      logToConsole('srcObject assigned to teleprompterLiveFeed element. Attempting to play after a short delay...', 'debug');
-
-      setTimeout(() => {
-        if (!win || win.closed) {
-          logToConsole('Teleprompter window closed before delayed play could execute.', 'warn');
-          return;
-        }
-        logToConsole('Attempting to play teleprompter live feed now...', 'info');
-        liveFeedEl.currentTime = 0;
-        liveFeedEl.play()
-          .then(() => {
-            logToConsole('Teleprompter live feed playing successfully (after delay).', 'success');
-            if (win && !win.closed && typeof win.showLiveVideo === 'function') {
-              win.showLiveVideo();
-            }
-            isTeleprompterFeedVisibleState = true;
-            const toggleBtn = document.getElementById('toggleTeleprompterFeedBtn');
-            if (toggleBtn) {
-              toggleBtn.textContent = 'Hide Teleprompter Live Feed';
-              toggleBtn.style.display = 'inline-block';
-            }
-          })
-          .catch(e => {
-            logToConsole(`Error playing teleprompter live feed (after delay): ${e.message}. Video muted: ${liveFeedEl.muted}`, 'error', e);
-            alert(`Could not automatically play the video feed in the teleprompter (after delay): ${e.message}.`);
-          });
-      }, 100);
-
-    } else {
-      logToConsole('teleprompterLiveFeed element NOT FOUND in teleprompter window. Expected id "teleprompterLiveFeed".', 'error');
-      alert('Could not find the video player element (teleprompterLiveFeed) in the teleprompter window. Check console for details.');
-    }
-  } catch (err) {
-    logToConsole(`Error in setupTeleprompterStream: ${err.message}`, 'error', err);
-    alert(`An error occurred while trying to set up the video in the teleprompter: ${err.message}`);
-  }
-}
 
 document.addEventListener('DOMContentLoaded', () => {
   logToConsole("DOM loaded. Initializing components...", "info");
@@ -135,84 +92,16 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-  // Actor Loading 
-  const loadActorsBtn = document.getElementById('loadActorsBtn');
-  const actorFilesInput = document.getElementById('actorFiles');
-  const loadActorsStatus = document.getElementById('loadActorsStatus');
-  if (loadActorsBtn && actorFilesInput && loadActorsStatus) {
-    loadActorsBtn.addEventListener('click', async () => {
-      const files = actorFilesInput.files;
-      if (!files || files.length === 0) {
-        loadActorsStatus.textContent = 'Please select files to load.';
-        loadActorsStatus.style.color = 'orange';
-        return;
-      }
-      const formData = new FormData();
-      for (const file of files) { formData.append('files', file); }
-      loadActorsStatus.textContent = 'Loading...';
-      loadActorsStatus.style.color = '#aaa';
-      try {
-        const response = await fetch('/loadActors', { method: 'POST', body: formData });
-        const result = await response.json();
-        if (!response.ok) {
-          throw new Error(result.message || `HTTP error ${response.status}`);
-        }
-        loadActorsStatus.textContent = result.message || 'Actors loaded!';
-        loadActorsStatus.style.color = 'green';
-        actorFilesInput.value = '';
-      } catch (error) {
-        console.error("Actor Load Error:", error);
-        loadActorsStatus.textContent = `Error: ${error.message}`;
-        loadActorsStatus.style.color = 'red';
-      }
-    });
-  }
-
-  // --- Source Selector Logic ---
-  const recordingSourceSelector = document.getElementById('recording-source-selector');
-
-  function populateSelector(selectorElement, type) {
-    if (!selectorElement || !cameraManager || !cameraManager.cameras) return;
-
-    const currentVal = selectorElement.value;
-    selectorElement.innerHTML = `<option value="">Select Camera for ${type}</option>`;
-    cameraManager.cameras.forEach(camera => {
-      const option = document.createElement('option');
-      option.value = camera.name;
-      option.textContent = camera.name.replace(/_/g, ' ');
-      selectorElement.appendChild(option);
-    });
-    if (cameraManager.cameras.some(cam => cam.name === currentVal)) {
-      selectorElement.value = currentVal;
-    } else {
-      // If previous selection invalid, clear relevant compositor/source
-      if (type === 'Recording' && mainRecordingCompositor) {
-        mainRecordingCompositor.removeFrameSource();
-      }
-    }
-  }
-
-  function populateAllSourceSelectors() {
-    populateSelector(recordingSourceSelector, 'Recording');
-  }
-
-  if (recordingSourceSelector) {
-    recordingSourceSelector.addEventListener('change', () => {
-      const selectedCameraName = recordingSourceSelector.value;
-      if (mainRecordingCompositor && cameraManager) {
-        const processedCanvas = selectedCameraName ? cameraManager.getProcessedCanvas(selectedCameraName) : null;
-        if (processedCanvas) mainRecordingCompositor.setCurrentFrameSource(processedCanvas);
-        else mainRecordingCompositor.removeFrameSource();
-      }
-    });
-  }
 
   // --- Manager Initializations ---
   cameraManager = new CameraManager();
+  initializeSourceSelector(cameraManager, mainRecordingCompositor);
+
   cameraManager.initialize().then(() => {
     logToConsole('CameraManager initialized.', 'info');
     populateAllSourceSelectors();
     // ---- START: Set default recording source ----
+    const recordingSourceSelector = document.getElementById('recording-source-selector');
     if (recordingSourceSelector && recordingSourceSelector.options.length > 1) { // Ensure there's more than the "Select..." option
       let firstCameraOptionValue = null;
       // Find the first actual camera option (value is not empty)
@@ -244,164 +133,13 @@ document.addEventListener('DOMContentLoaded', () => {
   audioManager.initialize().catch(err => logToConsole(`AudioManager initialization failed: ${err}`, 'error'));
 
   // --- Main Canvas Recording Logic (for 'main-output-canvas') ---
-  const recordCanvasBtn = document.getElementById('recordCanvasBtn');
-  let mainMediaRecorder;
-  let mainRecordedChunks = [];
-  let isMainCanvasRecording = false;
+  const mainOutputCanvasForRecording = document.getElementById('main-output-canvas');
+  initializeCanvasRecorder(mainOutputCanvasForRecording, mainRecordingCompositor);
 
   // --- Stream Main Output to Teleprompter Logic (Reverted to use /teleprompter and setupTeleprompterStream) ---
-  const streamMainOutputToTeleprompterBtn = document.getElementById('streamMainOutputToTeleprompterBtn');
-  const toggleTeleprompterFeedBtn = document.getElementById('toggleTeleprompterFeedBtn'); // Get the new button
-
-  if (streamMainOutputToTeleprompterBtn && mainOutputCanvasElement && mainRecordingCompositor) {
-    streamMainOutputToTeleprompterBtn.addEventListener('click', () => {
-      logToConsole('Attempting to stream main output canvas to /teleprompter page...', 'info');
-      if (!mainRecordingCompositor.currentFrameSource) {
-        alert('Please select a camera source for the main output first.');
-        logToConsole('Streaming to /teleprompter aborted: No source for mainRecordingCompositor.', 'warn');
-        return;
-      }
-
-      try {
-        // Close any existing live feed teleprompter before opening a new one
-        if (activeTeleprompterFeedWindow && !activeTeleprompterFeedWindow.closed) {
-          activeTeleprompterFeedWindow.close();
-          logToConsole('Closed previous live feed teleprompter window.', 'info');
-        }
-
-        const teleprompterWin = window.open('/teleprompter', 'LiveStreamTeleprompter_' + Date.now(), 'width=640,height=480,menubar=no,toolbar=no,location=no,status=no');
-        activeTeleprompterFeedWindow = teleprompterWin; // Store reference
-        isTeleprompterFeedVisibleState = false; // Reset state, it will be shown by setupTeleprompterStream
-        if (toggleTeleprompterFeedBtn) toggleTeleprompterFeedBtn.style.display = 'none'; // Hide toggle until feed is confirmed playing
-
-        if (!teleprompterWin) {
-          alert('Failed to open teleprompter window. Please check popup blocker settings.');
-          logToConsole('Failed to open /teleprompter window.', 'error');
-          return;
-        }
-
-        const stream = mainOutputCanvasElement.captureStream(25);
-        logToConsole('Captured stream from mainOutputCanvasElement for /teleprompter.', 'debug', stream);
-
-        teleprompterWin.onerror = (eventOrMessage, source, lineno, colno, error) => {
-          const errorMessage = error ? error.message : eventOrMessage;
-          logToConsole(`Teleprompter window onerror: ${errorMessage}`, 'error', { eventOrMessage, source, lineno, colno, error });
-          alert('The teleprompter window encountered an error while loading its content. Check its console.');
-        };
-
-        logToConsole('Setting up onload listener for /teleprompter window.', 'debug');
-        teleprompterWin.onload = () => {
-          logToConsole('Teleprompter (/teleprompter) window ONLOAD event fired. Current URL: ' + (teleprompterWin ? teleprompterWin.location.href : 'teleprompterWin is null/closed'), 'info');
-          if (!teleprompterWin || teleprompterWin.closed) {
-            logToConsole('Teleprompter (/teleprompter) window was closed before onload handler could fully execute.', 'warn');
-            activeTeleprompterFeedWindow = null; // Clear reference
-            if (toggleTeleprompterFeedBtn) toggleTeleprompterFeedBtn.style.display = 'none';
-            return;
-          }
-          if (teleprompterWin.location.href === 'about:blank') {
-            logToConsole('Teleprompter (/teleprompter) window onload fired but URL is still about:blank.', 'error');
-            activeTeleprompterFeedWindow = null; // Clear reference
-            if (toggleTeleprompterFeedBtn) toggleTeleprompterFeedBtn.style.display = 'none';
-            return;
-          }
-          setupTeleprompterStream(teleprompterWin, stream);
-        };
-
-        // Monitor if the window is closed by the user
-        const teleprompterWinClosedCheckInterval = setInterval(() => {
-          if (activeTeleprompterFeedWindow && activeTeleprompterFeedWindow.closed) {
-            logToConsole('Live feed teleprompter window was closed by user.', 'info');
-            activeTeleprompterFeedWindow = null;
-            isTeleprompterFeedVisibleState = false;
-            if (toggleTeleprompterFeedBtn) {
-              toggleTeleprompterFeedBtn.style.display = 'none';
-              toggleTeleprompterFeedBtn.textContent = 'Hide Teleprompter Live Feed'; // Reset text
-            }
-            clearInterval(teleprompterWinClosedCheckInterval);
-          }
-        }, 1000);
-
-      } catch (error) {
-        logToConsole(`Error initiating stream to /teleprompter: ${error.message}`, 'error', error);
-        alert(`Error setting up /teleprompter stream: ${error.message}`);
-      }
-    });
-  } else {
-    if (!streamMainOutputToTeleprompterBtn) logToConsole('streamMainOutputToTeleprompterBtn not found.', 'warn');
-    if (!mainOutputCanvasElement) logToConsole('mainOutputCanvasElement not found (for minimal test).', 'warn');
-    if (!mainRecordingCompositor) logToConsole('mainRecordingCompositor not found (for minimal test).', 'warn');
-  }
-
-  // Add listener for the toggle button
-  if (toggleTeleprompterFeedBtn) {
-    toggleTeleprompterFeedBtn.addEventListener('click', () => {
-      if (activeTeleprompterFeedWindow && !activeTeleprompterFeedWindow.closed) {
-        if (isTeleprompterFeedVisibleState) {
-          if (typeof activeTeleprompterFeedWindow.hideLiveVideo === 'function') {
-            activeTeleprompterFeedWindow.hideLiveVideo();
-            toggleTeleprompterFeedBtn.textContent = 'Show Teleprompter Live Feed';
-            isTeleprompterFeedVisibleState = false;
-            logToConsole('User toggled live feed OFF.', 'info');
-          }
-        } else {
-          if (typeof activeTeleprompterFeedWindow.showLiveVideo === 'function') {
-            activeTeleprompterFeedWindow.showLiveVideo();
-            toggleTeleprompterFeedBtn.textContent = 'Hide Teleprompter Live Feed';
-            isTeleprompterFeedVisibleState = true;
-            logToConsole('User toggled live feed ON.', 'info');
-          }
-        }
-      } else {
-        logToConsole('Toggle button clicked but no active/open teleprompter feed window.', 'warn');
-        toggleTeleprompterFeedBtn.style.display = 'none'; // Hide if window is not there
-      }
-    });
-  }
-
-  if (recordCanvasBtn) {
-    recordCanvasBtn.addEventListener('click', async () => {
-      if (!mainOutputCanvasElement) {
-        logToConsole('Error: Main output canvas for recording not found!', 'error'); return;
-      }
-      if (!mainRecordingCompositor || !mainRecordingCompositor.currentFrameSource) {
-        alert('Please select a camera source for recording from the dropdown.'); return;
-      }
-
-      if (!isMainCanvasRecording) {
-        logToConsole('Starting main canvas recording (main-output-canvas)...', 'info');
-        const stream = mainOutputCanvasElement.captureStream(30);
-        const mimeTypes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
-        let selectedMimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
-        if (!selectedMimeType) {
-          alert('Error: Browser does not support common video recording formats for canvas.'); return;
-        }
-        try {
-          mainMediaRecorder = new MediaRecorder(stream, { mimeType: selectedMimeType });
-        } catch (e) {
-          alert(`Error starting recorder: ${e.message}`); return;
-        }
-        mainRecordedChunks = [];
-        mainMediaRecorder.ondataavailable = (event) => { if (event.data.size > 0) mainRecordedChunks.push(event.data); };
-        mainMediaRecorder.onstop = () => {
-          const blob = new Blob(mainRecordedChunks, { type: selectedMimeType });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url; a.download = `main_output_${new Date().toISOString().replace(/[:.]/g, '-')}.${selectedMimeType.split('/')[1].split(';')[0]}`;
-          document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-          logToConsole('Main canvas recording stopped. File downloaded.', 'success');
-          recordCanvasBtn.textContent = 'Record Output Canvas';
-          recordCanvasBtn.classList.remove('btn-danger'); recordCanvasBtn.classList.add('btn-success');
-          isMainCanvasRecording = false;
-        };
-        mainMediaRecorder.start();
-        recordCanvasBtn.textContent = 'Stop Recording Output';
-        recordCanvasBtn.classList.remove('btn-success'); recordCanvasBtn.classList.add('btn-danger');
-        isMainCanvasRecording = true;
-      } else {
-        if (mainMediaRecorder) mainMediaRecorder.stop();
-      }
-    });
-  }
+  const mainOutputCanvasElementForTeleprompter = document.getElementById('main-output-canvas'); // Ensure this is the correct element
+  initializeTeleprompterStreaming(mainOutputCanvasElementForTeleprompter, mainRecordingCompositor);
+  // --- End of moved Teleprompter Streaming Logic ---
 
   // --- WebSocket Initialization ---
   const handleWebSocketOpen = () => {
@@ -420,252 +158,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initializeFullscreenToggles();
   initializeSecretPanel();
 
+  // Actor Loading
+  initializeActorLoader();
+  // Scene Assembly Initialization
+  initializeSceneAssembly();
+
   logToConsole("Jurassic Park AI Director UI Initialized (Corrected Structure)", "success");
 }); // End DOMContentLoaded
-
-// --- Initialize Collapsible Sections ---
-function initializeCollapsibleSections() {
-  document.querySelectorAll('.collapsible-header').forEach(header => {
-    const section = header.closest('.collapsible-section');
-    const content = section.querySelector('.collapsible-content');
-
-    const startCollapsed = section.classList.contains('start-collapsed');
-    if (!startCollapsed) {
-      header.classList.add('expanded');
-      if (content) content.style.display = '';
-    } else {
-      if (content) content.style.display = 'none';
-    }
-
-    header.addEventListener('click', () => {
-      const isExpanding = !header.classList.contains('expanded');
-      header.classList.toggle('expanded', isExpanding);
-
-      if (content) {
-        content.style.display = isExpanding ? '' : 'none';
-      }
-    });
-  });
-}
-
-// --- Initialize Fullscreen Toggles ---
-function initializeFullscreenToggles() {
-  document.querySelectorAll('.fullscreen-toggle-btn').forEach(button => {
-    button.addEventListener('click', () => {
-      const targetId = button.dataset.target;
-      const targetPanel = document.getElementById(targetId);
-      const pageLayout = targetPanel.closest('.page-layout');
-
-      if (!targetPanel || !pageLayout) return;
-
-      const isCurrentlyFullscreen = targetPanel.classList.contains('fullscreen');
-      const children = Array.from(pageLayout.children);
-
-      if (isCurrentlyFullscreen) {
-        targetPanel.classList.remove('fullscreen');
-        children.forEach(child => {
-          if (child !== targetPanel) {
-            child.classList.remove('panel-hidden');
-          }
-        });
-      } else {
-        targetPanel.classList.add('fullscreen');
-        children.forEach(child => {
-          if (child !== targetPanel) {
-            child.classList.add('panel-hidden');
-          }
-        });
-      }
-    });
-  });
-}
-
-// --- Initialize Secret Panel ---
-function initializeSecretPanel() {
-  const toggleBtn = document.getElementById('secret-panel-toggle-btn');
-  const secretPanel = document.getElementById('secret-panel');
-  const toggleHeadersCheckbox = document.getElementById('hideHeadersToggle');
-  const body = document.body;
-  const invertColorsBtn = document.getElementById('invertColorsBtn');
-
-  if (!toggleBtn || !secretPanel || !toggleHeadersCheckbox) {
-    logToConsole('Secret panel elements not found. Cannot initialize.', 'warn');
-    return;
-  }
-
-  function toggleHeadersVisibility() {
-    const headersHidden = body.classList.toggle('hide-headers');
-    toggleHeadersCheckbox.checked = headersHidden;
-    logToConsole(`Headers ${headersHidden ? 'hidden' : 'visible'}`, 'info');
-  }
-
-  toggleBtn.addEventListener('click', () => {
-    secretPanel.classList.toggle('secret-panel-visible');
-    logToConsole(`Secret panel ${secretPanel.classList.contains('secret-panel-visible') ? 'shown' : 'hidden'}`, 'info');
-  });
-
-  toggleHeadersCheckbox.addEventListener('change', toggleHeadersVisibility);
-
-  document.addEventListener('keydown', (event) => {
-    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'SELECT') {
-      return;
-    }
-    if (event.key === 'h' || event.key === 'H') {
-      toggleHeadersVisibility();
-    }
-  });
-
-  if (invertColorsBtn) {
-    invertColorsBtn.addEventListener('click', () => {
-      document.body.classList.toggle('color-scheme-inverted');
-      console.log('Toggled inverted color scheme.');
-      if (document.body.classList.contains('color-scheme-inverted')) {
-        localStorage.setItem('colorScheme', 'inverted');
-      } else {
-        localStorage.removeItem('colorScheme');
-      }
-    });
-  }
-
-  if (localStorage.getItem('colorScheme') === 'inverted') {
-    document.body.classList.add('color-scheme-inverted');
-  }
-
-  logToConsole('Secret panel initialized.', 'info');
-}
-
-// --- New: Function to Update Assembly UI ---
-function updateAssemblyUI(sceneData, sceneDisplayName) {
-  const assemblySection = document.getElementById('scene-assembly-section');
-  const sceneNameSpan = document.getElementById('assembly-scene-name');
-  const takeSelectionArea = document.getElementById('take-selection-area');
-  const assembleButton = document.getElementById('assemble-scene-button');
-
-  if (!assemblySection || !sceneNameSpan || !takeSelectionArea || !assembleButton) {
-    logToConsole("Assembly UI elements not found", "error");
-    return;
-  }
-
-  takeSelectionArea.innerHTML = '<p><em>Loading assembly info...</em></p>';
-  assembleButton.disabled = true;
-  assemblySection.style.display = 'none';
-  sceneNameSpan.textContent = '';
-  currentSceneData = sceneData;
-
-  if (sceneData && sceneData.assembly && Array.isArray(sceneData.assembly) && sceneData.assembly.length > 0) {
-    logToConsole(`Found assembly data for scene: ${sceneDisplayName}`, 'info');
-    sceneNameSpan.textContent = sceneDisplayName;
-    takeSelectionArea.innerHTML = '';
-
-    sceneData.assembly.forEach((segment, index) => {
-      const segmentDiv = document.createElement('div');
-      segmentDiv.className = 'assembly-segment mb-2 p-2 border rounded';
-      segmentDiv.dataset.index = index;
-
-      const description = `Segment ${index + 1}: Shot "${segment.shot}", Cam "${segment.camera}", In Frame: ${segment.in}, Out Frame: ${segment.out}`;
-      const label = document.createElement('label');
-      label.textContent = `${description} - Take #:`;
-      label.htmlFor = `take-input-${index}`;
-      label.className = 'form-label me-2';
-
-      const input = document.createElement('input');
-      input.type = 'number';
-      input.id = `take-input-${index}`;
-      input.className = 'form-control form-control-sm d-inline-block take-input';
-      input.style.width = '80px';
-      input.min = '1';
-      input.value = '1';
-      input.required = true;
-      input.dataset.shot = segment.shot;
-      input.dataset.camera = segment.camera;
-      input.dataset.inFrame = segment.in;
-      input.dataset.outFrame = segment.out;
-
-      segmentDiv.appendChild(label);
-      segmentDiv.appendChild(input);
-      takeSelectionArea.appendChild(segmentDiv);
-    });
-
-    assembleButton.disabled = false;
-    assemblySection.style.display = 'block';
-  } else {
-    logToConsole(`No assembly data found or scene not loaded for: ${sceneDisplayName || 'selected scene'}`, 'warn');
-    takeSelectionArea.innerHTML = '<p><em>No assembly definition found for this scene.</em></p>';
-    assemblySection.style.display = 'block';
-    assembleButton.disabled = true;
-  }
-}
-
-// --- New: Add listener for the Assemble Scene button ---
-const assembleBtn = document.getElementById('assemble-scene-button');
-if (assembleBtn) {
-  assembleBtn.addEventListener('click', async () => {
-    if (!currentSceneData || !currentSceneData.directory || !currentSceneData.assembly) {
-      logToConsole('Cannot assemble: No valid scene data or assembly loaded.', 'error');
-      alert('Error: Scene data is missing or invalid. Please select a scene with assembly info.');
-      return;
-    }
-
-    const takeInputs = document.querySelectorAll('#take-selection-area .take-input');
-    const assemblyTakes = [];
-    let isValid = true;
-
-    takeInputs.forEach(input => {
-      const takeNumber = parseInt(input.value, 10);
-      if (isNaN(takeNumber) || takeNumber < 1) {
-        isValid = false;
-        input.classList.add('is-invalid');
-      } else {
-        input.classList.remove('is-invalid');
-        assemblyTakes.push({
-          shot: input.dataset.shot,
-          camera: input.dataset.camera,
-          inFrame: parseInt(input.dataset.inFrame, 10),
-          outFrame: parseInt(input.dataset.outFrame, 10),
-          take: takeNumber
-        });
-      }
-    });
-
-    if (!isValid) {
-      logToConsole('Assembly cancelled: Invalid take number entered.', 'warn');
-      alert('Please enter a valid take number (>= 1) for all segments.');
-      return;
-    }
-
-    const assemblyPayload = {
-      sceneDirectory: currentSceneData.directory,
-      takes: assemblyTakes
-    };
-
-    logToConsole('Initiating scene assembly with payload:', 'info', assemblyPayload);
-    assembleBtn.disabled = true;
-    assembleBtn.textContent = 'Assembling...';
-
-    try {
-      const response = await fetch('/api/assemble-scene', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(assemblyPayload)
-      });
-      if (!response.ok) {
-        let errorMsg = `Assembly request failed with status: ${response.status}`;
-        try {
-          const errorResult = await response.json();
-          errorMsg = errorResult.message || errorMsg;
-        } catch (e) { /* Ignore if response body is not JSON */ }
-        throw new Error(errorMsg);
-      }
-      const result = await response.json();
-      logToConsole('Assembly request successful:', 'success', result);
-      alert(result.message || 'Scene assembly process initiated successfully!');
-    } catch (error) {
-      logToConsole(`Error during scene assembly request: ${error}`, 'error');
-      alert(`Error starting assembly: ${error.message}`);
-    } finally {
-      assembleBtn.disabled = false;
-      assembleBtn.disabled = false; // Re-enable button
-      assembleBtn.textContent = 'Assemble Scene';
-    }
-  });
-}
