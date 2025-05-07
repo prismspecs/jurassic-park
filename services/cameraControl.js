@@ -5,6 +5,11 @@ const path = require('path');
 const config = require('../config.json');
 const Camera = require('./camera');
 
+// PLEASE UPDATE THIS PATTERN to match the name of your actual PTZ camera
+// as reported by 'system_profiler SPCameraDataType'
+// For example, if your camera is "Logitech PTZ Pro 2", you might use /Logitech PTZ Pro 2/i
+// const ACTUAL_PTZ_CAMERA_NAME_PATTERN = /PLEASE_UPDATE_THIS_PATTERN/i;
+
 class CameraControl {
     constructor() {
         if (CameraControl.instance) {
@@ -337,7 +342,32 @@ class CameraControl {
                     });
                 };
 
-                const deviceIndex = device; // Assuming 'device' holds the numerical index for darwin
+                // VV NEW LOGIC TO DETERMINE THE CORRECT uvc-util DEVICE INDEX VV
+                let uvcDeviceIndexToUse;
+                const systemProfilerDeviceId = typeof device === 'string' ? parseInt(device, 10) : device; // Ensure it's a number
+
+                const allDetectedDevices = await this.detectVideoDevices(); // Always get fresh list
+                const selectedDeviceForPtz = allDetectedDevices.find(d => d.id === systemProfilerDeviceId);
+
+                if (selectedDeviceForPtz) {
+                    // uvcDeviceIndexToUse = 0; // Always use uvc-util index 0 for macOS PTZ operations
+                    uvcDeviceIndexToUse = systemProfilerDeviceId; // Use the ID from system_profiler directly
+                    console.log(`[macOS PTZ] User selected device '${selectedDeviceForPtz.name}' (System Profiler ID: ${systemProfilerDeviceId}).`);
+                    console.log(`[macOS PTZ] Attempting to use this ID directly as uvc-util device index: -I ${uvcDeviceIndexToUse}`);
+                    // The ACTUAL_PTZ_CAMERA_NAME_PATTERN check is less critical if names are identical or if uvc-util only sees one PTZ cam at index 0.
+                    // It can be retained for specific logging if desired, but the core logic is to use uvcDeviceIndexToUse = 0.
+                    // if (String(ACTUAL_PTZ_CAMERA_NAME_PATTERN) !== String(/PLEASE_UPDATE_THIS_PATTERN/i) && !ACTUAL_PTZ_CAMERA_NAME_PATTERN.test(selectedDeviceForPtz.name)) {
+                    //      console.warn(`[macOS PTZ] Note: The selected device '${selectedDeviceForPtz.name}' does not match the configured ACTUAL_PTZ_CAMERA_NAME_PATTERN. PTZ commands will still target uvc-util index 0.`);
+                    // }
+                } else {
+                    console.error(`[macOS PTZ Error] Could not find details for the UI-selected PTZ device (System Profiler ID: ${systemProfilerDeviceId}) in the list of currently detected video devices.`);
+                    console.error(`[macOS PTZ Error] This means no PTZ command will be sent.`);
+                    console.error(`[macOS PTZ Debug] System Profiler ID used for lookup: ${systemProfilerDeviceId} (type: ${typeof systemProfilerDeviceId})`);
+                    console.error(`[macOS PTZ Debug] List of devices detected by system_profiler at this moment:`, JSON.stringify(allDetectedDevices, null, 2));
+                    return; // Cannot proceed
+                }
+                // ^^ END OF NEW LOGIC ^^
+
                 const cameraInstance = this.getCamera(cameraName); // Get the specific camera instance
 
                 if (!cameraInstance) {
@@ -355,7 +385,7 @@ class CameraControl {
                 // Pan/Tilt command - always send both components
                 if (pan !== null || tilt !== null) { // Only send if at least one changed
                     // Use -s and add quotes around the value, matching user's working CLI command
-                    const cmd = `${this.uvcUtilPath} -I ${deviceIndex} -s pan-tilt-abs="{${panToSend},${tiltToSend}}"`;
+                    const cmd = `${this.uvcUtilPath} -I ${uvcDeviceIndexToUse} -s pan-tilt-abs="{${panToSend},${tiltToSend}}"`;
                     try {
                         await executeUVCCommand(cmd);
                         // Update cache on success
@@ -370,7 +400,7 @@ class CameraControl {
                 // Separate Zoom command (assuming control name 'zoom-abs')
                 if (zoom !== null) {
                     // Also use -s and add quotes for zoom value
-                    const cmd = `${this.uvcUtilPath} -I ${deviceIndex} -s zoom-abs="${zoom}"`; // Guessed control name
+                    const cmd = `${this.uvcUtilPath} -I ${uvcDeviceIndexToUse} -s zoom-abs="${zoom}"`; // Guessed control name
                     try {
                         await executeUVCCommand(cmd);
                         // Note: Zoom caching not implemented yet
@@ -408,10 +438,10 @@ class CameraControl {
         const camera = this.getCamera(cameraName);
         if (camera) {
             // Only set the PTZ device, don't touch the other devices
-            camera.setPTZDevice(deviceId);
-            console.log(`Set PTZ device for camera ${cameraName} to: `, deviceId);
+            camera.setPTZDevice(deviceId); // deviceId here is the system_profiler index
+            console.log(`Set PTZ device target for camera ${cameraName} to system_profiler device ID: `, deviceId);
         } else {
-            console.error(`Cannot set PTZ device: Camera ${cameraName} not found`);
+            console.error(`Cannot set PTZ device target: Camera ${cameraName} not found`);
         }
     }
 
