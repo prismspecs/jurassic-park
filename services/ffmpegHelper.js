@@ -64,17 +64,13 @@ module.exports = {
                     '-f', 'avfoundation',
                     '-framerate', '30',
                     ...(resolution && resolution.width && resolution.height ? ['-video_size', `${resolution.width}x${resolution.height}`] : []),
-                    '-i', '0:1',  // 0 is video, 1 is audio
+                    '-i', '0', // Video device 0 only
                     '-t', durationSec.toString(),
                     '-c:v', 'libx264',
                     '-preset', 'ultrafast',
                     '-crf', '17',
                     '-pix_fmt', 'yuv420p',
-                    '-c:a', 'aac',
-                    '-ar', '48000',
-                    '-ac', '2',
-                    '-b:a', '320k',
-                    '-af', 'aresample=async=1:first_pts=0',
+                    '-an', // Explicitly disable audio recording
                     '-thread_queue_size', '512',
                     '-max_muxing_queue_size', '2048',
                     '-vsync', 'vfr',

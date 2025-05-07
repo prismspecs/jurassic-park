@@ -4,6 +4,12 @@ const fs = require('fs');
 const path = require('path');
 // const record = require('node-record-lpcm16'); // Reverted: Commenting out node-record-lpcm16
 
+// Add a note about SoX dependency:
+// IMPORTANT: This module now uses SoX for audio recording.
+// Please ensure SoX is installed and accessible in your system's PATH.
+// For Linux, typically: sudo apt-get install sox
+// For macOS, typically: brew install sox
+
 class AudioRecorder {
     constructor() {
         if (AudioRecorder.instance) {
@@ -231,123 +237,122 @@ class AudioRecorder {
     }
 
     _startDeviceRecording(deviceId, deviceData, outputBasePath, durationSec = null) {
-        // Format a proper device number for the filename
-        const deviceNumber = this.activeDevices.size > 1 ?
-            Array.from(this.activeDevices.keys()).indexOf(deviceId) + 1 : 1;
+        this.recordingCounter++;
+        const fileName = `Audio_${this.recordingCounter}.wav`;
+        const filePath = path.join(outputBasePath, fileName);
 
-        // Create device-specific directory directly under outputBasePath
-        const deviceAudioDir = path.join(outputBasePath, `Audio_${deviceNumber}`);
-        if (!fs.existsSync(deviceAudioDir)) {
-            try {
-                fs.mkdirSync(deviceAudioDir, { recursive: true });
-                console.log(`Created device audio directory: ${deviceAudioDir}`);
-            } catch (error) {
-                console.error(`Failed to create device audio directory ${deviceAudioDir}:`, error);
-                // Optionally stop trying to record for this device
-                return;
+        // Ensure the output directory exists
+        try {
+            if (!fs.existsSync(outputBasePath)) {
+                fs.mkdirSync(outputBasePath, { recursive: true });
+                console.log(`[AudioRecorder] Created output directory: ${outputBasePath}`);
             }
-        }
-
-        const fileName = `original.wav`; // Set fixed filename
-        const filePath = path.join(deviceAudioDir, fileName);
-
-        console.log(`Starting recording for ${deviceData.name} (${deviceId}) -> ${filePath}`);
-
-        let recorderProcess;
-        if (this.platform === 'linux') {
-            // Build arecord command with optional duration
-            let command = `arecord -D ${deviceId} -f cd -t wav`;
-            if (durationSec && durationSec > 0) {
-                command += ` -d ${Math.ceil(durationSec)}`; // Use ceil to ensure full duration
-                console.log(`Recording duration set to ${Math.ceil(durationSec)} seconds.`);
-            } else {
-                console.warn(`No duration specified for recording ${filePath}. It may run indefinitely until manually stopped.`);
-            }
-            command += ` \"${filePath}\"`;
-            console.log(`Executing: ${command}`);
-            recorderProcess = exec(command, (error, stdout, stderr) => {
-                // This callback executes when the process *finishes* or errors *during* execution.
-                // We rely on the 'exit' event for cleanup after explicit stopping.
-                if (error && !recorderProcess.killed) { // Check !killed because we expect an error on SIGTERM/SIGKILL
-                    console.error(`arecord process error for ${deviceId}: ${stderr || error.message}`);
-                    if (this.recordingProcesses.has(deviceId) && !this.recordingProcesses.get(deviceId).stopping) {
-                        this.recordingProcesses.delete(deviceId); // Clean up if startup failed, but only if not already stopping
-                    }
-                }
-            });
-        } else if (this.platform === 'darwin') {
-            // Reverted to ffmpeg for macOS recording
-            console.warn(`Using ffmpeg (spawn) for macOS recording with device: ":${deviceData.name}". Ensure ffmpeg is installed.`);
-            const ffmpegArgs = [
-                '-y',
-                '-thread_queue_size', '1024',
-                '-f', 'avfoundation',
-                '-i', `:${deviceData.name}`,
-                '-c:a', 'pcm_s16le',
-                '-ar', '44100',
-                '-ac', '1'
-            ];
-
-            if (durationSec && durationSec > 0) {
-                ffmpegArgs.push('-t', Math.ceil(durationSec).toString());
-                console.log(`Recording duration set to ${Math.ceil(durationSec)} seconds.`);
-            } else {
-                console.log(`Recording ${filePath} without a fixed duration. Will record until stopped.`);
-            }
-            ffmpegArgs.push(filePath);
-
-            console.log(`Executing macOS recording command: ffmpeg ${ffmpegArgs.join(' ')}`);
-            try {
-                recorderProcess = spawn('ffmpeg', ffmpegArgs);
-            } catch (spawnError) {
-                console.error(`Failed to spawn ffmpeg process for ${deviceData.name} (${deviceId}):`, spawnError);
-                return;
-            }
-
-            if (recorderProcess.stderr) {
-                recorderProcess.stderr.on('data', (data) => {
-                    console.error(`ffmpeg stderr (recording ${deviceData.name} - ${deviceId}): ${data}`);
-                });
-            }
-            if (recorderProcess.stdout) {
-                recorderProcess.stdout.on('data', (data) => {
-                    console.log(`ffmpeg stdout (recording ${deviceData.name} - ${deviceId}): ${data}`);
-                });
-            }
-            // The process object is stored below, outside the platform-specific block.
-        } else {
-            console.error(`Recording not supported on platform: ${this.platform}`);
+        } catch (dirError) {
+            console.error(`[AudioRecorder] Error creating directory ${outputBasePath}:`, dirError);
+            // Optionally, post a message back to the parent or handle error appropriately
+            this.activeDevices.get(deviceId).process = null; // Ensure process is cleared
+            // this.parentPort.postMessage({ type: 'error', message: `Failed to create directory: ${outputBasePath}` });
             return;
         }
 
-        this.recordingProcesses.set(deviceId, { process: recorderProcess, filePath, stopping: false });
+        let recProcess;
+        const commonArgs = [
+            '-r', '48000', // Sample rate 48kHz
+            '-c', '1',     // Mono
+            '-b', '16',    // 16-bit
+            // '--buffer', '8192', // Optional: SoX buffer size
+            // '-V1', // Optional: SoX verbosity
+            filePath
+        ];
 
-        // Set exit handler early to ensure we catch any unexpected exits
-        recorderProcess.on('exit', (code, signal) => {
-            const recordingData = this.recordingProcesses.get(deviceId);
-            // Only handle exits if the process is still tracked and wasn't manually stopped
-            if (recordingData && !recordingData.stopping) {
-                if (code === 0) {
-                    // Process likely finished due to duration - this is expected, not an error
-                    console.log(`Recording process for ${deviceId} finished cleanly (duration reached?). Code: ${code}, Signal: ${signal}`);
-                } else {
-                    // Non-zero exit code indicates a potential problem
-                    console.warn(`Recording process for ${deviceId} exited unexpectedly with code ${code}, signal ${signal}.`);
-                }
-                // Clean up since it exited on its own
+        if (durationSec && durationSec > 0) {
+            commonArgs.push('trim', '0', durationSec.toString());
+        }
+        // If durationSec is null or 0, SoX will record until stopped by _stopDeviceRecording.
+
+        if (this.platform === 'linux') {
+            // deviceId for Linux is expected to be like 'hw:0,0'
+            const soxArgs = ['-t', 'alsa', deviceId, ...commonArgs];
+            console.log(`[AudioRecorder] Starting SoX recording for ${deviceId} on Linux: sox ${soxArgs.join(' ')}`);
+            try {
+                recProcess = spawn('sox', soxArgs);
+            } catch (spawnError) {
+                console.error(`[AudioRecorder] Failed to spawn SoX on Linux for ${deviceId}:`, spawnError);
+                // this.parentPort.postMessage({ type: 'error', message: `Failed to spawn SoX for ${deviceId}` });
+                return;
+            }
+        } else if (this.platform === 'darwin') {
+            // deviceData.name for macOS is the device name like "MacBook Pro Microphone"
+            const soxArgs = ['-t', 'coreaudio', deviceData.name, ...commonArgs];
+            console.log(`[AudioRecorder] Starting SoX recording for ${deviceData.name} on macOS: sox ${soxArgs.join(' ')}`);
+            try {
+                recProcess = spawn('sox', soxArgs);
+            } catch (spawnError) {
+                console.error(`[AudioRecorder] Failed to spawn SoX on macOS for ${deviceData.name}:`, spawnError);
+                // this.parentPort.postMessage({ type: 'error', message: `Failed to spawn SoX for ${deviceData.name}` });
+                return;
+            }
+        } else {
+            console.error(`[AudioRecorder] Recording not supported on platform: ${this.platform} for device ${deviceId}`);
+            // this.parentPort.postMessage({ type: 'error', message: `Recording not supported on platform: ${this.platform}` });
+            return;
+        }
+
+        if (!recProcess) {
+            console.error(`[AudioRecorder] SoX process not spawned for device ${deviceId}.`);
+            return;
+        }
+
+        // Store the process and file path
+        this.activeDevices.get(deviceId).process = recProcess;
+        this.activeDevices.get(deviceId).filePath = filePath;
+        this.recordingProcesses.set(deviceId, { process: recProcess, filePath, stopping: false });
+
+
+        recProcess.stdout.on('data', (data) => {
+            console.log(`[AudioRecorder SoX stdout - ${deviceId}]: ${data.toString().trim()}`);
+        });
+
+        let stderrOutput = '';
+        recProcess.stderr.on('data', (data) => {
+            const message = data.toString().trim();
+            // SoX can be quite verbose on stderr even for normal operations.
+            // We'll log it but might need to filter for actual errors if it's too noisy.
+            console.log(`[AudioRecorder SoX stderr - ${deviceId}]: ${message}`);
+            stderrOutput += message + '\n';
+        });
+
+        recProcess.on('error', (err) => {
+            console.error(`[AudioRecorder] Error with SoX process for ${deviceId}:`, err);
+            // this.parentPort.postMessage({ type: 'error', message: `Error with SoX for ${deviceId}: ${err.message}` });
+            this.recordingProcesses.delete(deviceId);
+            if (this.activeDevices.has(deviceId)) {
+                this.activeDevices.get(deviceId).process = null;
+            }
+        });
+
+        recProcess.on('exit', (code, signal) => {
+            const currentProcessData = this.recordingProcesses.get(deviceId);
+            if (currentProcessData && currentProcessData.stopping) {
+                console.log(`[AudioRecorder] SoX process for ${deviceId} was intentionally stopped (signal: ${signal}, code: ${code}). File: ${filePath}`);
+            } else if (code === 0) {
+                console.log(`[AudioRecorder] SoX recording completed successfully for ${deviceId}. File: ${filePath}`);
+            } else {
+                console.error(`[AudioRecorder] SoX process for ${deviceId} exited with code ${code}, signal ${signal}. File may be incomplete or invalid: ${filePath}`);
+                console.error(`[AudioRecorder SoX stderr output for ${deviceId} on exit]:\n${stderrOutput}`);
+                // this.parentPort.postMessage({ type: 'error', message: `SoX for ${deviceId} exited with code ${code}, signal ${signal}.` });
+            }
+            // Clean up whether stopping was intentional or not, if not already handled by _stopDeviceRecording
+            if (this.recordingProcesses.has(deviceId) && !(currentProcessData && currentProcessData.stopping)) {
                 this.recordingProcesses.delete(deviceId);
             }
-            // If recordingData.stopping is true, the exit is handled by _stopDeviceRecording
-        });
-
-        recorderProcess.on('error', (err) => {
-            console.error(`Failed to start recording process for ${deviceId}:`, err);
-            if (this.recordingProcesses.has(deviceId) && !this.recordingProcesses.get(deviceId).stopping) {
-                this.recordingProcesses.delete(deviceId); // Clean up on startup error
+            if (this.activeDevices.has(deviceId)) {
+                this.activeDevices.get(deviceId).process = null;
             }
         });
 
-        console.log(`Recording process started for ${deviceId} with PID: ${recorderProcess.pid}`);
+        console.log(`[AudioRecorder] SoX recording process started for ${deviceId} (PID: ${recProcess.pid}). Output to: ${filePath}`);
+        // this.parentPort.postMessage({ type: 'started', deviceId, filePath });
     }
 
     stopRecording() {
