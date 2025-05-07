@@ -60,6 +60,10 @@ const audioStorage = multer.diskStorage({
 
 const audioUpload = multer({ storage: audioStorage });
 
+// New multer instance for canvas video uploads (in-memory)
+const canvasVideoStorage = multer.memoryStorage();
+const canvasUpload = multer({ storage: canvasVideoStorage });
+
 // --- NEW Session API Endpoints ---
 
 // GET list of existing session IDs (updated to use new service method)
@@ -289,12 +293,8 @@ router.post('/actorsReady', (req, res) => {
 
 // Handle action button press
 router.post('/action', (req, res) => {
-    // Pass req and res to the sceneController.action function
-    action(req, res);
-    // The sceneController.action function will now be responsible for sending the response
-    // So, we might remove or modify the res.json() here, depending on how action handles responses.
-    // For now, let's assume action will send its own response, especially on error.
-    // If action completes without sending a response in some paths, this might need adjustment.
+    // sceneController.action(req, res); // Pass req and res
+    action(req, res); // Direct call if action is imported directly
 });
 
 // Get current voice bypass state
@@ -689,5 +689,8 @@ router.post('/api/assemble-scene', sceneController.assembleScene);
 router.get('/api/props', (req, res) => {
     // ... existing code ...
 });
+
+// --- NEW: Route for uploading canvas video ---
+router.post('/api/upload/canvas-video', canvasUpload.single('videoBlob'), sceneController.uploadCanvasVideo);
 
 module.exports = router;

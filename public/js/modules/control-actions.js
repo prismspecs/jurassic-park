@@ -111,7 +111,7 @@ export function initShot(sceneDirectory, shotIdentifier) {
   document.getElementById("status").innerText = `Initializing Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}'...`;
 
   // Reset for new shot
-  currentShotData = null;
+  currentShotData = null; // Will store { scene: ..., shot: ... }
   activeCanvasRecorders = {};
   recordedCanvasBlobs = {};
   currentShotDurationSec = 0;
@@ -123,20 +123,15 @@ export function initShot(sceneDirectory, shotIdentifier) {
     .then(info => {
       document.getElementById("status").innerText = info.message;
       logToConsole(`Shot init request sent for Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}'.`, 'success');
-      if (info.sceneData && info.sceneData.shot) { // Assuming server sends { sceneData: { scene: ..., shot: ... } }
-        currentShotData = info.sceneData.shot; // Store the shot object
-        logToConsole(`Stored currentShotData for '${currentShotData.name || shotIdDecoded}'. Cameras: ${currentShotData.cameras ? currentShotData.cameras.length : 0}`, 'info', currentShotData);
-        const sceneDisplayName = info.sceneData.scene?.description || info.sceneData.scene?.directory || sceneDirDecoded; // Handle if scene object is nested
-        updateAssemblyUI(info.sceneData, sceneDisplayName);
-      } else if (info.sceneData) { // Fallback if shot is not nested under info.sceneData.shot
-        currentShotData = info.sceneData; // Store the sceneData object directly if it is the shot
-        logToConsole(`Stored currentShotData (fallback) for '${info.sceneData.name || shotIdDecoded}'. Cameras: ${info.sceneData.cameras ? info.sceneData.cameras.length : 0}`, 'info', info.sceneData);
-        const sceneDisplayName = info.sceneData.description || info.sceneData.directory || sceneDirDecoded;
-        updateAssemblyUI(info.sceneData, sceneDisplayName);
-      }
-      else {
+      if (info.sceneData && info.sceneData.scene && info.sceneData.shot) {
+        currentShotData = info.sceneData; // Store the whole sceneData object
+        logToConsole(`Stored currentShotData for Scene: '${currentShotData.scene.directory}', Shot: '${currentShotData.shot.name || shotIdDecoded}'. Cameras: ${currentShotData.shot.cameras ? currentShotData.shot.cameras.length : 0}`, 'info', currentShotData);
+        const sceneDisplayName = currentShotData.scene.description || currentShotData.scene.directory || sceneDirDecoded;
+        updateAssemblyUI(currentShotData, sceneDisplayName); // Pass the whole currentShotData
+      } else {
         updateAssemblyUI(null, sceneDirDecoded);
-        logToConsole('No sceneData or shot data in initShot response to store for canvas recording or update assembly UI.', 'warn');
+        logToConsole('No complete sceneData (with scene and shot) in initShot response to store.', 'warn');
+        currentShotData = null; // Ensure it's null if data is incomplete
       }
     })
     .catch(err => {
@@ -147,10 +142,36 @@ export function initShot(sceneDirectory, shotIdentifier) {
     });
 }
 
-// Function to be called from WebSocket handler when SHOT_START is received
-export function setShotDuration(duration) {
-  currentShotDurationSec = duration;
-  logToConsole(`Shot duration set to: ${currentShotDurationSec} seconds.`, 'info');
+/**
+ * Sets the current shot details including duration and take number from WebSocket SHOT_START.
+ * @param {object} shotDetails - The shot object from the WebSocket message.
+ */
+export function setCurrentShotDetails(shotDetails) {
+  if (!shotDetails) {
+    logToConsole('setCurrentShotDetails received null or undefined shotDetails.', 'warn');
+    return;
+  }
+
+  if (typeof shotDetails.duration === 'number') {
+    currentShotDurationSec = shotDetails.duration;
+    logToConsole(`Shot duration set to: ${currentShotDurationSec} seconds.`, 'info');
+  } else {
+    logToConsole('setCurrentShotDetails: shotDetails.duration is not a number.', 'warn', shotDetails);
+  }
+
+  // currentShotData now holds { scene: ..., shot: ... }
+  // shotDetails from WebSocket is the shot object: { name: ..., duration: ..., take: ... }
+  if (currentShotData && currentShotData.shot && typeof shotDetails.take === 'number') {
+    currentShotData.shot.take = shotDetails.take; // Assign take to the nested shot object
+    logToConsole(`Shot take number set to: ${currentShotData.shot.take}.`, 'info');
+  } else {
+    if (!currentShotData || !currentShotData.shot) {
+      logToConsole('setCurrentShotDetails: currentShotData or currentShotData.shot is null, cannot set take number.', 'warn');
+    }
+    if (typeof shotDetails.take !== 'number') {
+      logToConsole('setCurrentShotDetails: shotDetails.take is not a number.', 'warn', shotDetails);
+    }
+  }
 }
 
 // --- NEW Function to stop all active canvas recorders ---
@@ -215,8 +236,8 @@ export function action(cameraManager) {
 
   if (recordingType === 'canvas') {
     logToConsole("Canvas recording selected.", "info");
-    if (!currentShotData || !currentShotData.cameras || currentShotData.cameras.length === 0) {
-      logToConsole("Cannot start canvas recording: No current shot data or no cameras in the current shot.", "error");
+    if (!currentShotData || !currentShotData.shot || !currentShotData.shot.cameras || currentShotData.shot.cameras.length === 0) {
+      logToConsole("Cannot start canvas recording: No current shot data, shot object, or no cameras in the current shot.", "error");
       document.getElementById("status").innerText = "Error: No shot data for canvas recording.";
       return;
     }
@@ -250,7 +271,7 @@ export function action(cameraManager) {
       return;
     }
 
-    logToConsole(`Attempting to record canvases for ${currentShotData.cameras.length} cameras in shot '${currentShotData.name}'. Compositors available: ${cameraManager.cameraCompositors.size}`, "info");
+    logToConsole(`Attempting to record canvases for ${currentShotData.shot.cameras.length} cameras in shot '${currentShotData.shot.name}'. Compositors available: ${cameraManager.cameraCompositors.size}`, "info");
     let MimeType = 'video/webm;codecs=vp9'; // Default, good for alpha
     if (!MediaRecorder.isTypeSupported(MimeType)) {
       logToConsole(`MIME type ${MimeType} not supported, trying video/webm;codecs=vp8`, 'warn');
@@ -268,7 +289,7 @@ export function action(cameraManager) {
     }
 
     let recordersStarted = 0;
-    currentShotData.cameras.forEach(shotCamera => {
+    currentShotData.shot.cameras.forEach(shotCamera => {
       const cameraName = shotCamera.name;
       const compositor = cameraManager.cameraCompositors.get(cameraName);
 
@@ -302,20 +323,53 @@ export function action(cameraManager) {
         recorder.onstop = () => {
           logToConsole(`MediaRecorder stopped for ${cameraName}. Processing ${recordedCanvasBlobs[cameraName].length} chunks.`, "info");
           const blob = new Blob(recordedCanvasBlobs[cameraName], { type: MimeType || 'video/webm' });
+          recordedCanvasBlobs[cameraName] = []; // Clear chunks after creating blob
 
           logToConsole(`Blob created for ${cameraName}, size: ${blob.size}, type: ${blob.type}. Ready to send.`, "info");
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.style.display = 'none';
-          a.href = url;
-          a.download = `${cameraName}_${currentShotData.name || 'shot'}_canvas_recording.webm`;
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-          document.body.removeChild(a);
-          logToConsole(`Test download initiated for ${cameraName}.`, "info");
 
-          delete activeCanvasRecorders[cameraName];
+          if (!currentShotData || !currentShotData.scene || !currentShotData.shot) {
+            logToConsole('Cannot upload canvas video: currentShotData is incomplete.', 'error');
+            delete activeCanvasRecorders[cameraName];
+            return;
+          }
+
+          const formData = new FormData();
+          const sceneDirectory = currentShotData.scene.directory;
+          const shotName = currentShotData.shot.name || 'default_shot_name';
+          const takeNumber = currentShotData.shot.take || 1; // Default to 1 if not set
+          const filename = `${cameraName}_${shotName}_take${takeNumber}_canvas.webm`;
+
+          formData.append('videoBlob', blob, filename);
+          formData.append('sceneDirectory', sceneDirectory);
+          formData.append('shotName', shotName);
+          formData.append('takeNumber', takeNumber.toString());
+          formData.append('cameraName', cameraName);
+          formData.append('filename', filename);
+
+          logToConsole(`Uploading canvas recording for ${cameraName} to server...`, 'info');
+          fetch('/api/upload/canvas-video', {
+            method: 'POST',
+            body: formData, // FormData will set Content-Type to multipart/form-data automatically
+          })
+            .then(response => {
+              if (!response.ok) {
+                return response.text().then(text => {
+                  throw new Error(`Server responded with ${response.status}: ${text || 'No additional error message'}`);
+                });
+              }
+              return response.json();
+            })
+            .then(data => {
+              logToConsole(`Canvas video for ${cameraName} uploaded successfully: ${data.message}`, 'success');
+              logToConsole(`Server saved to: ${data.filePath}`, 'info'); // Assuming server sends back filePath
+            })
+            .catch(error => {
+              logToConsole(`Error uploading canvas video for ${cameraName}: ${error.message}`, 'error', error);
+              document.getElementById("status").innerText = `Error uploading ${cameraName} canvas: ${error.message}`;
+            })
+            .finally(() => {
+              delete activeCanvasRecorders[cameraName]; // Ensure recorder is removed from active list
+            });
         };
 
         recorder.onerror = (event) => {

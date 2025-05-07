@@ -1,6 +1,6 @@
 import { logToConsole } from './logger.js';
 import { updateCurrentSessionDisplay, populateSessionList } from './session-manager.js';
-import { setShotDuration, stopAllCanvasRecorders } from './control-actions.js';
+import { setCurrentShotDetails, stopAllCanvasRecorders } from './control-actions.js';
 
 let ws = null;
 
@@ -115,10 +115,10 @@ export function initializeWebSocket(cameraManagerInstance, onOpenCallback) {
                     break;
                 case 'SHOT_START':
                     logToConsole('SHOT_START event received from server.', 'info', data);
-                    if (data.shot && typeof data.shot.duration === 'number') {
-                        setShotDuration(data.shot.duration);
+                    if (data.shot) {
+                        setCurrentShotDetails(data.shot);
                     } else {
-                        logToConsole('SHOT_START did not contain valid shot duration.', 'warn', data);
+                        logToConsole('SHOT_START did not contain shot data.', 'warn', data);
                     }
                     break;
                 case 'STOP_CANVAS_RECORDING': // New case for stopping canvas recorders

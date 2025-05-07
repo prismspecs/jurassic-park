@@ -17,6 +17,7 @@ const os = require('os');
 const fs = require('fs'); // Ensure fs is required
 const { assembleSceneFFmpeg } = require('../services/sceneAssembler'); // Import the new assembler function
 const { getLocalIpAddress } = require('../utils/networkUtils');
+const sanitize = require('sanitize-filename'); // Ensure sanitize-filename is required
 
 // Active workers and timeouts tracking
 let activeWorkers = [];
@@ -317,7 +318,6 @@ async function action(req, res) {
     const shot = scene.shots[currentStageState.shotIndex]; // Safe to access now
 
     // Ensure shot has a name or number for logging/reference
-    const sanitize = require('sanitize-filename');
     const safeShotName = sanitize(shot.name || `shot_${currentStageState.shotIndex + 1}`);
     const shotRef = shot.name || `Shot #${shot.number || currentStageState.shotIndex}`;
 
@@ -535,7 +535,7 @@ async function action(req, res) {
             broadcast({
                 type: 'SHOT_START',
                 scene: { directory: currentStageState.scene },
-                shot: { name: shot.name, number: shot.number, duration: shotDurationSec }
+                shot: { name: shot.name, number: shot.number, duration: shotDurationSec, take: takeNumber }
             });
             broadcastConsole(`Broadcasted SHOT_START for ${currentStageState.scene}, ${shotRef}`, 'success');
         } catch (broadcastError) {
@@ -711,10 +711,69 @@ async function assembleScene(req, res) {
         });
 }
 
+// --- NEW: Controller function for canvas video uploads ---
+async function uploadCanvasVideo(req, res) {
+    broadcastConsole('Received canvas video upload request.', 'info');
+    try {
+        if (!req.file || !req.file.buffer) {
+            broadcastConsole('Canvas upload error: No file buffer received.', 'error');
+            return res.status(400).json({ success: false, message: 'No video file received.' });
+        }
+
+        const { sceneDirectory, shotName, takeNumber, cameraName, filename: clientFilename } = req.body;
+        const videoBuffer = req.file.buffer;
+
+        if (!sceneDirectory || !shotName || !takeNumber || !cameraName) {
+            broadcastConsole('Canvas upload error: Missing metadata (scene, shot, take, or cameraName).', 'error');
+            return res.status(400).json({ success: false, message: 'Missing required metadata.' });
+        }
+
+        const sessionDir = sessionService.getSessionDirectory();
+        if (!sessionDir) {
+            broadcastConsole('Canvas upload error: Could not get session directory.', 'error');
+            return res.status(500).json({ success: false, message: 'Session directory not found.' });
+        }
+
+        const safeShotName = sanitize(shotName || 'unknown_shot');
+        const takeNumStr = takeNumber.toString(); // Ensure it's a string for path construction
+        const shotTakeIdentifier = `${safeShotName}_${takeNumStr}`;
+
+        const sceneRecordingsPath = path.join(sessionDir, sceneDirectory);
+        const baseShotTakePath = path.join(sceneRecordingsPath, shotTakeIdentifier);
+        const cameraSpecificPath = path.join(baseShotTakePath, cameraName); // Create path for camera-specific folder
+
+        // Ensure the full camera-specific path exists
+        if (!fs.existsSync(cameraSpecificPath)) {
+            fs.mkdirSync(cameraSpecificPath, { recursive: true });
+            broadcastConsole(`Created directory for canvas recording: ${cameraSpecificPath}`, 'info');
+        }
+
+        // Use a consistent naming scheme, incorporating cameraName and ensuring .webm extension
+        // const serverFilename = sanitize(clientFilename || `${cameraName}_${safeShotName}_take${takeNumStr}_canvas.webm`); // Old filename
+        const serverFilename = 'canvas.webm'; // New filename
+        const finalFilePath = path.join(cameraSpecificPath, serverFilename);
+
+        fs.writeFileSync(finalFilePath, videoBuffer);
+        broadcastConsole(`Canvas video for ${cameraName} (Shot: ${shotName}, Take: ${takeNumber}) saved to: ${finalFilePath}`, 'success');
+
+        res.json({
+            success: true,
+            message: `Canvas video for ${cameraName} uploaded and saved.`,
+            filePath: finalFilePath
+        });
+
+    } catch (error) {
+        console.error("Error during canvas video upload:", error);
+        broadcastConsole(`Canvas video upload failed: ${error.message}`, 'error');
+        res.status(500).json({ success: false, message: `Canvas video upload failed: ${error.message}` });
+    }
+}
+
 module.exports = {
     initShot,
     actorsReady,
     action,
     getCurrentScene,
-    assembleScene
+    assembleScene,
+    uploadCanvasVideo // Add new function to exports
 };
