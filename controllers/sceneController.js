@@ -400,17 +400,26 @@ async function action(req, res) {
             for (const shotCameraInfo of shot.cameras) {
                 const recordingCameraName = shotCameraInfo.name;
                 broadcastConsole(`Processing camera for recording: ${recordingCameraName}`, 'info');
+
                 const managedCamera = cameraControl.getCamera(recordingCameraName);
                 if (!managedCamera) {
-                    broadcastConsole(`Camera ${recordingCameraName} not found in managed cameras. Skipping.`, 'warn');
+                    broadcastConsole(`Camera ${recordingCameraName} not found in managed cameras. Skipping recording for this camera.`, 'warn');
                     continue;
                 }
-                const recordingDevicePath = managedCamera.settings?.recordingDevice;
-                if (!recordingDevicePath) {
-                    broadcastConsole(`Recording device path not set for camera ${recordingCameraName}. Skipping.`, 'warn');
+
+                // Check recording device setting more carefully
+                const recordingDeviceSetting = managedCamera.recordingDevice;
+                broadcastConsole(`Checking recording device for ${recordingCameraName}. Found setting: '${recordingDeviceSetting}' (type: ${typeof recordingDeviceSetting})`, 'info');
+
+                // Allow 0 or "0" as potentially valid device indices on some systems, but not null/undefined/empty string
+                if (recordingDeviceSetting === null || recordingDeviceSetting === undefined || recordingDeviceSetting === '') {
+                    broadcastConsole(`Recording device *not set* for camera ${recordingCameraName}. Skipping.`, 'warn');
                     continue;
                 }
-                broadcastConsole(`Recording device path for ${recordingCameraName}: ${recordingDevicePath}`, 'info');
+                // If we reach here, recordingDeviceSetting has a value (could be '0', a path, etc.)
+                const recordingDevicePath = recordingDeviceSetting; // Use the validated setting
+                broadcastConsole(`Using recording device for ${recordingCameraName}: ${recordingDevicePath}`, 'info');
+
                 if (!resolution || typeof resolution.width !== 'number' || typeof resolution.height !== 'number') {
                     broadcastConsole(`Skipping recording for ${recordingCameraName}: Invalid global resolution.`, 'error');
                     continue;
@@ -427,25 +436,50 @@ async function action(req, res) {
                         outputBasePath: outputBasePath,
                         durationSec: shotDurationSec
                     };
-                    console.log(`[Action] Starting worker for ${recordingCameraName} using ${pipelineName}`);
-                    broadcastConsole(`[Action] Starting worker for ${recordingCameraName} using ${pipelineName}`, 'info');
-                    const worker = new Worker(path.resolve(__dirname, '../workers/recordingWorker.js'), { workerData });
+
+                    console.log(`[Action] Preparing to start worker for ${recordingCameraName}...`);
+                    broadcastConsole(`[Action] Preparing to start worker for ${recordingCameraName}...`, 'info');
+
+                    let worker;
+                    try {
+                        worker = new Worker(path.resolve(__dirname, '../workers/recordingWorker.js'), { workerData });
+                        console.log(`[Action] Worker instance CREATED for ${recordingCameraName}.`);
+                    } catch (workerError) {
+                        console.error(`[Action] FAILED TO CREATE Worker instance for ${recordingCameraName}:`, workerError);
+                        broadcastConsole(`[Action] FAILED TO CREATE Worker instance for ${recordingCameraName}: ${workerError.message}`, 'error');
+                        continue; // Skip this camera if worker creation fails
+                    }
+
                     activeWorkers.push({ name: recordingCameraName, worker: worker });
+                    console.log(`[Action] Worker for ${recordingCameraName} ADDED to activeWorkers. Count: ${activeWorkers.length}`);
+                    broadcastConsole(`[Action] Worker for ${recordingCameraName} added to pool.`, 'debug');
+
                     worker.on('message', (msg) => {
+                        console.log(`[Action][Worker MSG ${recordingCameraName}]:`, msg); // Added log
                         broadcastConsole(`Worker [${recordingCameraName}] message: ${msg.status || JSON.stringify(msg)}`, msg.type || 'info');
                         if (msg.status === 'completed') {
+                            const initialLength = activeWorkers.length;
                             activeWorkers = activeWorkers.filter(w => w.worker !== worker);
-                            broadcastConsole(`Worker for ${recordingCameraName} completed. Active: ${activeWorkers.length}`, 'info');
+                            console.log(`[Action][Worker COMPLETED ${recordingCameraName}]: Removed from activeWorkers. Before: ${initialLength}, After: ${activeWorkers.length}`); // Added log
+                            broadcastConsole(`Worker for ${recordingCameraName} completed. Active workers: ${activeWorkers.length}`, 'info');
                         }
                     });
                     worker.on('error', (err) => {
+                        console.error(`[Action][Worker ERR ${recordingCameraName}]:`, err); // Added log
                         broadcastConsole(`Worker [${recordingCameraName}] error: ${err.message}`, 'error');
-                        console.error(`Worker error for ${recordingCameraName}:`, err);
-                        activeWorkers = activeWorkers.filter(w => w.worker !== worker);
+                        const initialLength = activeWorkers.length;
+                        activeWorkers = activeWorkers.filter(w => w.worker !== worker); // Remove on error
+                        console.log(`[Action][Worker ERR ${recordingCameraName}]: Removed from activeWorkers. Before: ${initialLength}, After: ${activeWorkers.length}`); // Added log
                     });
                     worker.on('exit', (code) => {
+                        console.log(`[Action][Worker EXIT ${recordingCameraName}]: Code ${code}`); // Added log
                         broadcastConsole(`Worker [${recordingCameraName}] exited code ${code}`, code !== 0 ? 'warn' : 'info');
-                        activeWorkers = activeWorkers.filter(w => w.worker !== worker);
+                        const initialLength = activeWorkers.length;
+                        activeWorkers = activeWorkers.filter(w => w.worker !== worker); // Ensure removal on exit
+                        console.log(`[Action][Worker EXIT ${recordingCameraName}]: Removed from activeWorkers. Before: ${initialLength}, After: ${activeWorkers.length}`); // Added log
+                        if (code !== 0) {
+                            // Handle non-zero exit code, e.g., notify UI
+                        }
                     });
                 }
 
@@ -530,18 +564,36 @@ async function action(req, res) {
         }
         // --- End Stop Client Canvas Recorders ---
 
+        // --- Wait for Video Workers to Finish ---
         broadcastConsole('Waiting for video worker(s) to complete...');
         if (activeWorkers.length > 0) {
-            // This simple wait might not be robust enough if workers don't exit cleanly.
-            // A more robust solution would involve Promise.all with individual worker exit events.
-            // For now, keeping it simple, assuming durationSec in worker will lead to exit.
-            await new Promise(resolve => {
+            console.log(`[Action] Waiting for ${activeWorkers.length} workers:`, activeWorkers.map(w => w.name)); // Added log
+            await new Promise((resolve, reject) => { // Added reject
                 const checkInterval = setInterval(() => {
+                    console.log(`[Action] Worker wait check: activeWorkers.length = ${activeWorkers.length}`); // Added log
                     if (activeWorkers.length === 0) {
                         clearInterval(checkInterval);
+                        console.log('[Action] Worker wait finished: activeWorkers is empty.'); // Added log
                         resolve();
                     }
                 }, 500);
+                // Add a timeout to prevent hanging indefinitely
+                const waitTimeout = setTimeout(() => {
+                    clearInterval(checkInterval);
+                    console.error(`[Action] Worker wait TIMED OUT after ${config.workerWaitTimeout || 30000}ms! Active workers remaining:`, activeWorkers.map(w => w.name));
+                    broadcastConsole(`[Action] Worker wait TIMED OUT! Some recordings may be incomplete.`, 'error');
+                    // Decide whether to resolve or reject. Rejecting might stop the flow.
+                    // Resolving allows flow to continue but recordings might be missing/partial.
+                    // Let's resolve for now, but log the error clearly.
+                    resolve(); // Or reject(new Error('Worker wait timed out'))
+                }, config.workerWaitTimeout || 30000); // Default 30 seconds timeout
+
+                // Ensure timeout is cleared if resolved normally
+                const originalResolve = resolve;
+                resolve = () => {
+                    clearTimeout(waitTimeout);
+                    originalResolve();
+                }
             });
             broadcastConsole('All active video worker(s) seem to have exited.', 'info');
         } else {
