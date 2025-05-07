@@ -75,7 +75,7 @@ export function initializeTeleprompterStreaming(mainOutputCanvasElement, mainRec
                     logToConsole('Closed previous live feed teleprompter window.', 'info');
                 }
 
-                const teleprompterWin = window.open('/teleprompter', 'LiveStreamTeleprompter_' + Date.now(), 'width=640,height=480,menubar=no,toolbar=no,location=no,status=no');
+                const teleprompterWin = window.open('/teleprompter', 'LiveStreamTeleprompter_' + Date.now(), 'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no');
                 activeTeleprompterFeedWindow = teleprompterWin;
                 isTeleprompterFeedVisibleState = false;
                 if (toggleTeleprompterFeedBtn) toggleTeleprompterFeedBtn.style.display = 'none';
