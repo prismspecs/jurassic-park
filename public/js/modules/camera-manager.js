@@ -158,7 +158,17 @@ export class CameraManager {
         const cameraElement = this.createCameraElement(newCamera);
         container.appendChild(cameraElement);
         this.cameraElements.set(newCamera.name, cameraElement);
-        if (newCamera.ptzDevice) this.renderPTZControlsForCamera(newCamera.name, newCamera.ptzDevice);
+        // if (newCamera.ptzDevice) this.renderPTZControlsForCamera(newCamera.name, newCamera.ptzDevice);
+
+        // Get the PTZ container from the newly created cameraElement
+        const ptzContainer = cameraElement.querySelector(`#ptz-controls-${newCamera.name}`);
+        if (ptzContainer) {
+          // Always call renderPTZControlsForCamera, let it handle if ptzDevice is null or not.
+          // newCamera.ptzDevice would be the default from the server for this new camera.
+          this.renderPTZControlsForCamera(newCamera.name, newCamera.ptzDevice, ptzContainer);
+        } else {
+          logToConsole(`PTZ container not found in newly added camera element for ${newCamera.name}.`, 'warn');
+        }
 
         // Update internal list, preserving existing client-side state (like showSkeleton/showMask)
         const clientStateMap = new Map(this.cameras.map(c => [c.name, { showSkeleton: c.showSkeleton, showMask: c.showMask }]));
@@ -225,17 +235,19 @@ export class CameraManager {
     if (this.cameras.length === 0) {
       container.innerHTML = '<p>No cameras configured.</p>'; return;
     }
+    // Create and append all camera elements first
     this.cameras.forEach((camera) => {
       const cameraElement = this.createCameraElement(camera);
       container.appendChild(cameraElement);
       this.cameraElements.set(camera.name, cameraElement);
     });
-    // Render PTZ controls after elements are in DOM
+    // Now, iterate again to render PTZ controls (or placeholder) for all
     this.cameras.forEach((camera) => {
-      if (camera.ptzDevice && this.cameraElements.has(camera.name)) {
+      if (this.cameraElements.has(camera.name)) { // Check if element was actually created
         const cameraCard = this.cameraElements.get(camera.name);
         const ptzContainer = cameraCard?.querySelector(`#ptz-controls-${camera.name}`);
         if (ptzContainer) {
+          // Always call, let renderPTZControlsForCamera decide based on camera.ptzDevice
           this.renderPTZControlsForCamera(camera.name, camera.ptzDevice, ptzContainer);
         } else {
           logToConsole(`PTZ container not found for ${camera.name} during initial renderCameraControls.`, 'warn');
@@ -687,8 +699,11 @@ export class CameraManager {
       return;
     }
     ptzContainer.innerHTML = ''; // Clear previous
+    ptzContainer.style.display = 'block'; // Ensure the container itself is visible
+
     if (!ptzDeviceId) {
-      ptzContainer.innerHTML = '<p class="ptz-placeholder text-muted small">No PTZ device selected.</p>'; return;
+      ptzContainer.innerHTML = '<p class="ptz-placeholder text-muted small">No PTZ device selected.</p>';
+      return;
     }
 
     const controls = [
