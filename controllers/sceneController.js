@@ -18,6 +18,10 @@ const fs = require('fs'); // Ensure fs is required
 const { assembleSceneFFmpeg } = require('../services/sceneAssembler'); // Import the new assembler function
 const { getLocalIpAddress } = require('../utils/networkUtils');
 
+// Active workers and timeouts tracking
+let activeWorkers = [];
+let cameraMovementTimeouts = [];
+
 // Encapsulated stage state
 const currentStageState = {
     scene: null,
@@ -131,7 +135,8 @@ async function initShot(sceneDirectory, shotIdentifier) {
         callActorsForShot(scene, shotIndex, baseUrl);
     }, config.waitTime / 2);
 
-    return { scene: sceneDirectory, shot: shotIdentifier, shotIndex: shotIndex }; // Return status
+    // Return the detailed scene and shotData objects for the route handler
+    return { scene: scene, shot: shotData, shotIndex: shotIndex };
 }
 
 async function callActorsForShot(scene, shotIndex, baseUrl) {
@@ -289,17 +294,19 @@ function actorsReady() {
 
 async function action(req, res) {
     broadcastConsole('Action function started.');
-    if (!currentStageState.scene || currentStageState.shotIdentifier === null || currentStageState.shotIndex < 0) {
+
+    const { recordingType = 'camera' } = req.body || {}; // Get recordingType, default to 'camera'
+    broadcastConsole(`Recording type specified: ${recordingType}`, 'info');
+
+    if (!currentStageState.scene || currentStageState.shotIndex === -1) {
         const errorMsg = `Action aborted: No scene/shot active or index invalid. Scene: ${currentStageState.scene}, ShotIdentifier: ${currentStageState.shotIdentifier}, Index: ${currentStageState.shotIndex}`;
         console.error(errorMsg);
         broadcastConsole(errorMsg, 'error');
-        // Optionally send response if called via HTTP
         if (res) return res.status(400).json({ success: false, message: errorMsg });
         return;
     }
 
     const scene = scenes.find(s => s.directory === currentStageState.scene);
-    // Check if shot index is valid *before* accessing it
     if (!scene || !scene.shots || currentStageState.shotIndex >= scene.shots.length) {
         const errorMsg = `Action aborted: Scene/Shot data not found or index out of bounds for ${currentStageState.scene} / Shot Index: ${currentStageState.shotIndex}`;
         console.error(errorMsg);
@@ -310,384 +317,249 @@ async function action(req, res) {
     const shot = scene.shots[currentStageState.shotIndex]; // Safe to access now
 
     // Ensure shot has a name or number for logging/reference
-    // Use sanitize-filename for the shot part of the path
     const sanitize = require('sanitize-filename');
     const safeShotName = sanitize(shot.name || `shot_${currentStageState.shotIndex + 1}`);
-    const shotRef = shot.name || `Shot #${shot.number || currentStageState.shotIndex}`; // For logging
+    const shotRef = shot.name || `Shot #${shot.number || currentStageState.shotIndex}`;
 
     broadcastConsole(`Initiating ACTION for Scene: '${currentStageState.scene}', Shot: '${shotRef}' (Index: ${currentStageState.shotIndex})`);
 
-    let sessionDir;
-    try {
-        sessionDir = sessionService.getSessionDirectory();
-    } catch (sessionError) {
-        const errorMsg = `Action failed: Could not get session directory: ${sessionError.message}`;
-        console.error("Action failed: Could not get session directory:", sessionError);
-        broadcastConsole(errorMsg, 'error');
-        if (res) return res.status(500).json({ success: false, message: errorMsg });
-        return;
-    }
+    // activeWorkers and cameraMovementTimeouts are already module-level, so they are accessible.
+    // Reset them here before the try block for this action.
+    activeWorkers = [];
+    cameraMovementTimeouts = [];
 
-    // --- Determine Take Number by checking filesystem --- 
-    const sceneDirectory = currentStageState.scene; // e.g., "000 - test"
-    const scenePathForTakes = path.join(sessionDir, sceneDirectory);
-    let highestTake = 0;
-
-    try {
-        // Ensure the scene directory exists before trying to read it
-        if (!fs.existsSync(scenePathForTakes)) {
-            fs.mkdirSync(scenePathForTakes, { recursive: true });
-            broadcastConsole(`Created scene directory for takes: ${scenePathForTakes}`, 'info');
+    try { // Start of the main try block
+        let sessionDir;
+        try {
+            sessionDir = sessionService.getSessionDirectory();
+        } catch (sessionError) {
+            const errorMsg = `Action failed: Could not get session directory: ${sessionError.message}`;
+            console.error("Action failed: Could not get session directory:", sessionError);
+            broadcastConsole(errorMsg, 'error');
+            if (res) return res.status(500).json({ success: false, message: errorMsg });
+            return; // This return is inside the try, but it's for a specific failure condition.
         }
 
-        const entries = fs.readdirSync(scenePathForTakes, { withFileTypes: true });
-        // Regex needs to match the *beginning* of the directory name exactly
-        // FIX: Escape the backslash in \d+ correctly
-        const shotTakeRegex = new RegExp(`^${safeShotName}_(\\d+)$`); // Regex to match shotname_number
-        // --- DEBUG LOGS START ---
-        console.log(`[TakeCheck] Checking path: ${scenePathForTakes}`);
-        console.log(`[TakeCheck] Regex: ${shotTakeRegex}`);
-        console.log(`[TakeCheck] Found entries: ${entries.map(e => e.name).join(', ')}`);
-        // --- DEBUG LOGS END ---
+        const sceneDirectory = currentStageState.scene;
+        const scenePathForTakes = path.join(sessionDir, sceneDirectory);
+        let highestTake = 0;
 
-        entries.forEach(entry => {
-            // --- DEBUG LOGS START ---
-            console.log(`[TakeCheck] Examining entry: ${entry.name}, isDirectory: ${entry.isDirectory()}`);
-            // --- DEBUG LOGS END ---
-            if (entry.isDirectory()) {
-                const match = entry.name.match(shotTakeRegex);
-                // --- DEBUG LOGS START ---
-                console.log(`[TakeCheck] Match result for ${entry.name}:`, match);
-                // --- DEBUG LOGS END ---
-                if (match) {
-                    const takeNum = parseInt(match[1], 10);
-                    // --- DEBUG LOGS START ---
-                    console.log(`[TakeCheck] Matched takeNum: ${takeNum}`);
-                    // --- DEBUG LOGS END ---
-                    if (!isNaN(takeNum) && takeNum > highestTake) {
-                        // --- DEBUG LOGS START ---
-                        console.log(`[TakeCheck] Updating highestTake from ${highestTake} to ${takeNum}`);
-                        // --- DEBUG LOGS END ---
-                        highestTake = takeNum;
+        try {
+            if (!fs.existsSync(scenePathForTakes)) {
+                fs.mkdirSync(scenePathForTakes, { recursive: true });
+                broadcastConsole(`Created scene directory for takes: ${scenePathForTakes}`, 'info');
+            }
+            const entries = fs.readdirSync(scenePathForTakes, { withFileTypes: true });
+            const shotTakeRegex = new RegExp(`^${safeShotName}_(\\d+)$`);
+            entries.forEach(entry => {
+                if (entry.isDirectory()) {
+                    const match = entry.name.match(shotTakeRegex);
+                    if (match) {
+                        const takeNum = parseInt(match[1], 10);
+                        if (!isNaN(takeNum) && takeNum > highestTake) {
+                            highestTake = takeNum;
+                        }
                     }
                 }
-            }
-        });
-        broadcastConsole(`Highest existing take for ${safeShotName} found: ${highestTake}`, 'info');
-    } catch (readError) {
-        // Log error but proceed assuming take 1 if directory couldn't be read/created
-        console.error(`Error reading directory for take calculation ${scenePathForTakes}:`, readError);
-        broadcastConsole(`Error checking existing takes for ${safeShotName}. Assuming Take 1. Error: ${readError.message}`, 'warn');
-        highestTake = 0; // Reset to 0 on error
-    }
+            });
+            broadcastConsole(`Highest existing take for ${safeShotName} found: ${highestTake}`, 'info');
+        } catch (readError) {
+            console.error(`Error reading directory for take calculation ${scenePathForTakes}:`, readError);
+            broadcastConsole(`Error checking existing takes for ${safeShotName}. Assuming Take 1. Error: ${readError.message}`, 'warn');
+            highestTake = 0;
+        }
 
-    const takeNumber = highestTake + 1;
-    broadcastConsole(`Recording Take #${takeNumber} for ${safeShotName}`);
+        const takeNumber = highestTake + 1;
+        broadcastConsole(`Recording Take #${takeNumber} for ${safeShotName}`);
+        const shotTakeIdentifier = `${safeShotName}_${takeNumber}`;
+        const outputBasePath = path.join(sessionDir, sceneDirectory, shotTakeIdentifier);
+        broadcastConsole(`Output base path set to: ${outputBasePath}`);
 
-    // Construct the identifier including the take number
-    const shotTakeIdentifier = `${safeShotName}_${takeNumber}`;
-
-    // Construct the absolute base path for this specific take's recordings
-    const outputBasePath = path.join(sessionDir, sceneDirectory, shotTakeIdentifier);
-    broadcastConsole(`Output base path set to: ${outputBasePath}`);
-
-    // *** ADDED: Explicitly create the output base path directory NOW ***
-    try {
         if (!fs.existsSync(outputBasePath)) {
             fs.mkdirSync(outputBasePath, { recursive: true });
             broadcastConsole(`Created output base directory: ${outputBasePath}`, 'info');
         } else {
-            // This case shouldn't happen with the current logic, but log if it does
             broadcastConsole(`Output base directory already exists: ${outputBasePath}`, 'warn');
         }
-    } catch (mkdirError) {
-        const errorMsg = `Action failed: Could not create output base directory ${outputBasePath}: ${mkdirError.message}`;
-        console.error(errorMsg, mkdirError);
-        broadcastConsole(errorMsg, 'error');
-        if (res) return res.status(500).json({ success: false, message: errorMsg });
-        return; // Stop if directory creation fails
-    }
-    // *** END ADDED CODE ***
 
-    // --- End Path Construction ---
+        const shotDurationStr = shot.duration || '0:05';
+        const durationParts = shotDurationStr.split(':').map(Number);
+        const shotDurationSec = (durationParts.length === 2) ? (durationParts[0] * 60 + durationParts[1]) : (durationParts[0] || 5);
+        broadcastConsole(`Shot duration: ${shotDurationSec} seconds`);
 
-    // Determine shot duration FIRST
-    const shotDurationStr = shot.duration || '0:05'; // Default if not specified
-    const durationParts = shotDurationStr.split(':').map(Number);
-    const shotDurationSec = (durationParts.length === 2) ? (durationParts[0] * 60 + durationParts[1]) : (durationParts[0] || 5); // Default to 5s
-    broadcastConsole(`Shot duration: ${shotDurationSec} seconds`);
+        const useFfmpeg = settingsService.shouldUseFfmpeg();
+        const pipelineName = useFfmpeg ? 'FFmpeg' : 'GStreamer';
+        broadcastConsole(`Using recording pipeline from settings: ${pipelineName}`, 'info');
+        const resolution = settingsService.getRecordingResolution();
+        broadcastConsole(`Using recording resolution from settings: ${resolution.width}x${resolution.height}`, 'info');
 
-    // --- Get Recording Settings ---
-    const useFfmpeg = settingsService.shouldUseFfmpeg();
-    const pipelineName = useFfmpeg ? 'FFmpeg' : 'GStreamer';
-    broadcastConsole(`Using recording pipeline from settings: ${pipelineName}`, 'info');
-    const resolution = settingsService.getRecordingResolution(); // Returns {width, height}
-    broadcastConsole(`Using recording resolution from settings: ${resolution.width}x${resolution.height}`, 'info');
+        if (shot.cameras && shot.cameras.length > 0) {
+            broadcastConsole(`Preparing to start video recording for ${shot.cameras.length} camera(s) in shot '${shotRef}'`, 'info');
+            // activeWorkers was reset before the try block.
 
-    // Define these outside the try block so they are accessible in catch
-    const activeWorkers = []; // Track active workers { worker, name, exitPromise }
-    const cameraMovementTimeouts = []; // Keep track of PTZ timeouts
-
-    try { // Add try block here
-        const workerExitPromises = []; // Store promises that resolve on worker exit
-
-        if (!shot.cameras || shot.cameras.length === 0) {
-            broadcastConsole('No cameras defined for this shot. Skipping video recording.', 'info');
-            // No workers to start
-        } else {
-            // --- Setup and Start Recording Workers ---
-            broadcastConsole(`Starting recording workers for ${shot.cameras.length} camera(s)...`, 'info');
             for (const shotCameraInfo of shot.cameras) {
-                const recordingCameraName = shotCameraInfo.name; // Get camera name from shot file using .name
-                // Get camera instance from CameraControl service
-                const camera = cameraControl.getCamera(recordingCameraName);
-
-                if (!camera) {
-                    broadcastConsole(`Camera '${recordingCameraName}' (from shot) not found in cameraControl. Skipping.`, 'warn');
-                    continue; // Skip this camera if not managed
+                const recordingCameraName = shotCameraInfo.name;
+                broadcastConsole(`Processing camera for recording: ${recordingCameraName}`, 'info');
+                const managedCamera = cameraControl.getCamera(recordingCameraName);
+                if (!managedCamera) {
+                    broadcastConsole(`Camera ${recordingCameraName} not found in managed cameras. Skipping.`, 'warn');
+                    continue;
                 }
-
-                // Determine recording pipeline and device path based on camera settings from cameraControl
-                // Assuming methods like getStreamingMethod, getRecordingMethod, getDevicePath, getResolution exist on the camera object
-                const recordingDevicePath = camera.getRecordingDevice(); // Use the correct method name
-
-                // Check if device path is configured
-                if (recordingDevicePath === null || recordingDevicePath === undefined || recordingDevicePath === '') {
-                    const errorMsg = `Skipping recording: No recording device configured for camera '${recordingCameraName}'.`;
-                    broadcastConsole(errorMsg, 'error');
-                    continue; // Skip this camera
+                const recordingDevicePath = managedCamera.settings?.recordingDevice;
+                if (!recordingDevicePath) {
+                    broadcastConsole(`Recording device path not set for camera ${recordingCameraName}. Skipping.`, 'warn');
+                    continue;
                 }
-
-                // Check if global resolution is valid (already fetched earlier)
+                broadcastConsole(`Recording device path for ${recordingCameraName}: ${recordingDevicePath}`, 'info');
                 if (!resolution || typeof resolution.width !== 'number' || typeof resolution.height !== 'number') {
-                    const errorMsg = `Skipping recording: Invalid or missing global recording resolution.`;
-                    broadcastConsole(errorMsg, 'error');
-                    // Maybe break the loop or return error? For now, skip camera
+                    broadcastConsole(`Skipping recording for ${recordingCameraName}: Invalid global resolution.`, 'error');
                     continue;
                 }
 
-                const workerData = {
-                    cameraName: recordingCameraName,
-                    useFfmpeg: useFfmpeg,
-                    resolution: resolution, // Use global resolution
-                    devicePath: recordingDevicePath,
-                    outputBasePath: outputBasePath, // NEW: Pass the specific base path for this take
-                    durationSec: shotDurationSec
-                };
-
-                console.log(`[Action] Starting worker for ${recordingCameraName} using ${pipelineName} at ${resolution.width}x${resolution.height}...`); // Use global resolution
-                broadcastConsole(`[Action] Starting worker for ${recordingCameraName} using ${pipelineName} at ${resolution.width}x${resolution.height}...`, 'info'); // Use global resolution
-                const worker = new Worker(path.resolve(__dirname, '../workers/recordingWorker.js'), { workerData });
-
-                // Create a promise that resolves when this worker exits
-                const exitPromise = new Promise((resolve) => {
-                    worker.on('message', (message) => {
-                        // Handle messages from worker (e.g., progress, completion, errors)
-                        console.log(`[Worker ${recordingCameraName} MSG]:`, message);
-                        // Broadcast relevant status updates
-                        if (message.status === 'error') {
-                            broadcastConsole(`[Worker ${recordingCameraName} ERROR]: ${message.message}`, 'error');
-                        } else if (message.status === 'capture_complete') {
-                            broadcastConsole(`[Worker ${recordingCameraName}]: Capture complete. Result: ${message.resultPath}`, 'success');
-                        } else if (message.status) {
-                            broadcastConsole(`[Worker ${recordingCameraName}]: ${message.status} - ${message.message || ''}`, 'info');
+                if (recordingType === 'canvas') {
+                    broadcastConsole(`[Action] Canvas recording mode for ${recordingCameraName}. Server will NOT start a video worker.`, 'info');
+                } else { // 'camera' or default
+                    const workerData = {
+                        cameraName: recordingCameraName,
+                        useFfmpeg: useFfmpeg,
+                        resolution: resolution,
+                        devicePath: recordingDevicePath,
+                        outputBasePath: outputBasePath,
+                        durationSec: shotDurationSec
+                    };
+                    console.log(`[Action] Starting worker for ${recordingCameraName} using ${pipelineName}`);
+                    broadcastConsole(`[Action] Starting worker for ${recordingCameraName} using ${pipelineName}`, 'info');
+                    const worker = new Worker(path.resolve(__dirname, '../workers/recordingWorker.js'), { workerData });
+                    activeWorkers.push({ name: recordingCameraName, worker: worker });
+                    worker.on('message', (msg) => {
+                        broadcastConsole(`Worker [${recordingCameraName}] message: ${msg.status || JSON.stringify(msg)}`, msg.type || 'info');
+                        if (msg.status === 'completed') {
+                            activeWorkers = activeWorkers.filter(w => w.worker !== worker);
+                            broadcastConsole(`Worker for ${recordingCameraName} completed. Active: ${activeWorkers.length}`, 'info');
                         }
                     });
-                    worker.on('error', (error) => {
-                        console.error(`[Worker ${recordingCameraName} Error]:`, error);
-                        broadcastConsole(`[Worker ${recordingCameraName} FATAL ERROR]: ${error.message}`, 'error');
-                        // Remove worker from active list? Handle cleanup?
-                        // Resolve the promise even on error to avoid deadlocks
-                        resolve({ name: recordingCameraName, status: 'error', error });
+                    worker.on('error', (err) => {
+                        broadcastConsole(`Worker [${recordingCameraName}] error: ${err.message}`, 'error');
+                        console.error(`Worker error for ${recordingCameraName}:`, err);
+                        activeWorkers = activeWorkers.filter(w => w.worker !== worker);
                     });
                     worker.on('exit', (code) => {
-                        if (code !== 0) {
-                            console.error(`[Worker ${recordingCameraName}] exited with code ${code}`);
-                            broadcastConsole(`[Worker ${recordingCameraName}] exited unexpectedly with code ${code}`, 'error');
-                        } else {
-                            console.log(`[Worker ${recordingCameraName}] exited successfully.`);
-                            broadcastConsole(`[Worker ${recordingCameraName}] finished processing.`, 'info');
-                        }
-                        // Remove worker from active list (optional, as we wait for promises now)
-                        const index = activeWorkers.findIndex(w => w.worker === worker);
-                        if (index > -1) activeWorkers.splice(index, 1);
-                        // Resolve the promise on exit
-                        resolve({ name: recordingCameraName, status: 'exited', code });
+                        broadcastConsole(`Worker [${recordingCameraName}] exited code ${code}`, code !== 0 ? 'warn' : 'info');
+                        activeWorkers = activeWorkers.filter(w => w.worker !== worker);
                     });
-                });
+                }
 
-                workerExitPromises.push(exitPromise); // Add the promise to our list
-                activeWorkers.push({ worker, name: recordingCameraName }); // Keep track if needed elsewhere
-
-                // --- Schedule PTZ Movements for this camera ---
                 if (shotCameraInfo.movements && shotCameraInfo.movements.length > 0) {
-                    broadcastConsole(`Scheduling ${shotCameraInfo.movements.length} PTZ movements for ${recordingCameraName}...`, 'info');
+                    broadcastConsole(`Scheduling ${shotCameraInfo.movements.length} PTZ for ${recordingCameraName}...`, 'info');
                     shotCameraInfo.movements.forEach(move => {
                         if (typeof move.time !== 'number' || move.time < 0) {
-                            broadcastConsole(`Invalid time (${move.time}) for movement in ${recordingCameraName}. Skipping.`, 'warn');
-                            return; // Skip invalid time
+                            broadcastConsole(`Invalid time for PTZ in ${recordingCameraName}. Skipping.`, 'warn');
+                            return;
                         }
-
                         const delayMs = move.time * 1000;
-
-                        const timeoutId = setTimeout(async () => { // Make async for await inside
+                        const timeoutId = setTimeout(async () => {
                             try {
                                 const ptzPayload = {};
-                                let logMsg = `Executing PTZ for ${recordingCameraName} at ${move.time}s:`;
-
+                                let logMsg = `PTZ ${recordingCameraName} @${move.time}s:`;
                                 if (typeof move.pan === 'number') {
-                                    // Use imported mapping function
                                     ptzPayload.pan = mapPanDegreesToValue(move.pan);
-                                    logMsg += ` Pan=${move.pan}°(${ptzPayload.pan})`;
+                                    logMsg += ` P=${move.pan}°`;
                                 }
                                 if (typeof move.tilt === 'number') {
-                                    // Use imported mapping function
                                     ptzPayload.tilt = mapTiltDegreesToValue(move.tilt);
-                                    logMsg += ` Tilt=${move.tilt}°(${ptzPayload.tilt})`;
+                                    logMsg += ` T=${move.tilt}°`;
                                 }
-                                // Zoom is 0-100, passed directly
                                 if (typeof move.zoom === 'number' && move.zoom >= 0 && move.zoom <= 100) {
                                     ptzPayload.zoom = move.zoom;
-                                    logMsg += ` Zoom=${move.zoom}%`;
-                                } else if (move.zoom !== undefined) {
-                                    broadcastConsole(`Invalid zoom value (${move.zoom}) for ${recordingCameraName} at ${move.time}s. Must be 0-100. Ignoring zoom.`, 'warn');
+                                    logMsg += ` Z=${move.zoom}%`;
                                 }
-
                                 if (Object.keys(ptzPayload).length > 0) {
                                     broadcastConsole(logMsg, 'info');
                                     await cameraControl.setPTZ(recordingCameraName, ptzPayload);
-                                } else {
-                                    broadcastConsole(`No valid PTZ values found for ${recordingCameraName} at ${move.time}s.`, 'warn');
                                 }
-
                             } catch (ptzError) {
-                                console.error(`Error executing PTZ for ${recordingCameraName} at time ${move.time}:`, ptzError);
-                                broadcastConsole(`Error executing PTZ for ${recordingCameraName}: ${ptzError.message}`, 'error');
+                                broadcastConsole(`PTZ Error ${recordingCameraName}: ${ptzError.message}`, 'error');
                             }
                         }, delayMs);
-                        cameraMovementTimeouts.push(timeoutId); // Store timeout ID here
+                        cameraMovementTimeouts.push(timeoutId);
                     });
                 } else {
-                    broadcastConsole(`No PTZ movements defined for ${recordingCameraName} in this shot.`, 'info');
+                    broadcastConsole(`No PTZ movements for ${recordingCameraName}.`, 'info');
                 }
-                // --- END Scheduling PTZ Movements ---
+            }
+        } else {
+            broadcastConsole('No cameras in shot. Skipping video recording.', 'info');
+        }
 
-            } // End for loop cameras
-        } // End else (has cameras)
-
-        // --- Start Audio Recording (AFTER starting video workers) ---
         broadcastConsole('Starting audio recording...', 'info');
-        audioRecorder.startRecording(outputBasePath, shotDurationSec); // NEW: Pass outputBasePath
-
-        // --- Proceed with the rest of the action ---
-        // broadcastConsole('Brief pause for recording(s) to initialize...'); // Maybe remove or shorten this pause?
-        // await new Promise(resolve => setTimeout(resolve, 100)); // Shortened pause
+        audioRecorder.startRecording(outputBasePath, shotDurationSec);
 
         broadcastConsole('Proceeding with shot actions...');
+        aiVoice.speak("Action!");
 
-        // --- Camera movement logic is now handled by scheduled setTimeouts above --- 
-
-        // Speak action cue
-        aiVoice.speak("Action!"); // TODO: Make this configurable or optional?
-
-        // --- BROADCAST SHOT_START ---
         try {
-            broadcast({ // Broadcast SHOT_START with scene and shot info
+            broadcast({
                 type: 'SHOT_START',
-                scene: { directory: currentStageState.scene }, // Send scene directory
-                // shot: shot // Send full shot data - might be large, maybe send just identifier?
-                shot: { name: shot.name, number: shot.number, duration: shotDurationSec } // Send essential info
+                scene: { directory: currentStageState.scene },
+                shot: { name: shot.name, number: shot.number, duration: shotDurationSec }
             });
-            broadcastConsole(`Broadcasted SHOT_START for Scene: ${currentStageState.scene}, Shot: ${shotRef}`, 'success');
+            broadcastConsole(`Broadcasted SHOT_START for ${currentStageState.scene}, ${shotRef}`, 'success');
         } catch (broadcastError) {
-            broadcastConsole(`!!! ERROR Broadcasting SHOT_START: ${broadcastError.message}`, 'error');
-            console.error("!!! ERROR Broadcasting SHOT_START:", broadcastError); // Log full error server-side
+            broadcastConsole(`ERROR Broadcasting SHOT_START: ${broadcastError.message}`, 'error');
         }
-        // --- END BROADCAST ---
 
-        // --- Wait for the shot duration + a buffer ---
-        // This wait is primarily for the *performance* timing, not necessarily for worker completion.
-        const waitDurationMs = shotDurationSec * 1000 + 2000; // Add 2s buffer
-        broadcastConsole(`Waiting ${waitDurationMs / 1000} seconds for shot performance duration...`);
-
-        // We also need to potentially stop the PTZ commands if the action is cancelled early
-        // or ensure they don't run past the intended shot duration if something goes wrong.
-        // For now, we let them run. Consider adding cleanup logic if needed.
-
+        // --- Wait for the shot duration ---
+        const waitDurationMs = shotDurationSec * 1000;
+        broadcastConsole(`Waiting ${waitDurationMs / 1000}s for shot performance...`);
         await new Promise(resolve => setTimeout(resolve, waitDurationMs));
         broadcastConsole('Shot performance time elapsed.');
 
-        // --- Wait for Video Workers to Finish ---
-        // Video workers should stop based on their durationSec. Wait for them to exit.
-        broadcastConsole('Waiting for video worker(s) to complete processing and exit...');
-        if (workerExitPromises.length > 0) {
-            try {
-                const results = await Promise.all(workerExitPromises);
-                broadcastConsole(`All ${results.length} video worker(s) have exited.`, 'info');
-                // Optional: Check results for errors
-                results.forEach(result => {
-                    if (result.status === 'error') {
-                        broadcastConsole(`Worker ${result.name} encountered an error during exit wait: ${result.error.message}`, 'warn');
-                    } else if (result.status === 'exited' && result.code !== 0) {
-                        broadcastConsole(`Worker ${result.name} exited with non-zero code ${result.code} during exit wait.`, 'warn');
-                    }
-                });
-            } catch (waitError) {
-                // This catch is unlikely with the current individual promise setup, but good practice
-                console.error("Error waiting for worker promises:", waitError);
-                broadcastConsole(`Error occurred while waiting for video workers: ${waitError.message}`, 'error');
-            }
-        } else {
-            broadcastConsole('No active video workers to wait for.', 'info');
+        // --- Stop Client Canvas Recorders (if applicable) ---
+        // We only need to send this if the recording type was canvas.
+        // Need access to the recordingType variable from the start of the function.
+        // Let's retrieve it again or pass it down. For now, let's assume we might 
+        // need to send it regardless, and clients only act if they are recording.
+        // Alternatively, check if recordingType was canvas earlier in the function
+        // and set a flag.
+        // Simpler approach: Send it, client ignores if not relevant.
+        broadcastConsole('Broadcasting STOP_CANVAS_RECORDING to clients...', 'info');
+        try {
+            broadcast({ type: 'STOP_CANVAS_RECORDING' });
+        } catch (broadcastError) {
+            broadcastConsole(`ERROR Broadcasting STOP_CANVAS_RECORDING: ${broadcastError.message}`, 'error');
         }
-        // --- END Worker Wait ---
+        // --- End Stop Client Canvas Recorders ---
 
+        broadcastConsole('Waiting for video worker(s) to complete...');
+        if (activeWorkers.length > 0) {
+            // This simple wait might not be robust enough if workers don't exit cleanly.
+            // A more robust solution would involve Promise.all with individual worker exit events.
+            // For now, keeping it simple, assuming durationSec in worker will lead to exit.
+            await new Promise(resolve => {
+                const checkInterval = setInterval(() => {
+                    if (activeWorkers.length === 0) {
+                        clearInterval(checkInterval);
+                        resolve();
+                    }
+                }, 500);
+            });
+            broadcastConsole('All active video worker(s) seem to have exited.', 'info');
+        } else {
+            broadcastConsole('No active video workers to wait for (or canvas recording mode).', 'info');
+        }
 
-        // --- BROADCAST SHOT_END ---
         try {
             broadcast({
                 type: 'SHOT_END',
                 scene: { directory: currentStageState.scene },
                 shot: { name: shot.name, number: shot.number }
             });
-            broadcastConsole(`Broadcasted SHOT_END for Scene: ${currentStageState.scene}, Shot: ${shotRef}`, 'success');
+            broadcastConsole(`Broadcasted SHOT_END for ${currentStageState.scene}, ${shotRef}`, 'success');
         } catch (broadcastError) {
-            broadcastConsole(`!!! ERROR Broadcasting SHOT_END: ${broadcastError.message}`, 'error');
-            console.error("!!! ERROR Broadcasting SHOT_END:", broadcastError);
+            broadcastConsole(`ERROR Broadcasting SHOT_END: ${broadcastError.message}`, 'error');
         }
-        // --- END BROADCAST ---
 
-
-        // --- Clean up PTZ timeouts ---
-        broadcastConsole('Clearing any pending PTZ movement timeouts.', 'info');
-        cameraMovementTimeouts.forEach(clearTimeout);
-        cameraMovementTimeouts.length = 0; // Clear the array
-
-        // Stop audio recording (Allowing duration to handle it, but stop explicitly as fallback?)
-        // Let's REMOVE the explicit stop and rely on duration passed to startRecording
-        // broadcastConsole('Stopping audio recording explicitly...', 'info'); // Keep commented out for now
-        // audioRecorder.stopRecording();
-
-        // Video workers should stop based on their durationSec.
-        // Wait for all workers to signal completion (or error/exit)
-
-        // Force stop audio recording if it might still be running
-        broadcastConsole('Force stopping audio recording (on error)...', 'warn');
-        audioRecorder.stopRecording(); // Use explicit stop here
-
-        // Signal workers to terminate immediately (if possible)
-        activeWorkers.forEach(({ worker, name }) => {
-            broadcastConsole(`Terminating worker ${name} due to error...`, 'warn');
-            try {
-                worker.terminate();
-            } catch (terminateError) {
-                console.error(`Error terminating worker ${name}:`, terminateError);
-            }
-        });
-
-        // Optionally send success response if called via HTTP
-        if (res) res.json({ success: true, message: `Action sequence initiated for shot ${shotRef}. Workers started.` });
-
+        if (res) res.json({ success: true, message: `Action sequence initiated for shot ${shotRef}.` });
 
     } catch (error) { // Catch block for the main try
         console.error("Error during action execution:", error);
@@ -695,39 +567,40 @@ async function action(req, res) {
 
         // --- Emergency Stop/Cleanup on Error ---
         broadcastConsole('Attempting emergency cleanup...', 'warn');
-        cameraMovementTimeouts.forEach(clearTimeout); // Clear any pending movements
+        cameraMovementTimeouts.forEach(clearTimeout);
         cameraMovementTimeouts.length = 0;
 
-        // Force stop audio recording if it might still be running
         broadcastConsole('Force stopping audio recording (on error)...', 'warn');
-        audioRecorder.stopRecording(); // Use explicit stop here
+        audioRecorder.stopRecording();
 
-        // Signal workers to terminate immediately (if possible)
         broadcastConsole('Attempting to terminate active video workers (on error)...', 'warn');
         activeWorkers.forEach(({ worker, name }) => {
             try {
                 broadcastConsole(`Terminating worker for ${name}...`, 'warn');
-                worker.terminate().then(() => {
-                    broadcastConsole(`Worker for ${name} terminated.`, 'info');
-                }).catch(termErr => {
-                    console.error(`Error terminating worker ${name}:`, termErr);
-                    broadcastConsole(`Error terminating worker ${name}: ${termErr.message}`, 'error');
+                worker.terminate().catch(termErr => { // Add catch for terminate promise
+                    console.error(`Error during worker.terminate() for ${name}:`, termErr);
+                    broadcastConsole(`Error terminating worker ${name} (async): ${termErr.message}`, 'error');
                 });
             } catch (termErr) {
                 console.error(`Exception terminating worker ${name}:`, termErr);
                 broadcastConsole(`Exception terminating worker ${name}: ${termErr.message}`, 'error');
             }
         });
-        activeWorkers.length = 0; // Clear the array
-
-        // TODO: Add any other necessary cleanup steps
+        activeWorkers.length = 0;
 
         if (res) return res.status(500).json({ success: false, message: `Action failed: ${error.message}` });
 
     } finally {
         // Code here runs whether try succeeded or failed
-        // Might be useful for final state updates
         console.log("Action function finally block reached.");
+        // Ensure timeouts are cleared if not already
+        cameraMovementTimeouts.forEach(clearTimeout);
+        cameraMovementTimeouts.length = 0;
+        // Ensure activeWorkers is cleared (might be redundant if error handling already did it)
+        activeWorkers.forEach(({ worker, name }) => {
+            try { worker.terminate().catch(() => { }); } catch (e) { } // Best effort
+        });
+        activeWorkers.length = 0;
     }
 }
 

@@ -91,6 +91,20 @@
       <div class="controls-section card">
         <h2>Controls</h2>
         <div id="buttons">
+          <!-- New: Recording Source Radio Buttons -->
+          <div class="recording-options">
+            <label class="form-label">Recording Source:</label>
+            <div>
+              <input type="radio" id="record-from-canvas" name="recordingSource" value="canvas" checked>
+              <label for="record-from-canvas">Record from Canvas</label>
+            </div>
+            <div>
+              <input type="radio" id="record-from-camera" name="recordingSource" value="camera">
+              <label for="record-from-camera">Record directly from Cameras</label>
+            </div>
+          </div>
+          <!-- End: Recording Source Radio Buttons -->
+
           <div class="recording-options">
             <label for="recording-pipeline">Recording Pipeline:</label>
             <select id="recording-pipeline" class="form-control">

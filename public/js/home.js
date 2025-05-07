@@ -72,7 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('openAlanTeleprompterBtn')?.addEventListener('click', () => openCharacterTeleprompter('alan'));
   document.getElementById('openEllieTeleprompterBtn')?.addEventListener('click', () => openCharacterTeleprompter('ellie'));
   document.getElementById('clearTeleprompterBtn')?.addEventListener('click', clearTeleprompter);
-  document.getElementById('actionBtn')?.addEventListener('click', action);
+  document.getElementById('actionBtn')?.addEventListener('click', () => action(cameraManager));
   document.getElementById('actorsReadyBtn')?.addEventListener('click', actorsReady);
   document.getElementById('recording-pipeline')?.addEventListener('change', (e) => handlePipelineChange(e.target.value));
   document.getElementById('recording-resolution')?.addEventListener('change', (e) => {

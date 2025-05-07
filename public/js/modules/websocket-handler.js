@@ -1,5 +1,6 @@
 import { logToConsole } from './logger.js';
 import { updateCurrentSessionDisplay, populateSessionList } from './session-manager.js';
+import { setShotDuration, stopAllCanvasRecorders } from './control-actions.js';
 
 let ws = null;
 
@@ -43,10 +44,10 @@ export function initializeWebSocket(cameraManagerInstance, onOpenCallback) {
             const characterTeleprompterWindows = {}; // TODO: Implement proper window reference management if needed
 
             const teleprompterMessageTypes = [
-                'TELEPROMPTER', 
-                'ACTOR_CALLS', 
-                'CLEAR_TELEPROMPTER', 
-                'PLAY_VIDEO' 
+                'TELEPROMPTER',
+                'ACTOR_CALLS',
+                'CLEAR_TELEPROMPTER',
+                'PLAY_VIDEO'
             ];
             const characterTeleprompterMessageTypes = [
                 'SHOT_START',
@@ -56,15 +57,11 @@ export function initializeWebSocket(cameraManagerInstance, onOpenCallback) {
                 'TELEPROMPTER_STATUS'
             ];
 
-            if (teleprompterMessageTypes.includes(data.type)) {
-                if (teleprompterFrame && teleprompterFrame.contentWindow) {
-                    teleprompterFrame.contentWindow.postMessage(data, '*');
-                } else {
-                    console.warn('Teleprompter frame not found or not loaded yet.');
-                }
+            if (teleprompterFrame && teleprompterFrame.contentWindow && teleprompterMessageTypes.includes(data.type)) {
+                teleprompterFrame.contentWindow.postMessage(data, '*');
             } else if (characterTeleprompterMessageTypes.includes(data.type)) {
-                 console.log('Received character teleprompter message, but forwarding logic needs implementation:', data);
-                 // if (data.character && characterTeleprompterWindows[data.character]) { ... }
+                console.log('Received character teleprompter message, but forwarding logic needs implementation:', data);
+                // if (data.character && characterTeleprompterWindows[data.character]) { ... }
             }
 
             // --- Main Application Logic --- 
@@ -76,7 +73,7 @@ export function initializeWebSocket(cameraManagerInstance, onOpenCallback) {
                     console.log('SESSION_UPDATE received with sessionId:', data.sessionId);
                     updateCurrentSessionDisplay(data.sessionId); // Use imported function
                     break;
-                case 'SESSION_LIST_UPDATE': 
+                case 'SESSION_LIST_UPDATE':
                     console.log('SESSION_LIST_UPDATE received', data.sessions);
                     populateSessionList(data.sessions || []); // Use imported function
                     break;
@@ -87,35 +84,47 @@ export function initializeWebSocket(cameraManagerInstance, onOpenCallback) {
                     document.getElementById("status").innerText = "Waiting for actors to be ready...";
                     break;
                 case 'ACTORS_READY':
-                     // TODO: Decouple DOM manipulation - use callbacks or events?
+                    // TODO: Decouple DOM manipulation - use callbacks or events?
                     document.getElementById("actorsReadyBtn").style.display = "none";
                     document.getElementById("actionBtn").style.display = "inline-block";
                     document.getElementById("status").innerText = "Actors are ready to perform!";
                     break;
-                 case 'SHOT_CAMERA_DESCRIPTIONS': // Merged from separate listener
-                     console.log('Received shot camera descriptions:', data.descriptions);
-                     document.querySelectorAll('.shot-camera-description').forEach(el => el.remove());
-                     
-                     data.descriptions.forEach(camInfo => {
-                       if (cameraManagerInstance && cameraManagerInstance.cameraElements) { 
-                         const cameraElement = cameraManagerInstance.cameraElements.get(camInfo.name);
-                         if (cameraElement) {
-                           const headerElement = cameraElement.querySelector('.camera-header');
-                           if (headerElement) {
-                             const descElement = document.createElement('p');
-                             descElement.className = 'shot-camera-description';
-                             descElement.textContent = `Shot Role: ${camInfo.description}`;
-                             headerElement.parentNode.insertBefore(descElement, headerElement.nextSibling); 
-                           }
-                         } else {
-                            logToConsole(`Warning: Camera element not found for ${camInfo.name} during SHOT_CAMERA_DESCRIPTIONS update.`, 'warn');
-                         }
-                       } else {
-                         console.warn('CameraManager instance or elements not available when SHOT_CAMERA_DESCRIPTIONS received.');
-                         logToConsole('Warning: CameraManager not ready for SHOT_CAMERA_DESCRIPTIONS update.', 'warn');
-                       }
-                     });
-                     break;
+                case 'SHOT_CAMERA_DESCRIPTIONS': // Merged from separate listener
+                    console.log('Received shot camera descriptions:', data.descriptions);
+                    document.querySelectorAll('.shot-camera-description').forEach(el => el.remove());
+
+                    data.descriptions.forEach(camInfo => {
+                        if (cameraManagerInstance && cameraManagerInstance.cameraElements) {
+                            const cameraElement = cameraManagerInstance.cameraElements.get(camInfo.name);
+                            if (cameraElement) {
+                                const headerElement = cameraElement.querySelector('.camera-header');
+                                if (headerElement) {
+                                    const descElement = document.createElement('p');
+                                    descElement.className = 'shot-camera-description';
+                                    descElement.textContent = `Shot Role: ${camInfo.description}`;
+                                    headerElement.parentNode.insertBefore(descElement, headerElement.nextSibling);
+                                }
+                            } else {
+                                logToConsole(`Warning: Camera element not found for ${camInfo.name} during SHOT_CAMERA_DESCRIPTIONS update.`, 'warn');
+                            }
+                        } else {
+                            console.warn('CameraManager instance or elements not available when SHOT_CAMERA_DESCRIPTIONS received.');
+                            logToConsole('Warning: CameraManager not ready for SHOT_CAMERA_DESCRIPTIONS update.', 'warn');
+                        }
+                    });
+                    break;
+                case 'SHOT_START':
+                    logToConsole('SHOT_START event received from server.', 'info', data);
+                    if (data.shot && typeof data.shot.duration === 'number') {
+                        setShotDuration(data.shot.duration);
+                    } else {
+                        logToConsole('SHOT_START did not contain valid shot duration.', 'warn', data);
+                    }
+                    break;
+                case 'STOP_CANVAS_RECORDING': // New case for stopping canvas recorders
+                    logToConsole('STOP_CANVAS_RECORDING event received from server.', 'info');
+                    stopAllCanvasRecorders(); // Call the function to stop recorders
+                    break;
                 // Add other message types handled by the server if needed
                 default:
                     // Avoid logging WELCOME message noise

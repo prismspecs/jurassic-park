@@ -289,11 +289,12 @@ router.post('/actorsReady', (req, res) => {
 
 // Handle action button press
 router.post('/action', (req, res) => {
-    action();
-    res.json({
-        success: true,
-        message: 'Action started'
-    });
+    // Pass req and res to the sceneController.action function
+    action(req, res);
+    // The sceneController.action function will now be responsible for sending the response
+    // So, we might remove or modify the res.json() here, depending on how action handles responses.
+    // For now, let's assume action will send its own response, especially on error.
+    // If action completes without sending a response in some paths, this might need adjustment.
 });
 
 // Get current voice bypass state
@@ -317,13 +318,20 @@ router.get('/initShot/:sceneDir/:shotName', async (req, res) => {
     const sceneDir = decodeURIComponent(req.params.sceneDir);
     const shotName = decodeURIComponent(req.params.shotName);
     try {
-        // Call the controller function, NO LONGER PASSING REQ
-        const result = await initShot(sceneDir, shotName); // Remove req
+        // Call the controller function
+        // It now returns { scene: sceneObject, shot: shotDataObject, shotIndex: index }
+        const result = await initShot(sceneDir, shotName);
+
+        // Send the detailed scene and shot data back to the client
         res.json({
             success: true,
-            message: `Shot '${shotName}' in scene '${sceneDir}' initialized.`,
-            scene: sceneDir,
-            shot: shotName
+            message: `Shot '${result.shot.name || shotName}' in scene '${result.scene.description || sceneDir}' initialized.`,
+            // Nest the data under sceneData to match client expectation
+            sceneData: {
+                scene: result.scene,
+                shot: result.shot,
+                shotIndex: result.shotIndex
+            }
         });
     } catch (error) {
         console.error(`Error initializing shot ${shotName} in scene ${sceneDir}:`, error);

@@ -112,7 +112,7 @@
                                 "time-out": 4
                             }
                         ],
-                        "props": "sunglasses"
+                        "props": "alan"
                     }
                 }
             },
@@ -243,7 +243,7 @@
                 "characters": {
                     "alan": {
                         "full-name": "Dr. Alan Grant",
-                        "props": "grant"
+                        "props": "alan"
                     },
                     "ellie": {
                         "full-name": "Dr. Ellie Sattler",
@@ -251,7 +251,7 @@
                     },
                     "hammond": {
                         "full-name": "John Hammond",
-                        "props": "hammond"
+                        "props": "john"
                     }
                 }
             }
