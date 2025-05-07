@@ -158,17 +158,6 @@ export class CameraManager {
         const cameraElement = this.createCameraElement(newCamera);
         container.appendChild(cameraElement);
         this.cameraElements.set(newCamera.name, cameraElement);
-        // if (newCamera.ptzDevice) this.renderPTZControlsForCamera(newCamera.name, newCamera.ptzDevice);
-
-        // Get the PTZ container from the newly created cameraElement
-        const ptzContainer = cameraElement.querySelector(`#ptz-controls-${newCamera.name}`);
-        if (ptzContainer) {
-          // Always call renderPTZControlsForCamera, let it handle if ptzDevice is null or not.
-          // newCamera.ptzDevice would be the default from the server for this new camera.
-          this.renderPTZControlsForCamera(newCamera.name, newCamera.ptzDevice, ptzContainer);
-        } else {
-          logToConsole(`PTZ container not found in newly added camera element for ${newCamera.name}.`, 'warn');
-        }
 
         // Update internal list, preserving existing client-side state (like showSkeleton/showMask)
         const clientStateMap = new Map(this.cameras.map(c => [c.name, { showSkeleton: c.showSkeleton, showMask: c.showMask }]));
@@ -240,19 +229,6 @@ export class CameraManager {
       const cameraElement = this.createCameraElement(camera);
       container.appendChild(cameraElement);
       this.cameraElements.set(camera.name, cameraElement);
-    });
-    // Now, iterate again to render PTZ controls (or placeholder) for all
-    this.cameras.forEach((camera) => {
-      if (this.cameraElements.has(camera.name)) { // Check if element was actually created
-        const cameraCard = this.cameraElements.get(camera.name);
-        const ptzContainer = cameraCard?.querySelector(`#ptz-controls-${camera.name}`);
-        if (ptzContainer) {
-          // Always call, let renderPTZControlsForCamera decide based on camera.ptzDevice
-          this.renderPTZControlsForCamera(camera.name, camera.ptzDevice, ptzContainer);
-        } else {
-          logToConsole(`PTZ container not found for ${camera.name} during initial renderCameraControls.`, 'warn');
-        }
-      }
     });
   }
 
@@ -413,24 +389,35 @@ export class CameraManager {
       const value = ptzDevice.id !== undefined ? ptzDevice.id : ptzDevice.path;
       ptzDeviceOptions.push({ value: value, text: ptzDevice.name || value });
     });
+
+    // Determine effective PTZ device: use camera.ptzDevice if it's in the available list, otherwise default to ""
+    const ptzDeviceIsAvailable = this.ptzDevices.some(pd => (pd.id !== undefined ? pd.id : pd.path) === camera.ptzDevice);
+    const effectivePtzDevice = ptzDeviceIsAvailable ? (camera.ptzDevice || "") : "";
+    logToConsole(`For ${camera.name}, configured ptzDevice: '${camera.ptzDevice}', available: ${ptzDeviceIsAvailable}, effectivePtzDevice: '${effectivePtzDevice}'`, 'debug');
+
     const ptzControlsContainerOriginal = document.createElement('div');
     ptzControlsContainerOriginal.id = `ptz-controls-${camera.name}`;
     ptzControlsContainerOriginal.className = 'ptz-controls-container';
-    ptzControlsContainerOriginal.style.display = camera.ptzDevice ? 'block' : 'none';
+    // Visibility will be handled by renderPTZControlsForCamera based on effectivePtzDevice
 
     const ptzSelectGroup = this._createSelectGroup(
       'PTZ Device (Server):',
       `ptz-device-selector-${camera.name}`,
       ptzDeviceOptions,
-      camera.ptzDevice || "",
+      effectivePtzDevice, // Use effectivePtzDevice for the initial selection
       (e) => {
         this.updatePTZDevice(camera.name, e.target.value);
+        // renderPTZControlsForCamera is called by updatePTZDevice internally,
+        // but it's also fine to call it here to ensure UI updates immediately
+        // if updatePTZDevice logic changes.
         this.renderPTZControlsForCamera(camera.name, e.target.value, ptzControlsContainerOriginal);
       }
     );
     controlsDiv.appendChild(ptzSelectGroup);
     controlsDiv.appendChild(ptzControlsContainerOriginal);
 
+    // Initial rendering of PTZ controls (sliders or placeholder) based on the effectivePtzDevice
+    this.renderPTZControlsForCamera(camera.name, effectivePtzDevice, ptzControlsContainerOriginal);
 
     // --- Effect Toggles ---
     const skeletonToggle = this._createToggleSwitch(
@@ -480,10 +467,6 @@ export class CameraManager {
 
     content.appendChild(controlsDiv);
     card.appendChild(content);
-
-    if (camera.ptzDevice) {
-      this.renderPTZControlsForCamera(camera.name, camera.ptzDevice, ptzControlsContainerOriginal);
-    }
 
     this.cameraElements.set(camera.name, card);
     return card;
