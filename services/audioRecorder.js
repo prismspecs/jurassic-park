@@ -220,28 +220,33 @@ class AudioRecorder {
         }
 
         console.log(`Starting audio recording for ${this.activeDevices.size} devices in base path: ${outputBasePath}`);
-        this.recordingCounter++; // Increment for this recording session (Action!)
+        // this.recordingCounter++; // Removed: No longer using global counter for Audio_X.wav filenames directly
 
+        let deviceAudioIndex = 0;
         this.activeDevices.forEach((deviceData, deviceId) => {
+            deviceAudioIndex++;
+            const deviceSubDirName = `Audio_${deviceAudioIndex}`;
+            const deviceSpecificAudioBasePath = path.join(outputBasePath, deviceSubDirName);
+
             // First, ensure we stop any existing recording for this device
             if (this.recordingProcesses.has(deviceId)) {
                 console.warn(`Device ${deviceId} is already recording. Stopping the current recording first.`);
                 this._stopDeviceRecording(deviceId);
-                // Wait a moment to ensure cleanup and pass duration, use outputBasePath directly
-                setTimeout(() => this._startDeviceRecording(deviceId, deviceData, outputBasePath, durationSec), 500);
+                // Wait a moment to ensure cleanup and pass duration, use deviceSpecificAudioBasePath
+                setTimeout(() => this._startDeviceRecording(deviceId, deviceData, deviceSpecificAudioBasePath, durationSec), 500);
             } else {
-                // Pass duration, use outputBasePath directly
-                this._startDeviceRecording(deviceId, deviceData, outputBasePath, durationSec);
+                // Pass duration, use deviceSpecificAudioBasePath
+                this._startDeviceRecording(deviceId, deviceData, deviceSpecificAudioBasePath, durationSec);
             }
         });
     }
 
     _startDeviceRecording(deviceId, deviceData, outputBasePath, durationSec = null) {
-        this.recordingCounter++;
-        const fileName = `Audio_${this.recordingCounter}.wav`;
+        // this.recordingCounter++; // Removed: outputBasePath is now device-specific (e.g., .../Audio_1)
+        const fileName = 'original.wav'; // Fixed filename
         const filePath = path.join(outputBasePath, fileName);
 
-        // Ensure the output directory exists
+        // Ensure the output directory exists (outputBasePath is now e.g. .../Audio_1)
         try {
             if (!fs.existsSync(outputBasePath)) {
                 fs.mkdirSync(outputBasePath, { recursive: true });
@@ -367,12 +372,12 @@ class AudioRecorder {
     async startTestRecording(deviceId, sessionPath) {
         // TODO: Decide if test recordings should also use the new structure or a simpler temp path.
         // For now, keeping the existing logic which uses sessionPath or ./temp
-        console.log(`Starting 3-second test recording for device: ${deviceId}`);
+        console.log(`Starting 3-second SoX test recording for device: ${deviceId}`);
         if (!this.activeDevices.has(deviceId)) {
             return { success: false, message: `Device ${deviceId} is not selected as an active device.` };
         }
-        const deviceData = this.activeDevices.get(deviceId);
-        const tempFileName = `test_audio_${deviceId.replace(/[^a-zA-Z0-9]/g, '_')}.wav`;
+        const deviceData = this.activeDevices.get(deviceId); // We have deviceData if needed, but deviceId is the name for macOS
+        const tempFileName = `test_sox_${deviceId.replace(/[^a-zA-Z0-9]/g, '_')}.wav`;
         const tempFilePath = path.join(sessionPath || './temp', tempFileName); // Use temp dir if no session path
 
         // Ensure temp directory exists
@@ -390,73 +395,84 @@ class AudioRecorder {
         return new Promise((resolve, reject) => {
             let testProcess;
             const duration = 3; // seconds
+            const soxCommonArgs = [
+                '-r', '48000',
+                '-c', '1',
+                '-b', '16',
+                tempFilePath,
+                'trim', '0', duration.toString()
+            ];
 
             if (this.platform === 'linux') {
-                testProcess = exec(`arecord -D ${deviceId} -f cd -t wav -d ${duration} \"${tempFilePath}\"`);
-            } else if (this.platform === 'darwin') {
-                // Reverted to ffmpeg for macOS test recording
-                console.warn(`Using ffmpeg (spawn) for macOS test recording with device: ":${deviceId}". Ensure ffmpeg is installed.`);
-                const ffmpegArgs = [
-                    '-y',
-                    '-thread_queue_size', '1024',
-                    '-f', 'avfoundation',
-                    '-i', `:${deviceId}`,
-                    '-t', duration.toString(),
-                    '-c:a', 'pcm_s16le',
-                    '-ar', '44100',
-                    '-ac', '1',
-                    tempFilePath
-                ];
-
-                console.log(`Executing macOS test command: ffmpeg ${ffmpegArgs.join(' ')}`);
+                // deviceId for Linux is expected to be like 'hw:0,0'
+                const soxArgs = ['-t', 'alsa', deviceId, ...soxCommonArgs];
+                console.log(`[AudioRecorder Test] Starting SoX for ${deviceId} on Linux: sox ${soxArgs.join(' ')}`);
                 try {
-                    testProcess = spawn('ffmpeg', ffmpegArgs);
+                    testProcess = spawn('sox', soxArgs);
                 } catch (spawnError) {
-                    console.error(`Failed to spawn ffmpeg process for test ${deviceId}:`, spawnError);
-                    this.recordingProcesses.delete(deviceId); // Clean up if spawn fails
-                    return reject(new Error(`Failed to start test recording (spawn error): ${spawnError.message}`));
+                    console.error(`[AudioRecorder Test] Failed to spawn SoX on Linux for ${deviceId}:`, spawnError);
+                    return reject(new Error(`Failed to start test recording (SoX spawn error Linux): ${spawnError.message}`));
                 }
-                // Event listeners for testProcess (error, stderr, stdout, exit) will be set outside this if/else block.
+            } else if (this.platform === 'darwin') {
+                // For macOS, deviceId in this context (from getActiveDevices/addActiveDevice) IS the device name.
+                const soxArgs = ['-t', 'coreaudio', deviceId, ...soxCommonArgs];
+                console.log(`[AudioRecorder Test] Starting SoX for ${deviceId} on macOS: sox ${soxArgs.join(' ')}`);
+                try {
+                    testProcess = spawn('sox', soxArgs);
+                } catch (spawnError) {
+                    console.error(`[AudioRecorder Test] Failed to spawn SoX on macOS for ${deviceId}:`, spawnError);
+                    return reject(new Error(`Failed to start test recording (SoX spawn error macOS): ${spawnError.message}`));
+                }
             } else {
-                console.error(`Test recording not supported on platform: ${this.platform}`);
+                console.error(`[AudioRecorder Test] Recording not supported on platform: ${this.platform}`);
                 return reject(new Error(`Test recording not supported on platform: ${this.platform}`));
+            }
+
+            if (!testProcess) {
+                console.error(`[AudioRecorder Test] SoX process not spawned for device ${deviceId}.`);
+                return reject(new Error('SoX process failed to spawn for test.'));
             }
 
             this.recordingProcesses.set(deviceId, { process: testProcess, filePath: tempFilePath, stopping: false });
 
-            testProcess.on('error', (err) => {
-                // This 'error' event for spawn typically means the process could not be spawned
-                // or was killed, or there was an error sending a message to it.
-                console.error(`Test recording process error for ${deviceId} (spawn):`, err);
-                this.recordingProcesses.delete(deviceId); // Clean up
-                reject(new Error(`Test recording process failed (spawn error): ${err.message}`));
+            let testStderrOutput = '';
+            testProcess.stdout.on('data', (data) => {
+                console.log(`[AudioRecorder SoX Test stdout - ${deviceId}]: ${data.toString().trim()}`);
+            });
+            testProcess.stderr.on('data', (data) => {
+                const message = data.toString().trim();
+                console.log(`[AudioRecorder SoX Test stderr - ${deviceId}]: ${message}`);
+                testStderrOutput += message + '\n';
             });
 
-            // For spawn, it's good to listen to stderr to catch ffmpeg errors
-            if (testProcess.stderr) {
-                testProcess.stderr.on('data', (data) => {
-                    console.error(`ffmpeg stderr (test ${deviceId}): ${data}`);
-                });
-            }
-            if (testProcess.stdout) { // Though ffmpeg usually logs to stderr
-                testProcess.stdout.on('data', (data) => {
-                    console.log(`ffmpeg stdout (test ${deviceId}): ${data}`);
-                });
-            }
+            testProcess.on('error', (err) => {
+                console.error(`[AudioRecorder Test] Error with SoX process for ${deviceId}:`, err);
+                this.recordingProcesses.delete(deviceId);
+                reject(new Error(`Test recording SoX process failed: ${err.message}`));
+            });
 
             testProcess.on('exit', (code, signal) => {
-                this.recordingProcesses.delete(deviceId); // Clean up tracker
-                if (code === 0 || signal === 'SIGTERM') { // arecord might exit with code 0 on duration end
-                    console.log(`Test recording for ${deviceId} completed successfully. File: ${tempFilePath}`);
+                this.recordingProcesses.delete(deviceId);
+                const currentProcessData = this.recordingProcesses.get(deviceId); // Should be undefined now
+                if (currentProcessData && currentProcessData.stopping) { // Check if it was an intentional stop
+                    console.log(`[AudioRecorder Test] SoX process for ${deviceId} was intentionally stopped.`);
+                    // If it was intentionally stopped, maybe resolve differently or ensure file is cleaned up if partial.
+                    fs.unlink(tempFilePath, (unlinkErr) => {
+                        if (unlinkErr) console.error(`[AudioRecorder Test] Error deleting partial test file ${tempFilePath}: ${unlinkErr.message}`);
+                        else console.log(`[AudioRecorder Test] Deleted partial test file ${tempFilePath} after stop.`);
+                    });
+                    resolve({ success: false, message: 'Test recording stopped early.' });
+                } else if (code === 0) {
+                    console.log(`[AudioRecorder Test] SoX recording completed successfully for ${deviceId}. File: ${tempFilePath}`);
                     resolve({ success: true, message: `Test recording saved to ${tempFilePath}`, filePath: tempFilePath });
                 } else {
-                    console.error(`Test recording process for ${deviceId} failed with code ${code}, signal ${signal}.`);
-                    // Optionally delete the file
-                    // fs.unlink(tempFilePath, ()=>{});
-                    reject(new Error(`Test recording failed (code: ${code}, signal: ${signal})`));
+                    console.error(`[AudioRecorder Test] SoX process for ${deviceId} exited with code ${code}, signal ${signal}. File may be incomplete: ${tempFilePath}`);
+                    console.error(`[AudioRecorder SoX Test stderr output for ${deviceId} on exit]:\n${testStderrOutput}`);
+                    fs.unlink(tempFilePath, () => { }); // Attempt to clean up failed/partial test file
+                    reject(new Error(`Test recording failed (SoX code: ${code}, signal: ${signal})`));
                 }
             });
-            console.log(`Test recording process started for ${deviceId} with PID: ${testProcess.pid}, duration: ${duration}s`);
+            console.log(`[AudioRecorder Test] SoX recording process started for ${deviceId} (PID: ${testProcess.pid}), duration: ${duration}s`);
         });
     }
 }
