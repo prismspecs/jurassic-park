@@ -256,8 +256,15 @@
 
       <!-- NEW: Central Output Canvas -->
       <div class="canvas-container card">
-        <h2>Live Output Canvas <span id="dinosaur-mode-indicator"
-            style="display: none; font-size: 0.8em; color: #ff9800; margin-left: 10px;"></span></h2>
+        <h2>
+          Live Output Canvas
+          <span id="dinosaur-mode-indicator"
+            style="display: none; font-size: 0.8em; color: #ff9800; margin-left: 10px;"></span>
+          <label style="font-size: 0.7em; margin-left: 20px; font-weight: normal; cursor: pointer;">
+            <input type="checkbox" id="mirror-main-output-toggle" style="vertical-align: middle; margin-right: 5px;">
+            Mirror Output
+          </label>
+        </h2>
         <canvas id="main-output-canvas" style="border: 1px solid blue; max-width: 100%; height: auto;"></canvas>
         <button id="test-dinosaur-mask-btn" class="btn btn-warning btn-sm" style="display: none; margin-top: 10px;">Test
           Dinosaur Mask</button>

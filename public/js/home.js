@@ -7,7 +7,7 @@ import {
   populateSessionList
 } from './modules/session-manager.js';
 import { initializeWebSocket, sendWebSocketMessage } from './modules/websocket-handler.js';
-import { initializeTeleprompterStreaming } from './modules/teleprompter-handler.js';
+import { initializeTeleprompterStreaming, updateTeleprompterMirrorState } from './modules/teleprompter-handler.js';
 import { initializeActorLoader } from './modules/actor-loader.js';
 import { initializeSourceSelector, populateAllSourceSelectors } from './modules/source-selector.js';
 import { initializeCanvasRecorder } from './modules/canvas-recorder.js';
@@ -52,6 +52,22 @@ document.addEventListener('DOMContentLoaded', () => {
     mainRecordingCompositor = new VideoCompositor('main-output-canvas');
     logToConsole('Main recording compositor initialized.', 'info');
     setMainCompositor(mainRecordingCompositor);
+
+    // Event listener for the new mirror toggle for main-output-canvas
+    if (mainRecordingCompositor) {
+      const mirrorToggle = document.getElementById('mirror-main-output-toggle');
+      if (mirrorToggle) {
+        mirrorToggle.addEventListener('change', (event) => {
+          if (mainRecordingCompositor) {
+            mainRecordingCompositor.setMirrored(event.target.checked);
+            logToConsole(`Main output canvas mirroring set to: ${event.target.checked}`, 'info');
+            updateTeleprompterMirrorState(event.target.checked);
+          }
+        });
+      } else {
+        logToConsole('Mirror toggle for main output canvas not found.', 'warn');
+      }
+    }
   } else {
     logToConsole('main-output-canvas not found. Main recording compositor NOT initialized.', 'error');
   }

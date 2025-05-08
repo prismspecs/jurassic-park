@@ -111,6 +111,12 @@ export function initializeTeleprompterStreaming(mainOutputCanvasElement, mainRec
                         return;
                     }
                     setupTeleprompterStream(teleprompterWin, stream);
+                    // Set initial mirror state
+                    if (mainRecordingCompositor && typeof mainRecordingCompositor.isMirrored !== 'undefined') {
+                        updateTeleprompterMirrorState(mainRecordingCompositor.isMirrored);
+                    } else {
+                        logToConsole('Cannot set initial teleprompter mirror state: mainRecordingCompositor or isMirrored property unavailable.', 'warn');
+                    }
                 };
 
                 const teleprompterWinClosedCheckInterval = setInterval(() => {
@@ -160,5 +166,18 @@ export function initializeTeleprompterStreaming(mainOutputCanvasElement, mainRec
                 toggleTeleprompterFeedBtn.style.display = 'none';
             }
         });
+    }
+}
+
+export function updateTeleprompterMirrorState(isMirrored) {
+    if (activeTeleprompterFeedWindow && !activeTeleprompterFeedWindow.closed) {
+        if (typeof activeTeleprompterFeedWindow.setLiveFeedMirror === 'function') {
+            activeTeleprompterFeedWindow.setLiveFeedMirror(isMirrored);
+            logToConsole(`Called setLiveFeedMirror(${isMirrored}) on teleprompter window.`, 'info');
+        } else {
+            logToConsole('setLiveFeedMirror function not found in teleprompter window.', 'warn');
+        }
+    } else {
+        logToConsole('UpdateTeleprompterMirrorState: No active teleprompter window or it is closed.', 'debug');
     }
 } 

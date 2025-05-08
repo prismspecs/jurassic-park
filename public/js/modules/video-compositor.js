@@ -68,6 +68,8 @@ export class VideoCompositor {
             // Potentially throw an error or disable masking if this fails
         }
 
+        this.isMirrored = false; // Added for mirror toggle
+
         logToConsole(`VideoCompositor initialized for canvas '#${this.canvas.id || '(no ID yet)'}'.`, 'info');
     }
 
@@ -563,5 +565,25 @@ export class VideoCompositor {
 
     isDinosaurMaskActive() {
         return this.dinosaurMaskActive && this.dinosaurVideoMask;
+    }
+
+    setDinosaurMaskActive(isActive) {
+        this.dinosaurMaskActive = isActive;
+        logToConsole(`VideoCompositor: Dinosaur mask active set to ${isActive}`, 'info');
+        if (!isActive) {
+            // If disabling, ensure the canvas is cleared of any residual mask effects immediately
+            // if a draw loop isn't running or might be delayed.
+            // this._drawFrame(true); // forceClearEffects = true
+        }
+    }
+
+    setMirrored(mirrored) {
+        this.isMirrored = mirrored;
+        if (this.canvas) {
+            this.canvas.style.transform = this.isMirrored ? 'scaleX(-1)' : 'none';
+            logToConsole(`VideoCompositor: Canvas mirroring set to ${this.isMirrored}. Transform: ${this.canvas.style.transform}`, 'info');
+        } else {
+            logToConsole('VideoCompositor: setMirrored called but canvas is not available.', 'warn');
+        }
     }
 } 

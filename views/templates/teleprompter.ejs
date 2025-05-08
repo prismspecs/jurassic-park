@@ -243,6 +243,13 @@
         console.log("Teleprompter live video hidden.");
       }
     }
+
+    function setLiveFeedMirror(isMirrored) {
+      if (liveFeedVideoElement) {
+        liveFeedVideoElement.style.transform = isMirrored ? 'scaleX(-1)' : 'none';
+        console.log(`Teleprompter live feed mirroring set to: ${isMirrored}`);
+      }
+    }
   </script>
 </body>
 
