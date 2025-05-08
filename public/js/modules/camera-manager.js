@@ -466,48 +466,6 @@ export class CameraManager {
     );
     controlsDiv.appendChild(bodySegmentToggle);
 
-    // --- Segment Size Multiplier Slider ---
-    const segmentSizeDiv = document.createElement('div');
-    segmentSizeDiv.className = 'form-group mt-2 mb-2'; // Add some margin
-
-    const segmentSizeLabel = document.createElement('label');
-    segmentSizeLabel.htmlFor = `segment-size-slider-${camera.name}`;
-    segmentSizeLabel.textContent = 'Segment Size Multiplier: ';
-    segmentSizeLabel.className = 'form-label form-label-sm'; // Smaller label
-
-    const segmentSizeSlider = document.createElement('input');
-    segmentSizeSlider.type = 'range';
-    segmentSizeSlider.id = `segment-size-slider-${camera.name}`;
-    segmentSizeSlider.className = 'form-range form-range-sm'; // Bootstrap styled range
-    segmentSizeSlider.min = '0.25';
-    segmentSizeSlider.max = '2.5';
-    segmentSizeSlider.step = '0.05';
-    segmentSizeSlider.value = compositor.bodySegmentSizeMultiplier || '1.0'; // Read initial from compositor or default
-
-    let segmentSizeUpdateTimeout = null; // Debounce timeout variable
-
-    const segmentSizeValueDisplay = document.createElement('span');
-    segmentSizeValueDisplay.id = `segment-size-value-${camera.name}`;
-    segmentSizeValueDisplay.textContent = parseFloat(segmentSizeSlider.value).toFixed(2);
-    segmentSizeValueDisplay.className = 'ms-2 small'; // Margin start and smaller text
-
-    segmentSizeSlider.addEventListener('input', (event) => {
-      const multiplier = parseFloat(event.target.value);
-      segmentSizeValueDisplay.textContent = multiplier.toFixed(2);
-
-      clearTimeout(segmentSizeUpdateTimeout); // Clear existing timeout
-      segmentSizeUpdateTimeout = setTimeout(() => { // Set a new timeout
-        if (compositor) {
-          compositor.setBodySegmentSizeMultiplier(multiplier);
-        }
-      }, 200); // Adjust delay as needed (e.g., 200ms)
-    });
-
-    segmentSizeLabel.appendChild(segmentSizeValueDisplay); // Append display next to text part of label
-    segmentSizeDiv.appendChild(segmentSizeLabel);
-    segmentSizeDiv.appendChild(segmentSizeSlider);
-    controlsDiv.appendChild(segmentSizeDiv);
-
     // --- Record Processed Canvas Button ---
     const recordButton = document.createElement('button');
     recordButton.id = `record-btn-${camera.name}`; recordButton.className = 'btn btn-info btn-sm';

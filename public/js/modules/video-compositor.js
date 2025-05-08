@@ -72,8 +72,6 @@ export class VideoCompositor {
         this.isMirrored = false; // Added for mirror toggle
         this.boundDinosaurMaskEndedHandler = null; // For manual looping of dino mask
 
-        this.bodySegmentSizeMultiplier = 1.0; // Default size multiplier
-
         // Visibility API
         this._boundHandleVisibilityChange = this._handleVisibilityChange.bind(this);
         document.addEventListener('visibilitychange', this._boundHandleVisibilityChange);
@@ -194,14 +192,6 @@ export class VideoCompositor {
         }
     }
 
-    setBodySegmentSizeMultiplier(multiplier) {
-        this.bodySegmentSizeMultiplier = parseFloat(multiplier);
-        logToConsole(`VideoCompositor: Body Segment Size Multiplier set to ${this.bodySegmentSizeMultiplier}.`, 'info');
-        // If currently drawing this mask, trigger a redraw to apply the new multiplier
-        if (this.isDrawing && this.drawBodySegmentMask) {
-            this._drawFrame(false); // Pass false to avoid forceClearEffects
-        }
-    }
     // --- End Control Methods ---
 
     // Sets the main video/canvas source to be drawn
@@ -580,8 +570,8 @@ export class VideoCompositor {
                 maskCtx.fill();
             }
 
-            const baseLimbThickness = Math.max(20, (lShoulder && rShoulder ? Math.abs(rShoulder.x - lShoulder.x) / 4 : 20));
-            const limbThickness = baseLimbThickness * this.bodySegmentSizeMultiplier;
+            const baseLimbThickness = Math.max(48, (lShoulder && rShoulder ? Math.abs(rShoulder.x - lShoulder.x) * 0.6 : 48)); // Underlying values scaled by 2.4x
+            const limbThickness = baseLimbThickness; // Simplified: No longer uses bodySegmentSizeMultiplier
 
             const fillLimbPoly = (p1, p2, thickness) => {
                 if (!p1 || !p2) return;
