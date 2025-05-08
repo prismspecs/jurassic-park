@@ -16,6 +16,8 @@ const POSE_CONNECTIONS = [
 // Define a color palette for different poses if needed
 const POSE_COLORS = ['lime', 'cyan', 'magenta', 'yellow', 'orange', 'red'];
 
+const DIFFERENCE_MASK_SCALEDOWN_FACTOR = 4; // e.g., 4 means 1/4 width & height (1/16th pixels)
+
 /**
  * Manages drawing multiple video/image sources and effects onto a target canvas.
  * Initially handles only one primary video source.
@@ -54,6 +56,7 @@ export class VideoCompositor {
         this.drawSkeletonOverlay = false; // Controls skeleton drawing
         this.drawBoundingBoxMask = false; // Controls mask drawing
         this.drawBodySegmentMask = false; // Controls body segment mask drawing
+        this.drawDifferenceMask = false; // CONTROLS THE NEW DIFFERENCE MASK DRAWING
         this.lastDetectedPoses = [];
         this._initializeTfjsAndDetector();
         // --- End New/Modified State ---
@@ -67,6 +70,25 @@ export class VideoCompositor {
         if (!this.lumaMaskCtx) {
             logToConsole('VideoCompositor: Failed to get 2D context for lumaMaskCanvas.', 'error');
             // Potentially throw an error or disable masking if this fails
+        }
+
+        // Offscreen canvas for scaled dinosaur shape (for difference mask)
+        this.scaledDinoShapeCanvas = document.createElement('canvas');
+        this.scaledDinoShapeCtx = this.scaledDinoShapeCanvas.getContext('2d');
+        if (!this.scaledDinoShapeCtx) {
+            logToConsole('VideoCompositor: Failed to get 2D context for scaledDinoShapeCanvas.', 'error');
+        }
+
+        // Offscreen canvases for low-resolution difference mask processing
+        this.lowResPersonCanvas = document.createElement('canvas');
+        this.lowResPersonCtx = this.lowResPersonCanvas.getContext('2d', { willReadFrequently: true });
+        if (!this.lowResPersonCtx) {
+            logToConsole('VideoCompositor: Failed to get 2D context for lowResPersonCanvas.', 'error');
+        }
+        this.lowResDinoCanvas = document.createElement('canvas');
+        this.lowResDinoCtx = this.lowResDinoCanvas.getContext('2d', { willReadFrequently: true });
+        if (!this.lowResDinoCtx) {
+            logToConsole('VideoCompositor: Failed to get 2D context for lowResDinoCanvas.', 'error');
         }
 
         this.isMirrored = false; // Added for mirror toggle
@@ -153,7 +175,7 @@ export class VideoCompositor {
     }
 
     _updatePoseDetectionState() {
-        const shouldEnablePose = this.drawSkeletonOverlay || this.drawBoundingBoxMask || this.drawBodySegmentMask;
+        const shouldEnablePose = this.drawSkeletonOverlay || this.drawBoundingBoxMask || this.drawBodySegmentMask || this.drawDifferenceMask;
         // Only call setPoseDetectionEnabled if the state actually needs to change
         if (shouldEnablePose && !this.enablePoseDetection) {
             this.setPoseDetectionEnabled(true);
@@ -192,6 +214,20 @@ export class VideoCompositor {
         logToConsole(`VideoCompositor: Body Segment Mask set to ${this.drawBodySegmentMask}.`, 'info');
 
         this._updatePoseDetectionState();
+
+        if (changed && this.isDrawing) {
+            // Force a redraw, potentially clearing previous effects if this one is disabled
+            // or ensuring it's drawn if enabled.
+            this._drawFrame(true);
+        }
+    }
+
+    setDrawDifferenceMask(enabled) {
+        const changed = this.drawDifferenceMask !== !!enabled;
+        this.drawDifferenceMask = !!enabled;
+        logToConsole(`VideoCompositor: Difference Mask set to ${this.drawDifferenceMask}.`, 'info');
+
+        this._updatePoseDetectionState(); // Difference mask requires pose detection for body segments
 
         if (changed && this.isDrawing) {
             // Force a redraw, potentially clearing previous effects if this one is disabled
@@ -328,70 +364,28 @@ export class VideoCompositor {
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
             if (this.canvas.width > 0 && this.canvas.height > 0) {
-                try {
-                    this.ctx.drawImage(this.currentFrameSource, 0, 0, this.canvas.width, this.canvas.height);
-                } catch (e) {
-                    logToConsole(`Error drawing source image: ${e}`, 'error');
-                }
-            }
-
-            // APPLY DINOSAUR VIDEO MASK (if active)
-            if (this.dinosaurMaskActive && this.dinosaurVideoMask &&
-                this.dinosaurVideoMask.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
-                !this.dinosaurVideoMask.paused && this.lumaMaskCtx) { // Check lumaMaskCtx
-
-                const maskVideo = this.dinosaurVideoMask;
-                const maskWidth = maskVideo.videoWidth;
-                const maskHeight = maskVideo.videoHeight;
-
-                if (maskWidth > 0 && maskHeight > 0) {
-                    if (this.lumaMaskCanvas.width !== maskWidth) this.lumaMaskCanvas.width = maskWidth;
-                    if (this.lumaMaskCanvas.height !== maskHeight) this.lumaMaskCanvas.height = maskHeight;
-
+                // If Difference Mask is active, it handles its own drawing entirely.
+                // Otherwise, draw the standard source image.
+                if (!this.drawDifferenceMask) {
                     try {
-                        // 1. Draw B&W video frame to offscreen lumaMaskCanvas
-                        this.lumaMaskCtx.drawImage(maskVideo, 0, 0, maskWidth, maskHeight);
-
-                        // 2. Get imageData and process for luma matte
-                        const imageData = this.lumaMaskCtx.getImageData(0, 0, maskWidth, maskHeight);
-                        const data = imageData.data;
-                        for (let i = 0; i < data.length; i += 4) {
-                            // Assuming B&W, R=G=B. Use Red channel as luma value.
-                            // White (255) = opaque mask (alpha=255)
-                            // Black (0)   = transparent mask (alpha=0)
-                            data[i + 3] = data[i]; // Set alpha to the red channel value
-                        }
-                        this.lumaMaskCtx.putImageData(imageData, 0, 0);
-
-                        // 3. Apply the processed lumaMaskCanvas as the mask
-                        this.ctx.save();
-                        this.ctx.globalCompositeOperation = 'destination-in';
-                        // Draw lumaMaskCanvas onto the main canvas, scaled to main canvas size
-                        this.ctx.drawImage(this.lumaMaskCanvas, 0, 0, this.canvas.width, this.canvas.height);
-                        this.ctx.restore();
-
+                        this.ctx.drawImage(this.currentFrameSource, 0, 0, this.canvas.width, this.canvas.height);
                     } catch (e) {
-                        logToConsole(`Error processing or drawing luma matte dinosaur mask: ${e.message}`, 'error');
+                        logToConsole(`Error drawing source image: ${e}`, 'error');
                     }
                 }
-            } else if (this.dinosaurMaskActive && this.dinosaurVideoMask) {
-                logToConsole(`DinoMask luma processing SKIPPED: Time=${this.dinosaurVideoMask.currentTime.toFixed(2)}, RS=${this.dinosaurVideoMask.readyState}, Paused=${this.dinosaurVideoMask.paused}`, 'debug');
             }
 
             let posesToDraw = null;
+            let bodySegmentShapeRendered = false; // Track if body segment data is ready
 
             if (this.enablePoseDetection && this.poseDetector && !forceClearEffects) {
-                // Always use the last available poses for drawing
                 posesToDraw = this.lastDetectedPoses;
-
-                // Only run estimation every other frame (or adjust N as needed)
-                const ESTIMATION_INTERVAL = 2; // Run every 2 frames
+                const ESTIMATION_INTERVAL = 2;
                 if (this.frameCount % ESTIMATION_INTERVAL === 0) {
                     try {
-                        // console.debug(`[${this.canvas.id}] Running pose estimation (frame ${this.frameCount})...`); // Uncomment for verbose debug
                         this.poseDetector.estimatePoses(this.currentFrameSource)
                             .then(poses => {
-                                this.lastDetectedPoses = poses; // Update last poses when estimation runs
+                                this.lastDetectedPoses = poses;
                             })
                             .catch(err => {
                                 logToConsole(`[${this.canvas.id}] Error during pose estimation: ${err.message}`, 'error');
@@ -406,22 +400,124 @@ export class VideoCompositor {
                 posesToDraw = [];
             }
 
-            // Apply Mask (using last detected poses)
-            if (this.drawBoundingBoxMask && posesToDraw && posesToDraw.length > 0 && !forceClearEffects) {
-                try { this._applyMaskShapes(posesToDraw); }
-                catch (maskError) { logToConsole(`Error applying mask shapes: ${maskError}`, 'error'); }
+            // Prepare body segment mask data if needed by standard body mask effect
+            // This is NOT used for the Difference Mask, which expects a pre-processed currentFrameSource
+            let bodySegmentShapeRenderedForStandardMask = false;
+            if (this.drawBodySegmentMask && !this.drawDifferenceMask && posesToDraw && posesToDraw.length > 0 && !forceClearEffects && this.segmentMaskCtx) {
+                if (this.segmentMaskCanvas.width !== this.canvas.width) {
+                    this.segmentMaskCanvas.width = this.canvas.width;
+                }
+                if (this.segmentMaskCanvas.height !== this.canvas.height) {
+                    this.segmentMaskCanvas.height = this.canvas.height;
+                }
+                this._renderBodySegmentShapeOnMaskCanvas(posesToDraw); // Populates this.segmentMaskCanvas
+                bodySegmentShapeRenderedForStandardMask = true;
             }
 
-            // Apply Body Segment Mask (using last detected poses)
-            if (this.drawBodySegmentMask && posesToDraw && posesToDraw.length > 0 && !forceClearEffects) {
-                try { this._applyBodySegmentMask(posesToDraw); }
-                catch (segmentError) { logToConsole(`Error applying body segment mask: ${segmentError}`, 'error'); }
-            }
+            // MAIN DRAWING LOGIC BRANCH
+            // Difference Mask takes precedence if active and its specific inputs are ready
+            if (this.drawDifferenceMask && this.currentFrameSource &&
+                this.dinosaurVideoMask && this.dinosaurVideoMask.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !this.dinosaurVideoMask.paused &&
+                this.lumaMaskCtx && this.scaledDinoShapeCtx) {
+                try {
+                    this._drawDifferenceMaskLayer(); // No longer passes posesToDraw
+                } catch (differenceError) {
+                    logToConsole(`Error drawing difference mask layer: ${differenceError.message}`, 'error');
+                    // Fallback or clear if error is critical
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height); // Clear to avoid corrupted frame
+                }
+            } else {
+                // IF 'drawDifferenceMask' IS TRUE but we are in this 'else' block, it means one of its specific conditions failed.
+                if (this.drawDifferenceMask) {
+                    logToConsole(`VideoCompositor: Difference Mask is ON but prerequisites not met. Falling back to standard draw. Details:`, 'warn');
+                    logToConsole(`  - this.currentFrameSource available: ${!!this.currentFrameSource}`, 'warn');
+                    // Add checks for currentFrameSource dimensions if relevant, assuming it's a canvas/video
+                    if (this.currentFrameSource instanceof HTMLCanvasElement || this.currentFrameSource instanceof HTMLVideoElement) {
+                        logToConsole(`    - currentFrameSource dimensions: ${this.currentFrameSource.width}x${this.currentFrameSource.height}`, 'warn');
+                    } else if (this.currentFrameSource) {
+                        logToConsole(`    - currentFrameSource type: ${typeof this.currentFrameSource}`, 'warn');
+                    }
+                    logToConsole(`  - dinosaurVideoMask exists: ${!!this.dinosaurVideoMask}`, 'warn');
+                    if (this.dinosaurVideoMask) {
+                        logToConsole(`    - dino.readyState: ${this.dinosaurVideoMask.readyState} (expected >= ${HTMLMediaElement.HAVE_CURRENT_DATA})`, 'warn');
+                        logToConsole(`    - dino.paused: ${this.dinosaurVideoMask.paused} (expected false)`, 'warn');
+                    }
+                    logToConsole(`  - lumaMaskCtx exists: ${!!this.lumaMaskCtx}`, 'warn');
+                    logToConsole(`  - scaledDinoShapeCtx exists: ${!!this.scaledDinoShapeCtx}`, 'warn');
+                }
+                // --- Standard Drawing Path (when Difference Mask is OFF or its prerequisites failed) ---
+                // Base image is already drawn (or not, if drawDifferenceMask was true but failed conditions)
+                // For safety, ensure source is drawn if not in an active difference mask path:
+                if (!this.drawDifferenceMask) { // Re-ensure source is drawn if not handled by diff mask
+                    if (this.canvas.width > 0 && this.canvas.height > 0 && this.currentFrameSource) { // Check currentFrameSource exists
+                        try {
+                            // Check if it was already drawn; avoid double draw if possible.
+                            // The clearRect and drawImage earlier should handle it, this is a safeguard.
+                            // If this.ctx.drawImage was inside an if(!this.drawDifferenceMask) block, this is not needed here.
+                            // Current structure: clearRect, then if(!drawDifferenceMask) drawImage. So it's fine.
+                        } catch (e) {
+                            // logToConsole(`Error re-drawing source image: ${e}`, 'error'); // Covered by initial draw
+                        }
+                    }
+                }
 
-            // Draw Skeleton Overlay (using last detected poses)
-            if (this.drawSkeletonOverlay && posesToDraw && posesToDraw.length > 0 && !forceClearEffects) {
-                try { this._drawSkeleton(posesToDraw); }
-                catch (skeletonError) { logToConsole(`Error drawing skeleton: ${skeletonError}`, 'error'); }
+                // Apply DINOSAUR LUMA MASK (already has !this.drawDifferenceMask condition)
+                if (this.dinosaurMaskActive && this.dinosaurVideoMask &&
+                    this.dinosaurVideoMask.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+                    !this.dinosaurVideoMask.paused && this.lumaMaskCtx && !this.drawDifferenceMask) { // Added !this.drawDifferenceMask again for clarity
+
+                    const maskVideo = this.dinosaurVideoMask;
+                    const maskWidth = maskVideo.videoWidth;
+                    const maskHeight = maskVideo.videoHeight;
+
+                    if (maskWidth > 0 && maskHeight > 0) {
+                        if (this.lumaMaskCanvas.width !== maskWidth) this.lumaMaskCanvas.width = maskWidth;
+                        if (this.lumaMaskCanvas.height !== maskHeight) this.lumaMaskCanvas.height = maskHeight;
+                        try {
+                            this.lumaMaskCtx.drawImage(maskVideo, 0, 0, maskWidth, maskHeight);
+                            const imageData = this.lumaMaskCtx.getImageData(0, 0, maskWidth, maskHeight);
+                            const data = imageData.data;
+                            for (let i = 0; i < data.length; i += 4) {
+                                data[i + 3] = data[i];
+                            }
+                            this.lumaMaskCtx.putImageData(imageData, 0, 0);
+                            this.ctx.save();
+                            this.ctx.globalCompositeOperation = 'destination-in';
+                            this.ctx.drawImage(this.lumaMaskCanvas, 0, 0, this.canvas.width, this.canvas.height);
+                            this.ctx.restore();
+                        } catch (e) {
+                            logToConsole(`Error processing or drawing luma matte dinosaur mask: ${e.message}`, 'error');
+                        }
+                    }
+                } else if (this.dinosaurMaskActive && this.dinosaurVideoMask && !this.drawDifferenceMask) {
+                    logToConsole(`DinoMask luma processing SKIPPED (standard path): Time=${this.dinosaurVideoMask.currentTime.toFixed(2)}, RS=${this.dinosaurVideoMask.readyState}, Paused=${this.dinosaurVideoMask.paused}`, 'debug');
+                }
+
+                // Apply Bounding Box Mask
+                if (this.drawBoundingBoxMask && posesToDraw && posesToDraw.length > 0 && !forceClearEffects) {
+                    try { this._applyMaskShapes(posesToDraw); }
+                    catch (maskError) { logToConsole(`Error applying mask shapes: ${maskError}`, 'error'); }
+                }
+
+                // Apply Body Segment Mask (visual effect, using the already prepared this.segmentMaskCanvas)
+                // This is the standard body segment mask, not related to the difference mask input.
+                if (this.drawBodySegmentMask && bodySegmentShapeRenderedForStandardMask && !this.drawDifferenceMask && posesToDraw && posesToDraw.length > 0 && !forceClearEffects) {
+                    try {
+                        // this.segmentMaskCanvas was populated by _renderBodySegmentShapeOnMaskCanvas if conditions were met
+                        this.ctx.save();
+                        this.ctx.globalCompositeOperation = 'destination-in';
+                        this.ctx.drawImage(this.segmentMaskCanvas, 0, 0, this.canvas.width, this.canvas.height);
+                        this.ctx.restore();
+                    }
+                    catch (segmentError) { logToConsole(`Error applying body segment mask effect: ${segmentError}`, 'error'); }
+                }
+
+                // Draw Skeleton Overlay
+                if (this.drawSkeletonOverlay && posesToDraw && posesToDraw.length > 0 && !forceClearEffects) {
+                    try { this._drawSkeleton(posesToDraw); }
+                    catch (skeletonError) { logToConsole(`Error drawing skeleton: ${skeletonError}`, 'error'); }
+                }
+                // --- End Standard Drawing Path ---
             }
 
         } catch (drawError) {
@@ -486,45 +582,54 @@ export class VideoCompositor {
     }
     // --- End Refactored Masking Method ---
 
-    _applyBodySegmentMask(poses) {
-        if (!poses || poses.length === 0 || !this.currentFrameSource || !this.segmentMaskCtx) return; // Added check for segmentMaskCtx
-
-        const ctx = this.ctx;
-        const canvasWidth = this.canvas.width;
-        const canvasHeight = this.canvas.height;
-
-        // Ensure offscreen mask canvas has correct dimensions
-        if (this.segmentMaskCanvas.width !== canvasWidth) {
-            this.segmentMaskCanvas.width = canvasWidth;
+    // New method to render the body segment shape onto this.segmentMaskCanvas
+    _renderBodySegmentShapeOnMaskCanvas(poses) {
+        if (!poses || poses.length === 0 || /*!this.currentFrameSource ||*/ !this.segmentMaskCtx) {
+            // logToConsole('Skipping body segment shape rendering: no poses, source, or segmentMaskCtx', 'debug');
+            if (this.segmentMaskCtx && this.segmentMaskCanvas.width > 0 && this.segmentMaskCanvas.height > 0) {
+                this.segmentMaskCtx.clearRect(0, 0, this.segmentMaskCanvas.width, this.segmentMaskCanvas.height); // Clear if no poses
+            }
+            return;
         }
-        if (this.segmentMaskCanvas.height !== canvasHeight) {
-            this.segmentMaskCanvas.height = canvasHeight;
+        // Ensure currentFrameSource is available for scaling references
+        if (!this.currentFrameSource) {
+            logToConsole('Skipping body segment shape rendering: no currentFrameSource for scaling.', 'warn');
+            if (this.segmentMaskCtx && this.segmentMaskCanvas.width > 0 && this.segmentMaskCanvas.height > 0) {
+                this.segmentMaskCtx.clearRect(0, 0, this.segmentMaskCanvas.width, this.segmentMaskCanvas.height);
+            }
+            return;
         }
+
+        // const canvasWidth = this.segmentMaskCanvas.width; // Use segmentMaskCanvas dimensions
+        // const canvasHeight = this.segmentMaskCanvas.height;
+        // Ensure offscreen mask canvas has correct dimensions (it should match the main canvas for accurate mapping)
+        // This is now handled in _drawFrame before this is called, ensuring it's sized like this.canvas
+        const currentCanvasWidth = this.segmentMaskCanvas.width;
+        const currentCanvasHeight = this.segmentMaskCanvas.height;
 
         const maskCtx = this.segmentMaskCtx;
-        maskCtx.clearRect(0, 0, canvasWidth, canvasHeight); // Clear before drawing new mask
+        maskCtx.clearRect(0, 0, currentCanvasWidth, currentCanvasHeight); // Clear before drawing new mask
 
         const sourceWidth = (this.sourceType === 'video') ? this.currentFrameSource.videoWidth : this.currentFrameSource.width;
         const sourceHeight = (this.sourceType === 'video') ? this.currentFrameSource.videoHeight : this.currentFrameSource.height;
 
         if (!sourceWidth || !sourceHeight) {
-            logToConsole('BodySegmentMask: Source dimensions are invalid for scaling.', 'warn');
+            logToConsole('BodySegmentMask: Source dimensions are invalid for scaling for shape rendering.', 'warn');
             return;
         }
 
-        const scaleX = canvasWidth / sourceWidth;
-        const scaleY = canvasHeight / sourceHeight;
+        const scaleX = currentCanvasWidth / sourceWidth;
+        const scaleY = currentCanvasHeight / sourceHeight;
 
         maskCtx.fillStyle = 'white'; // Mask color, opaque areas will keep video pixels
 
         poses.forEach(pose => {
             if (!pose || !pose.keypoints) return;
             const keypoints = pose.keypoints;
-            const confidenceThreshold = 0.15;
+            const confidenceThreshold = 0.15; // Current value, user might want to adjust this later
 
             const kp = (index) => {
                 if (keypoints[index] && keypoints[index].score > confidenceThreshold) {
-                    // Return coordinates already scaled to the destination canvas dimensions
                     return { x: keypoints[index].x * scaleX, y: keypoints[index].y * scaleY };
                 }
                 return null;
@@ -555,7 +660,7 @@ export class VideoCompositor {
                 maskCtx.fill();
             }
 
-            // Head (original circle for nose - will be mostly covered by neck polygon if shoulders are visible)
+            // Head
             if (nose) {
                 let headRadius = 15;
                 if (lShoulder && rShoulder) {
@@ -578,8 +683,8 @@ export class VideoCompositor {
                 maskCtx.fill();
             }
 
-            const baseLimbThickness = Math.max(48, (lShoulder && rShoulder ? Math.abs(rShoulder.x - lShoulder.x) * 0.6 : 48)); // Underlying values scaled by 2.4x
-            const limbThickness = baseLimbThickness; // Simplified: No longer uses bodySegmentSizeMultiplier
+            const baseLimbThickness = Math.max(48, (lShoulder && rShoulder ? Math.abs(rShoulder.x - lShoulder.x) * 0.6 : 48));
+            const limbThickness = baseLimbThickness;
 
             const fillLimbPoly = (p1, p2, thickness) => {
                 if (!p1 || !p2) return;
@@ -602,35 +707,35 @@ export class VideoCompositor {
             fillLimbPoly(rShoulder, rElbow, limbThickness);
             fillLimbPoly(rElbow, rWrist, limbThickness);
 
-            // Hands (extend from wrists)
+            // Hands
             if (lWrist && lElbow) {
-                const handLength = limbThickness * 1.0; // Increased hand length
+                const handLength = limbThickness * 1.0;
                 const angle = Math.atan2(lWrist.y - lElbow.y, lWrist.x - lElbow.x);
                 const handEndX = lWrist.x + handLength * Math.cos(angle);
                 const handEndY = lWrist.y + handLength * Math.sin(angle);
-                fillLimbPoly(lWrist, { x: handEndX, y: handEndY }, limbThickness); // Use full limbThickness for hands
+                fillLimbPoly(lWrist, { x: handEndX, y: handEndY }, limbThickness);
             }
             if (rWrist && rElbow) {
-                const handLength = limbThickness * 1.0; // Increased hand length
+                const handLength = limbThickness * 1.0;
                 const angle = Math.atan2(rWrist.y - rElbow.y, rWrist.x - rElbow.x);
                 const handEndX = rWrist.x + handLength * Math.cos(angle);
                 const handEndY = rWrist.y + handLength * Math.sin(angle);
-                fillLimbPoly(rWrist, { x: handEndX, y: handEndY }, limbThickness); // Use full limbThickness for hands
+                fillLimbPoly(rWrist, { x: handEndX, y: handEndY }, limbThickness);
             }
 
             // Legs
             fillLimbPoly(lHip, lKnee, limbThickness);
-            fillLimbPoly(lKnee, lAnkle, limbThickness * 0.9); // Ankles could be slightly thinner
+            fillLimbPoly(lKnee, lAnkle, limbThickness * 0.9);
             fillLimbPoly(rHip, rKnee, limbThickness);
             fillLimbPoly(rKnee, rAnkle, limbThickness * 0.9);
 
-            // Feet (extend from ankles)
+            // Feet
             if (lAnkle && lKnee) {
-                const footLength = limbThickness * 0.75; // Length of the foot segment
+                const footLength = limbThickness * 0.75;
                 const angle = Math.atan2(lAnkle.y - lKnee.y, lAnkle.x - lKnee.x);
                 const footEndX = lAnkle.x + footLength * Math.cos(angle);
                 const footEndY = lAnkle.y + footLength * Math.sin(angle);
-                fillLimbPoly(lAnkle, { x: footEndX, y: footEndY }, limbThickness * 0.7); // Slightly thinner for feet
+                fillLimbPoly(lAnkle, { x: footEndX, y: footEndY }, limbThickness * 0.7);
             }
             if (rAnkle && rKnee) {
                 const footLength = limbThickness * 0.75;
@@ -640,8 +745,20 @@ export class VideoCompositor {
                 fillLimbPoly(rAnkle, { x: footEndX, y: footEndY }, limbThickness * 0.7);
             }
         });
+    }
 
-        // Apply the mask: current video frame (already on ctx) is kept where maskCanvas is opaque.
+    _applyBodySegmentMask(poses) {
+        if (!poses || poses.length === 0 || !this.currentFrameSource || !this.segmentMaskCtx) return; // Added check for segmentMaskCtx
+
+        // Step 1: Ensure the segment mask canvas is populated with the latest pose
+        // This method will now handle sizing and drawing the white shape on this.segmentMaskCanvas
+        this._renderBodySegmentShapeOnMaskCanvas(poses);
+
+        // Step 2: Apply this.segmentMaskCanvas to the main canvas (this.ctx)
+        const ctx = this.ctx;
+        const canvasWidth = this.canvas.width;
+        const canvasHeight = this.canvas.height;
+
         ctx.globalCompositeOperation = 'destination-in';
         ctx.drawImage(this.segmentMaskCanvas, 0, 0, canvasWidth, canvasHeight); // Use this.segmentMaskCanvas
         ctx.globalCompositeOperation = 'source-over'; // Reset for subsequent drawing (e.g., skeleton overlay)
@@ -927,5 +1044,140 @@ export class VideoCompositor {
         this.dinosaurVideoMask = null;
         // ... any other resources
         logToConsole('VideoCompositor: Instance destroyed.', 'info');
+    }
+
+    // NEW METHOD FOR DIFFERENCE MASK
+    _drawDifferenceMaskLayer() {
+        if (!this.currentFrameSource || /*!this.scaledDinoShapeCanvas ||*/ !this.lumaMaskCanvas ||
+            !this.dinosaurVideoMask || !this.lowResPersonCtx || !this.lowResDinoCtx) {
+            logToConsole('Difference Mask: Missing one or more required inputs (currentFrameSource, lumaMaskCanvas, dinosaurVideoMask, lowRes ctxs).', 'warn');
+            return;
+        }
+
+        const fullWidth = this.canvas.width;
+        const fullHeight = this.canvas.height;
+
+        if (fullWidth === 0 || fullHeight === 0) {
+            logToConsole('Difference Mask: Main canvas has zero dimensions.', 'warn');
+            return;
+        }
+
+        const lowResWidth = Math.floor(fullWidth / DIFFERENCE_MASK_SCALEDOWN_FACTOR);
+        const lowResHeight = Math.floor(fullHeight / DIFFERENCE_MASK_SCALEDOWN_FACTOR);
+
+        if (lowResWidth === 0 || lowResHeight === 0) {
+            logToConsole('Difference Mask: Low resolution dimensions are zero. Scaledown factor might be too high for current canvas size.', 'warn');
+            this.ctx.clearRect(0, 0, fullWidth, fullHeight); // Clear main canvas
+            return;
+        }
+
+        // Ensure currentFrameSource has dimensions and is ready if it's a video
+        let personSourceReady = false;
+        if (this.currentFrameSource instanceof HTMLVideoElement) {
+            const vid = this.currentFrameSource;
+            if (vid.readyState >= vid.HAVE_CURRENT_DATA && !vid.paused && vid.videoWidth > 0 && vid.videoHeight > 0) {
+                personSourceReady = true;
+            }
+        } else if (this.currentFrameSource instanceof HTMLCanvasElement) {
+            if (this.currentFrameSource.width > 0 && this.currentFrameSource.height > 0) {
+                personSourceReady = true;
+            }
+        } else {
+            logToConsole('Difference Mask: currentFrameSource is not a Video or Canvas element.', 'error');
+            return;
+        }
+
+        if (!personSourceReady) {
+            logToConsole('Difference Mask: Person source (currentFrameSource) not ready or has no dimensions.', 'warn');
+            this.ctx.clearRect(0, 0, fullWidth, fullHeight); // Clear main canvas to avoid stale frame
+            return;
+        }
+
+        // 1. Prepare Low-Resolution Person Shape Data (pre-processed with alpha)
+        if (this.lowResPersonCanvas.width !== lowResWidth) this.lowResPersonCanvas.width = lowResWidth;
+        if (this.lowResPersonCanvas.height !== lowResHeight) this.lowResPersonCanvas.height = lowResHeight;
+        this.lowResPersonCtx.clearRect(0, 0, lowResWidth, lowResHeight);
+        this.lowResPersonCtx.drawImage(this.currentFrameSource, 0, 0, lowResWidth, lowResHeight); // Scale source to low-res canvas
+
+        const personShapeImageData = this.lowResPersonCtx.getImageData(0, 0, lowResWidth, lowResHeight);
+        const personData = personShapeImageData.data;
+
+        // 2. Prepare Low-Resolution Dinosaur Shape Data
+        const dinoVideo = this.dinosaurVideoMask;
+        const dinoVideoWidth = dinoVideo.videoWidth;
+        const dinoVideoHeight = dinoVideo.videoHeight;
+
+        if (dinoVideoWidth === 0 || dinoVideoHeight === 0) {
+            logToConsole('Difference Mask: Dinosaur video has zero dimensions.', 'warn');
+            this.ctx.clearRect(0, 0, fullWidth, fullHeight); // Clear main canvas
+            return;
+        }
+
+        // Draw current dino frame to lumaMaskCanvas (original size) & process luma to alpha
+        if (this.lumaMaskCanvas.width !== dinoVideoWidth) this.lumaMaskCanvas.width = dinoVideoWidth;
+        if (this.lumaMaskCanvas.height !== dinoVideoHeight) this.lumaMaskCanvas.height = dinoVideoHeight;
+        this.lumaMaskCtx.clearRect(0, 0, dinoVideoWidth, dinoVideoHeight);
+        this.lumaMaskCtx.drawImage(dinoVideo, 0, 0, dinoVideoWidth, dinoVideoHeight);
+        const dinoLumaImageData = this.lumaMaskCtx.getImageData(0, 0, dinoVideoWidth, dinoVideoHeight);
+        const dinoLumaData = dinoLumaImageData.data;
+        for (let i = 0; i < dinoLumaData.length; i += 4) {
+            dinoLumaData[i + 3] = dinoLumaData[i];
+        }
+        this.lumaMaskCtx.putImageData(dinoLumaImageData, 0, 0);
+
+        // Scale processed lumaMaskCanvas (with alpha matte) down to lowResDinoCanvas
+        if (this.lowResDinoCanvas.width !== lowResWidth) this.lowResDinoCanvas.width = lowResWidth;
+        if (this.lowResDinoCanvas.height !== lowResHeight) this.lowResDinoCanvas.height = lowResHeight;
+        this.lowResDinoCtx.clearRect(0, 0, lowResWidth, lowResHeight);
+        this.lowResDinoCtx.drawImage(this.lumaMaskCanvas, 0, 0, lowResWidth, lowResHeight);
+        const dinoShapeImageData = this.lowResDinoCtx.getImageData(0, 0, lowResWidth, lowResHeight);
+        const dinoData = dinoShapeImageData.data;
+
+        // 3. Create Low-Resolution Difference Mask Pixels
+        const outputImageData = this.lowResPersonCtx.createImageData(lowResWidth, lowResHeight); // Create low-res image data
+        const outputData = outputImageData.data;
+
+        for (let i = 0; i < outputData.length; i += 4) {
+            const personAlpha = personData[i + 3];
+            const isPerson = personAlpha > 128;
+            const isDino = dinoData[i + 3] > 128;
+
+            if (isPerson && isDino) {
+                outputData[i] = 0;     // R - Green
+                outputData[i + 1] = 255; // G
+                outputData[i + 2] = 0;     // B
+                outputData[i + 3] = 255; // A
+            } else if (isPerson && !isDino) {
+                outputData[i] = 255; // R - Red
+                outputData[i + 1] = 0;   // G
+                outputData[i + 2] = 0;   // B
+                outputData[i + 3] = 255; // A
+            } else if (!isPerson && isDino) {
+                outputData[i] = 255; // R - White
+                outputData[i + 1] = 255; // G
+                outputData[i + 2] = 255; // B
+                outputData[i + 3] = 255; // A
+            } else {
+                outputData[i + 3] = 0; // Transparent
+            }
+        }
+        // Put the low-res result onto the lowResPersonCanvas (or any lowRes canvas, just to hold it)
+        this.lowResPersonCtx.putImageData(outputImageData, 0, 0);
+
+        // 4. Draw the low-resolution result (now on lowResPersonCanvas) up to the main canvas
+        this.ctx.clearRect(0, 0, fullWidth, fullHeight); // Clear main canvas
+
+        const oldSmoothing = this.ctx.imageSmoothingEnabled;
+        this.ctx.imageSmoothingEnabled = false; // For pixelated effect
+        this.ctx.mozImageSmoothingEnabled = false;
+        this.ctx.webkitImageSmoothingEnabled = false;
+        this.ctx.msImageSmoothingEnabled = false;
+
+        this.ctx.drawImage(this.lowResPersonCanvas, 0, 0, fullWidth, fullHeight);
+
+        this.ctx.imageSmoothingEnabled = oldSmoothing; // Restore smoothing setting
+        this.ctx.mozImageSmoothingEnabled = oldSmoothing;
+        this.ctx.webkitImageSmoothingEnabled = oldSmoothing;
+        this.ctx.msImageSmoothingEnabled = oldSmoothing;
     }
 } 

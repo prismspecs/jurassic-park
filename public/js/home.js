@@ -233,6 +233,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Difference Mask Button
+  const toggleDifferenceMaskBtn = document.getElementById('toggleDifferenceMaskBtn');
+  let isDifferenceMaskActive = false;
+  if (toggleDifferenceMaskBtn && mainRecordingCompositor) {
+    toggleDifferenceMaskBtn.addEventListener('click', () => {
+      isDifferenceMaskActive = !isDifferenceMaskActive;
+      mainRecordingCompositor.setDrawDifferenceMask(isDifferenceMaskActive);
+      toggleDifferenceMaskBtn.textContent = isDifferenceMaskActive ? 'Hide Difference Mask' : 'Show Difference Mask';
+      toggleDifferenceMaskBtn.classList.toggle('btn-danger', isDifferenceMaskActive);
+      toggleDifferenceMaskBtn.classList.toggle('btn-warning', !isDifferenceMaskActive);
+      logToConsole(`Difference Mask toggled. Active: ${isDifferenceMaskActive}`, 'info');
+    });
+  } else {
+    if (!toggleDifferenceMaskBtn) logToConsole('toggleDifferenceMaskBtn not found.', 'warn');
+    if (!mainRecordingCompositor) logToConsole('mainRecordingCompositor not found for Difference Mask button.', 'warn');
+  }
+
   // Shot container listener (delegated)
   const shotContainer = document.querySelector('.shot-container');
   if (shotContainer) {
