@@ -103,6 +103,23 @@ export function clearTeleprompter() {
     });
 }
 
+function updateDinosaurModeIndicator(shotData) {
+  const indicator = document.getElementById('dinosaur-mode-indicator');
+  if (indicator) {
+    if (shotData && shotData.type === 'dinosaur') {
+      indicator.textContent = 'dinosaur mode';
+      indicator.style.display = 'inline'; // Or 'block', depending on desired layout
+      logToConsole('Dinosaur mode activated.', 'info');
+    } else {
+      indicator.textContent = '';
+      indicator.style.display = 'none';
+      if (shotData) { // Only log if it was a different type, not if clearing due to no shot
+        logToConsole('Dinosaur mode deactivated (shot type is not dinosaur or no shot active).', 'info');
+      }
+    }
+  }
+}
+
 /** Sends a request to initialize a specific shot. */
 export function initShot(sceneDirectory, shotIdentifier) {
   const sceneDirDecoded = decodeURIComponent(sceneDirectory);
@@ -128,10 +145,12 @@ export function initShot(sceneDirectory, shotIdentifier) {
         logToConsole(`Stored currentShotData for Scene: '${currentShotData.scene.directory}', Shot: '${currentShotData.shot.name || shotIdDecoded}'. Cameras: ${currentShotData.shot.cameras ? currentShotData.shot.cameras.length : 0}`, 'info', currentShotData);
         const sceneDisplayName = currentShotData.scene.description || currentShotData.scene.directory || sceneDirDecoded;
         updateAssemblyUI(currentShotData, sceneDisplayName); // Pass the whole currentShotData
+        updateDinosaurModeIndicator(currentShotData.shot);
       } else {
         updateAssemblyUI(null, sceneDirDecoded);
         logToConsole('No complete sceneData (with scene and shot) in initShot response to store.', 'warn');
         currentShotData = null; // Ensure it's null if data is incomplete
+        updateDinosaurModeIndicator(null);
       }
     })
     .catch(err => {
@@ -139,6 +158,7 @@ export function initShot(sceneDirectory, shotIdentifier) {
       document.getElementById("status").innerText = "Error initializing shot: " + err;
       logToConsole(`Error initializing Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}': ${err}`, 'error');
       currentShotData = null; // Clear on error
+      updateDinosaurModeIndicator(null);
     });
 }
 
