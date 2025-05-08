@@ -520,7 +520,7 @@ export class VideoCompositor {
         poses.forEach(pose => {
             if (!pose || !pose.keypoints) return;
             const keypoints = pose.keypoints;
-            const confidenceThreshold = 0.2;
+            const confidenceThreshold = 0.15;
 
             const kp = (index) => {
                 if (keypoints[index] && keypoints[index].score > confidenceThreshold) {
