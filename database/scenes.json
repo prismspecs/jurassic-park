@@ -146,20 +146,6 @@
                                 "time": 0
                             }
                         ]
-                    },
-                    {
-                        "name": "Camera_2",
-                        "description": "Rear camera",
-                        "position": "B",
-                        "direction": "back",
-                        "movements": [
-                            {
-                                "pan": 0,
-                                "tilt": 0,
-                                "zoom": 0,
-                                "time": 0
-                            }
-                        ]
                     }
                 ],
                 "ins-outs": [

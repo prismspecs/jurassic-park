@@ -431,7 +431,6 @@ export class VideoCompositor {
                 if (this.drawDifferenceMask) {
                     logToConsole(`VideoCompositor: Difference Mask is ON but prerequisites not met. Falling back to standard draw. Details:`, 'warn');
                     logToConsole(`  - this.currentFrameSource available: ${!!this.currentFrameSource}`, 'warn');
-                    // Add checks for currentFrameSource dimensions if relevant, assuming it's a canvas/video
                     if (this.currentFrameSource instanceof HTMLCanvasElement || this.currentFrameSource instanceof HTMLVideoElement) {
                         logToConsole(`    - currentFrameSource dimensions: ${this.currentFrameSource.width}x${this.currentFrameSource.height}`, 'warn');
                     } else if (this.currentFrameSource) {
@@ -439,8 +438,13 @@ export class VideoCompositor {
                     }
                     logToConsole(`  - dinosaurVideoMask exists: ${!!this.dinosaurVideoMask}`, 'warn');
                     if (this.dinosaurVideoMask) {
-                        logToConsole(`    - dino.readyState: ${this.dinosaurVideoMask.readyState} (expected >= ${HTMLMediaElement.HAVE_CURRENT_DATA})`, 'warn');
-                        logToConsole(`    - dino.paused: ${this.dinosaurVideoMask.paused} (expected false)`, 'warn');
+                        // Check if the dino mask is simply at the beginning of a loop
+                        const isLoopRestart = this.dinosaurVideoMask.readyState === HTMLMediaElement.HAVE_METADATA && this.dinosaurVideoMask.currentTime === 0 && !this.dinosaurVideoMask.paused;
+                        const logLevel = isLoopRestart ? 'debug' : 'warn'; // Less alarming if it's just a loop restart
+                        const logMessageSuffix = isLoopRestart ? ' (normal for loop restart)' : '';
+
+                        logToConsole(`    - dino.readyState: ${this.dinosaurVideoMask.readyState} (expected >= ${HTMLMediaElement.HAVE_CURRENT_DATA})${logMessageSuffix}`, logLevel);
+                        logToConsole(`    - dino.paused: ${this.dinosaurVideoMask.paused} (expected false)${logMessageSuffix}`, logLevel);
                     }
                     logToConsole(`  - lumaMaskCtx exists: ${!!this.lumaMaskCtx}`, 'warn');
                     logToConsole(`  - scaledDinoShapeCtx exists: ${!!this.scaledDinoShapeCtx}`, 'warn');
@@ -626,7 +630,7 @@ export class VideoCompositor {
         poses.forEach(pose => {
             if (!pose || !pose.keypoints) return;
             const keypoints = pose.keypoints;
-            const confidenceThreshold = 0.15; // Current value, user might want to adjust this later
+            const confidenceThreshold = 0.12; // Current value, user might want to adjust this later
 
             const kp = (index) => {
                 if (keypoints[index] && keypoints[index].score > confidenceThreshold) {
@@ -869,10 +873,12 @@ export class VideoCompositor {
             this.dinosaurVideoMask.removeEventListener('ended', this.boundDinosaurMaskEndedHandler);
             logToConsole('VideoCompositor: Removed ended listener from previous, different dinosaur mask.', 'debug');
             // We don't call full clearVideoMask() here to avoid the event chain that destroys the *new* videoElement.
+        } else if (this.dinosaurVideoMask && this.dinosaurVideoMask === videoElement && this.boundDinosaurMaskEndedHandler) {
+            // If it's the SAME video element, ensure any existing bound listener is removed before re-adding
+            // This can happen if home.js re-calls setVideoMask with the same element after an error or specific sequence.
+            this.dinosaurVideoMask.removeEventListener('ended', this.boundDinosaurMaskEndedHandler);
+            logToConsole('VideoCompositor: Removed ended listener from THE SAME dinosaur mask element before re-attaching.', 'debug');
         }
-        // If the new videoElement is the same as the old one, no need to re-add listeners if already active.
-        // However, home.js logic typically creates a new element, so this might be rare.
-        // If it's the same element and we are effectively just re-triggering, clearVideoMask might have already run.
 
         this.dinosaurVideoMask = videoElement;
         // Ensure attributes are set on the new element
