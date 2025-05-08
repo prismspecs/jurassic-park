@@ -72,6 +72,8 @@ export class VideoCompositor {
         this.isMirrored = false; // Added for mirror toggle
         this.boundDinosaurMaskEndedHandler = null; // For manual looping of dino mask
 
+        this.bodySegmentSizeMultiplier = 1.0; // Default size multiplier
+
         // Visibility API
         this._boundHandleVisibilityChange = this._handleVisibilityChange.bind(this);
         document.addEventListener('visibilitychange', this._boundHandleVisibilityChange);
@@ -189,6 +191,15 @@ export class VideoCompositor {
             // Force a redraw, potentially clearing previous effects if this one is disabled
             // or ensuring it's drawn if enabled.
             this._drawFrame(true);
+        }
+    }
+
+    setBodySegmentSizeMultiplier(multiplier) {
+        this.bodySegmentSizeMultiplier = parseFloat(multiplier);
+        logToConsole(`VideoCompositor: Body Segment Size Multiplier set to ${this.bodySegmentSizeMultiplier}.`, 'info');
+        // If currently drawing this mask, trigger a redraw to apply the new multiplier
+        if (this.isDrawing && this.drawBodySegmentMask) {
+            this._drawFrame(false); // Pass false to avoid forceClearEffects
         }
     }
     // --- End Control Methods ---
@@ -532,8 +543,8 @@ export class VideoCompositor {
             const rWrist = kp(10);
             const lKnee = kp(13);
             const rKnee = kp(14);
-            // const lAnkle = kp(15);
-            // const rAnkle = kp(16);
+            const lAnkle = kp(15);
+            const rAnkle = kp(16);
 
             // Torso
             if (lShoulder && rShoulder && rHip && lHip) {
@@ -546,20 +557,31 @@ export class VideoCompositor {
                 maskCtx.fill();
             }
 
-            // Head
+            // Head (original circle for nose - will be mostly covered by neck polygon if shoulders are visible)
             if (nose) {
-                let headRadius = 15; // Default radius in pixels on the canvas
+                let headRadius = 15;
                 if (lShoulder && rShoulder) {
-                    headRadius = Math.abs(rShoulder.x - lShoulder.x) / 2.5; // Estimate from shoulder width
+                    headRadius = Math.abs(rShoulder.x - lShoulder.x) / 2.5;
                 }
-                headRadius = Math.max(headRadius, 10); // Minimum size
+                headRadius = Math.max(headRadius, 10);
                 maskCtx.beginPath();
                 maskCtx.arc(nose.x, nose.y, headRadius, 0, 2 * Math.PI);
                 maskCtx.closePath();
                 maskCtx.fill();
             }
 
-            const limbThickness = Math.max(15, (lShoulder && rShoulder ? Math.abs(rShoulder.x - lShoulder.x) / 5 : 15)); // Dynamic thickness
+            // Neck/Upper Chest Area
+            if (nose && lShoulder && rShoulder) {
+                maskCtx.beginPath();
+                maskCtx.moveTo(nose.x, nose.y);
+                maskCtx.lineTo(lShoulder.x, lShoulder.y);
+                maskCtx.lineTo(rShoulder.x, rShoulder.y);
+                maskCtx.closePath();
+                maskCtx.fill();
+            }
+
+            const baseLimbThickness = Math.max(20, (lShoulder && rShoulder ? Math.abs(rShoulder.x - lShoulder.x) / 4 : 20));
+            const limbThickness = baseLimbThickness * this.bodySegmentSizeMultiplier;
 
             const fillLimbPoly = (p1, p2, thickness) => {
                 if (!p1 || !p2) return;
@@ -576,14 +598,49 @@ export class VideoCompositor {
                 maskCtx.fill();
             };
 
+            // Arms
             fillLimbPoly(lShoulder, lElbow, limbThickness);
             fillLimbPoly(lElbow, lWrist, limbThickness);
             fillLimbPoly(rShoulder, rElbow, limbThickness);
             fillLimbPoly(rElbow, rWrist, limbThickness);
+
+            // Hands (extend from wrists)
+            if (lWrist && lElbow) {
+                const handLength = limbThickness * 1.0; // Increased hand length
+                const angle = Math.atan2(lWrist.y - lElbow.y, lWrist.x - lElbow.x);
+                const handEndX = lWrist.x + handLength * Math.cos(angle);
+                const handEndY = lWrist.y + handLength * Math.sin(angle);
+                fillLimbPoly(lWrist, { x: handEndX, y: handEndY }, limbThickness); // Use full limbThickness for hands
+            }
+            if (rWrist && rElbow) {
+                const handLength = limbThickness * 1.0; // Increased hand length
+                const angle = Math.atan2(rWrist.y - rElbow.y, rWrist.x - rElbow.x);
+                const handEndX = rWrist.x + handLength * Math.cos(angle);
+                const handEndY = rWrist.y + handLength * Math.sin(angle);
+                fillLimbPoly(rWrist, { x: handEndX, y: handEndY }, limbThickness); // Use full limbThickness for hands
+            }
+
+            // Legs
             fillLimbPoly(lHip, lKnee, limbThickness);
-            // fillLimbPoly(lKnee, lAnkle, limbThickness * 0.8); // Ankles could be thinner
+            fillLimbPoly(lKnee, lAnkle, limbThickness * 0.9); // Ankles could be slightly thinner
             fillLimbPoly(rHip, rKnee, limbThickness);
-            // fillLimbPoly(rKnee, rAnkle, limbThickness * 0.8);
+            fillLimbPoly(rKnee, rAnkle, limbThickness * 0.9);
+
+            // Feet (extend from ankles)
+            if (lAnkle && lKnee) {
+                const footLength = limbThickness * 0.75; // Length of the foot segment
+                const angle = Math.atan2(lAnkle.y - lKnee.y, lAnkle.x - lKnee.x);
+                const footEndX = lAnkle.x + footLength * Math.cos(angle);
+                const footEndY = lAnkle.y + footLength * Math.sin(angle);
+                fillLimbPoly(lAnkle, { x: footEndX, y: footEndY }, limbThickness * 0.7); // Slightly thinner for feet
+            }
+            if (rAnkle && rKnee) {
+                const footLength = limbThickness * 0.75;
+                const angle = Math.atan2(rAnkle.y - rKnee.y, rAnkle.x - rKnee.x);
+                const footEndX = rAnkle.x + footLength * Math.cos(angle);
+                const footEndY = rAnkle.y + footLength * Math.sin(angle);
+                fillLimbPoly(rAnkle, { x: footEndX, y: footEndY }, limbThickness * 0.7);
+            }
         });
 
         // Apply the mask: current video frame (already on ctx) is kept where maskCanvas is opaque.
