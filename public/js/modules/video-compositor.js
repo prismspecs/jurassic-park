@@ -548,13 +548,26 @@ export class VideoCompositor {
     setVideoMask(videoElement) {
         if (!videoElement || !(videoElement instanceof HTMLVideoElement)) {
             logToConsole('VideoCompositor: Invalid video element provided for mask.', 'error');
-            this.clearVideoMask();
+            // If an invalid element is given, ensure any existing mask is truly cleared.
+            if (this.dinosaurMaskActive || this.dinosaurVideoMask) {
+                this.clearVideoMask();
+            }
             return;
         }
 
-        this.clearVideoMask(); // Clear any existing mask first
+        // If there's an existing and *different* video mask, remove its specific listener.
+        // The actual DOM element cleanup is handled by home.js via the videomaskcleared event or preemptively.
+        if (this.dinosaurVideoMask && this.dinosaurVideoMask !== videoElement && this.boundDinosaurMaskEndedHandler) {
+            this.dinosaurVideoMask.removeEventListener('ended', this.boundDinosaurMaskEndedHandler);
+            logToConsole('VideoCompositor: Removed ended listener from previous, different dinosaur mask.', 'debug');
+            // We don't call full clearVideoMask() here to avoid the event chain that destroys the *new* videoElement.
+        }
+        // If the new videoElement is the same as the old one, no need to re-add listeners if already active.
+        // However, home.js logic typically creates a new element, so this might be rare.
+        // If it's the same element and we are effectively just re-triggering, clearVideoMask might have already run.
 
         this.dinosaurVideoMask = videoElement;
+        // Ensure attributes are set on the new element
         this.dinosaurVideoMask.setAttribute('playsinline', '');
         this.dinosaurVideoMask.setAttribute('muted', '');
         this.dinosaurVideoMask.muted = true;
@@ -630,6 +643,16 @@ export class VideoCompositor {
         this.dinosaurMaskActive = false;
         this.boundDinosaurMaskEndedHandler = null;
         if (this.isDrawing) this._drawFrame(true); // Force redraw to clear mask immediately
+
+        // Dispatch an event so other modules can react (e.g., UI updates)
+        if (this.canvas) { // Ensure canvas exists
+            try {
+                this.canvas.dispatchEvent(new CustomEvent('videomaskcleared', { bubbles: true }));
+                logToConsole('VideoCompositor: Dispatched videomaskcleared event.', 'debug');
+            } catch (e) {
+                logToConsole(`VideoCompositor: Error dispatching videomaskcleared event: ${e.message}`, 'error');
+            }
+        }
     }
 
     isDinosaurMaskActive() {

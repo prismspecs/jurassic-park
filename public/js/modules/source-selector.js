@@ -39,9 +39,18 @@ export function initializeSourceSelector(cameraManager, mainRecordingCompositor)
         recordingSourceSelector.addEventListener('change', () => {
             const selectedCameraName = recordingSourceSelector.value;
             if (localMainRecordingCompositor && localCameraManager) {
+                // Clear any active dinosaur mask on the main compositor before changing its source
+                if (localMainRecordingCompositor.isDinosaurMaskActive()) {
+                    localMainRecordingCompositor.clearVideoMask();
+                    // Note: This will also trigger the UI update for the button if the event dispatch is added
+                }
+
                 const processedCanvas = selectedCameraName ? localCameraManager.getProcessedCanvas(selectedCameraName) : null;
-                if (processedCanvas) localMainRecordingCompositor.setCurrentFrameSource(processedCanvas);
-                else localMainRecordingCompositor.removeFrameSource();
+                if (processedCanvas) {
+                    localMainRecordingCompositor.setCurrentFrameSource(processedCanvas);
+                } else {
+                    localMainRecordingCompositor.removeFrameSource();
+                }
             }
         });
     }

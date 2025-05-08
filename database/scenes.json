@@ -29,6 +29,14 @@
                 "number": 0,
                 "duration": "0:10",
                 "description": "This is a test description",
+                "assembly": [
+                    {
+                        "shot": "dinosaur",
+                        "camera": "Camera_1",
+                        "in": 0,
+                        "out": 80
+                    }
+                ],
                 "setup": "This is a test setup",
                 "cameras": [
                     {

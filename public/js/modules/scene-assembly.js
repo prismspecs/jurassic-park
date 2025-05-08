@@ -18,14 +18,17 @@ export function updateAssemblyUI(sceneData, sceneDisplayName) {
     assembleButton.disabled = true;
     assemblySection.style.display = 'none';
     sceneNameSpan.textContent = '';
-    currentSceneData = sceneData; // Store the passed sceneData
+    currentSceneData = sceneData ? sceneData.scene : null; // Store the nested scene object
 
-    if (sceneData && sceneData.assembly && Array.isArray(sceneData.assembly) && sceneData.assembly.length > 0) {
+    // Access assembly from sceneData.scene.assembly
+    const sceneObject = sceneData ? sceneData.scene : null;
+
+    if (sceneObject && sceneObject.assembly && Array.isArray(sceneObject.assembly) && sceneObject.assembly.length > 0) {
         logToConsole(`Found assembly data for scene: ${sceneDisplayName}`, 'info');
         sceneNameSpan.textContent = sceneDisplayName;
         takeSelectionArea.innerHTML = ''; // Clear loading message
 
-        sceneData.assembly.forEach((segment, index) => {
+        sceneObject.assembly.forEach((segment, index) => {
             const segmentDiv = document.createElement('div');
             segmentDiv.className = 'assembly-segment mb-2 p-2 border rounded';
             segmentDiv.dataset.index = index;

@@ -68,6 +68,40 @@ document.addEventListener('DOMContentLoaded', () => {
         logToConsole('Mirror toggle for main output canvas not found.', 'warn');
       }
     }
+
+    // Listen for when the video mask is cleared on the main compositor
+    mainOutputCanvasElement.addEventListener('videomaskcleared', () => {
+      const testDinoMaskBtn = document.getElementById('test-dinosaur-mask-btn');
+      if (testDinoMaskBtn) {
+        testDinoMaskBtn.textContent = 'Test Dinosaur Mask';
+        testDinoMaskBtn.classList.remove('btn-danger');
+        testDinoMaskBtn.classList.add('btn-warning');
+        logToConsole('Test Dinosaur Mask button UI reset due to videomaskcleared event.', 'debug');
+      }
+
+      // Perform cleanup of the video element itself
+      if (currentTestDinoVideoElement) {
+        logToConsole('Cleaning up currentTestDinoVideoElement due to videomaskcleared event.', 'debug');
+        currentTestDinoVideoElement.pause();
+        currentTestDinoVideoElement.onerror = null; // Detach event handlers
+        currentTestDinoVideoElement.oncanplay = null;
+        currentTestDinoVideoElement.onloadedmetadata = null; // Add any other relevant handlers
+        currentTestDinoVideoElement.onended = null;
+        currentTestDinoVideoElement.src = ''; // Empty src to release resources
+        currentTestDinoVideoElement.removeAttribute('src'); // Fully remove src attribute
+
+        // Attempt to remove from DOM if it has a parent
+        if (currentTestDinoVideoElement.parentNode) {
+          try {
+            currentTestDinoVideoElement.remove();
+          } catch (e) {
+            logToConsole(`Error removing currentTestDinoVideoElement from DOM: ${e.message}`, 'warn');
+          }
+        }
+        currentTestDinoVideoElement = null; // Nullify the reference
+      }
+    });
+
   } else {
     logToConsole('main-output-canvas not found. Main recording compositor NOT initialized.', 'error');
   }
@@ -107,25 +141,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
   testDinoMaskBtn?.addEventListener('click', () => {
     if (mainRecordingCompositor && mainRecordingCompositor.isDinosaurMaskActive()) {
+      // Mask is active, button wants to clear it.
+      // VideoCompositor.clearVideoMask() will be called.
+      // This will dispatch 'videomaskcleared'.
+      // The 'videomaskcleared' listener in home.js will handle button UI reset and video element cleanup.
       mainRecordingCompositor.clearVideoMask();
-      if (currentTestDinoVideoElement) {
-        currentTestDinoVideoElement.pause(); // Stop playback
-        currentTestDinoVideoElement.onerror = null; // Prevent error from logging during intentional cleanup
-        currentTestDinoVideoElement.src = ''; // Release resource
-        currentTestDinoVideoElement.remove(); // Remove from DOM if it was ever added
-        currentTestDinoVideoElement = null;
-      }
-      testDinoMaskBtn.textContent = 'Test Dinosaur Mask';
-      testDinoMaskBtn.classList.remove('btn-danger');
-      testDinoMaskBtn.classList.add('btn-warning');
-      logToConsole('Dinosaur mask cleared by button.', 'info');
+      logToConsole('Clear Dinosaur Mask button clicked. Compositor mask clear initiated.', 'info');
+      // No need to directly clean currentTestDinoVideoElement or button UI here, the event handler does it.
     } else if (currentDinosaurName) {
       const videoPath = `/database/dinosaurs/${currentDinosaurName}.mp4`;
       logToConsole(`Test Dinosaur Mask clicked. Video path: ${videoPath}`, 'info');
 
-      // Clean up previous video element if any (e.g., if a previous attempt failed before playing)
+      // If a mask is currently active on the compositor, clear it first.
+      // This will trigger the 'videomaskcleared' event, cleaning up the *old* currentTestDinoVideoElement.
+      if (mainRecordingCompositor && mainRecordingCompositor.isDinosaurMaskActive()) {
+        logToConsole('An old mask is active on compositor. Clearing it before applying new one.', 'debug');
+        mainRecordingCompositor.clearVideoMask();
+        // At this point, the 'videomaskcleared' event should have fired and cleaned up
+        // the old currentTestDinoVideoElement. currentTestDinoVideoElement in this scope might be null now.
+      }
+
+      // Explicitly clean up any *existing* currentTestDinoVideoElement reference in home.js 
+      // This handles cases where an element might exist here but isn't active on the compositor, 
+      // or as a safeguard if the event didn't nullify it as expected for some reason.
       if (currentTestDinoVideoElement) {
-        currentTestDinoVideoElement.remove();
+        logToConsole('Preemptively cleaning up existing currentTestDinoVideoElement in home.js before creating a new one.', 'debug');
+        currentTestDinoVideoElement.pause();
+        currentTestDinoVideoElement.onerror = null;
+        currentTestDinoVideoElement.oncanplay = null;
+        currentTestDinoVideoElement.onloadedmetadata = null;
+        currentTestDinoVideoElement.onended = null;
+        currentTestDinoVideoElement.src = '';
+        currentTestDinoVideoElement.removeAttribute('src');
+        if (currentTestDinoVideoElement.parentNode) {
+          try {
+            currentTestDinoVideoElement.remove();
+          } catch (e) {
+            logToConsole(`Error preemptively removing currentTestDinoVideoElement: ${e.message}`, 'warn');
+          }
+        }
         currentTestDinoVideoElement = null;
       }
 
