@@ -3,7 +3,7 @@
 // Import the main game class from the module entry point
 // Adjust the path based on your server setup (e.g., using a bundler or direct path)
 // Assuming direct path relative to index.html
-import { DinosaurGame } from '../index.js'; 
+import { DinosaurGame } from '../index.js';
 
 // --- Get UI Elements ---
 const scoreElement = document.getElementById('score');
@@ -65,9 +65,9 @@ function updateStatusUI(gameState, errorMessage) {
     // Show/hide loading indicator
     if (loadingElement && mainElement) {
         if (gameState === 'initializing' || gameState === 'error') {
-             loadingElement.textContent = statusText; // Display status in loading div
-             loadingElement.style.display = 'block';
-             mainElement.style.display = 'none';
+            loadingElement.textContent = statusText; // Display status in loading div
+            loadingElement.style.display = 'block';
+            mainElement.style.display = 'none';
         } else {
             loadingElement.style.display = 'none';
             mainElement.style.display = 'block'; // Or your main game container
@@ -78,15 +78,15 @@ function updateStatusUI(gameState, errorMessage) {
 // Define the game configuration
 const gameConfig = {
     webcamElementId: 'webcam', // ID of the video element for webcam
-    outputCanvasId: 'output', // ID of the canvas for drawing (This ID doesn't exist in index.html, should it be base-canvas or another?)
-    // ****** IMPORTANT: Update outputCanvasId if 'output' is not the correct ID in index.html ******
-    // Using 'base-canvas' for now as it exists.
-    // outputCanvasId: 'base-canvas', 
-    // Correction: The DinosaurGame class uses *one* output canvas where it draws the final result.
-    // The example HTML has multiple canvases. Let's use 'silhouette-canvas' as the target for DinosaurGame output.
-    outputCanvasId: 'silhouette-canvas', 
+    outputCanvasId: 'silhouette-canvas',
     maskVideoElementId: 'mask-video', // ID for hidden mask video element
     maskVideoSrc: 'videos/walking-longneck.mp4', // Initial mask video path (relative to server root)
+
+    // --- Enable and configure new masked webcam video output ---
+    outputMaskedVideo: true, // Set to true to enable the new video output
+    // outputMaskedVideoFilename: 'my_custom_masked_feed.webm', // Optional: uncomment to set a custom filename
+    // outputMaskedVideoMimeType: 'video/webm; codecs=vp8', // Optional: uncomment to change codec (ensure browser support)
+    // --- End new video output config ---
 
     // Provide the callbacks
     scoreUpdateCallback: updateScoreUI,
@@ -96,16 +96,16 @@ const gameConfig = {
     // webcamConfig: {
     //     resolution: '1280x720'
     // },
-     drawingConfig: {
-         drawSkeletonOverlay: false, // Set to true to see the skeleton
-    //     // Example: Change colors
-    //     overlapColor: '#00FF00', 
-    //     nonOverlapColor: '#FF00FF',
-         // Example: Make silhouette thicker
-         silhouetteConfig: {
-            limbThickness: 30, 
-         }
-     },
+    drawingConfig: {
+        drawSkeletonOverlay: false, // Set to true to see the skeleton
+        //     // Example: Change colors
+        //     overlapColor: '#00FF00', 
+        //     nonOverlapColor: '#FF00FF',
+        // Example: Make silhouette thicker
+        silhouetteConfig: {
+            limbThickness: 30,
+        }
+    },
     // posenetModelConfig: {
     //     multiplier: 0.5 // Use a faster model if needed
     // }
@@ -120,7 +120,7 @@ try {
     console.error("Failed to instantiate DinosaurGame:", error);
     updateStatusUI('error', `Initialization failed: ${error.message}`);
     // Handle critical failure - maybe display a message permanently
-    if (loadingElement) loadingElement.textContent = `Error: ${error.message}`; 
+    if (loadingElement) loadingElement.textContent = `Error: ${error.message}`;
     if (mainElement) mainElement.style.display = 'none';
 }
 
@@ -156,16 +156,16 @@ if (game) {
         if (game) {
             console.log("Change Mask button clicked");
             const newVideoSrc = prompt(
-                "Enter new mask video path (relative to server root, e.g., videos/new-mask.mp4):", 
+                "Enter new mask video path (relative to server root, e.g., videos/new-mask.mp4):",
                 game.config.maskVideoSrc // Show current src as default
             );
             if (newVideoSrc && newVideoSrc !== game.config.maskVideoSrc) {
                 try {
-                     game.setConfig({ maskVideoSrc: newVideoSrc });
-                     // UI state will be updated via gameStateUpdateCallback
+                    game.setConfig({ maskVideoSrc: newVideoSrc });
+                    // UI state will be updated via gameStateUpdateCallback
                 } catch (error) {
-                     console.error("Failed to set new mask video config:", error);
-                     alert(`Error setting video source: ${error.message}`); // Basic feedback
+                    console.error("Failed to set new mask video config:", error);
+                    alert(`Error setting video source: ${error.message}`); // Basic feedback
                 }
             }
         }
