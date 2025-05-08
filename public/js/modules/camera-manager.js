@@ -453,6 +453,19 @@ export class CameraManager {
     );
     controlsDiv.appendChild(maskToggle);
 
+    const bodySegmentToggle = this._createToggleSwitch(
+      `Enable Body Segment Cut-out`,
+      `body-segment-toggle-${camera.name}`,
+      compositor.drawBodySegmentMask, // Read initial state from compositor
+      (isChecked) => {
+        if (compositor) {
+          compositor.setDrawBodySegmentMask(isChecked);
+          logToConsole(`Body Segment Mask for ${camera.name} set to ${isChecked}`);
+        }
+      }
+    );
+    controlsDiv.appendChild(bodySegmentToggle);
+
     // --- Record Processed Canvas Button ---
     const recordButton = document.createElement('button');
     recordButton.id = `record-btn-${camera.name}`; recordButton.className = 'btn btn-info btn-sm';

@@ -53,6 +53,7 @@ export class VideoCompositor {
         this.enablePoseDetection = false; // Controls if detection runs
         this.drawSkeletonOverlay = false; // Controls skeleton drawing
         this.drawBoundingBoxMask = false; // Controls mask drawing
+        this.drawBodySegmentMask = false; // Controls body segment mask drawing
         this.lastDetectedPoses = [];
         this._initializeTfjsAndDetector();
         // --- End New/Modified State ---
@@ -144,7 +145,7 @@ export class VideoCompositor {
     }
 
     _updatePoseDetectionState() {
-        const shouldEnablePose = this.drawSkeletonOverlay || this.drawBoundingBoxMask;
+        const shouldEnablePose = this.drawSkeletonOverlay || this.drawBoundingBoxMask || this.drawBodySegmentMask;
         // Only call setPoseDetectionEnabled if the state actually needs to change
         if (shouldEnablePose && !this.enablePoseDetection) {
             this.setPoseDetectionEnabled(true);
@@ -173,6 +174,20 @@ export class VideoCompositor {
         this._updatePoseDetectionState();
 
         if (changed && this.isDrawing) {
+            this._drawFrame(true);
+        }
+    }
+
+    setDrawBodySegmentMask(enabled) {
+        const changed = this.drawBodySegmentMask !== !!enabled;
+        this.drawBodySegmentMask = !!enabled;
+        logToConsole(`VideoCompositor: Body Segment Mask set to ${this.drawBodySegmentMask}.`, 'info');
+
+        this._updatePoseDetectionState();
+
+        if (changed && this.isDrawing) {
+            // Force a redraw, potentially clearing previous effects if this one is disabled
+            // or ensuring it's drawn if enabled.
             this._drawFrame(true);
         }
     }
@@ -383,13 +398,19 @@ export class VideoCompositor {
             }
 
             // Apply Mask (using last detected poses)
-            if (this.drawBoundingBoxMask && posesToDraw && posesToDraw.length > 0) {
+            if (this.drawBoundingBoxMask && posesToDraw && posesToDraw.length > 0 && !forceClearEffects) {
                 try { this._applyMaskShapes(posesToDraw); }
                 catch (maskError) { logToConsole(`Error applying mask shapes: ${maskError}`, 'error'); }
             }
 
+            // Apply Body Segment Mask (using last detected poses)
+            if (this.drawBodySegmentMask && posesToDraw && posesToDraw.length > 0 && !forceClearEffects) {
+                try { this._applyBodySegmentMask(posesToDraw); }
+                catch (segmentError) { logToConsole(`Error applying body segment mask: ${segmentError}`, 'error'); }
+            }
+
             // Draw Skeleton Overlay (using last detected poses)
-            if (this.drawSkeletonOverlay && posesToDraw && posesToDraw.length > 0) {
+            if (this.drawSkeletonOverlay && posesToDraw && posesToDraw.length > 0 && !forceClearEffects) {
                 try { this._drawSkeleton(posesToDraw); }
                 catch (skeletonError) { logToConsole(`Error drawing skeleton: ${skeletonError}`, 'error'); }
             }
@@ -455,6 +476,121 @@ export class VideoCompositor {
         ctx.restore(); // Restore globalCompositeOperation
     }
     // --- End Refactored Masking Method ---
+
+    _applyBodySegmentMask(poses) {
+        if (!poses || poses.length === 0 || !this.currentFrameSource) return;
+
+        const ctx = this.ctx;
+        const canvasWidth = this.canvas.width;
+        const canvasHeight = this.canvas.height;
+
+        const sourceWidth = (this.sourceType === 'video') ? this.currentFrameSource.videoWidth : this.currentFrameSource.width;
+        const sourceHeight = (this.sourceType === 'video') ? this.currentFrameSource.videoHeight : this.currentFrameSource.height;
+
+        if (!sourceWidth || !sourceHeight) {
+            logToConsole('BodySegmentMask: Source dimensions are invalid for scaling.', 'warn');
+            return;
+        }
+
+        const scaleX = canvasWidth / sourceWidth;
+        const scaleY = canvasHeight / sourceHeight;
+
+        // Create or reuse an offscreen canvas for the mask
+        // For simplicity, creating a new one each time. Could be optimized by reusing a member canvas.
+        const maskCanvas = document.createElement('canvas');
+        maskCanvas.width = canvasWidth;
+        maskCanvas.height = canvasHeight;
+        const maskCtx = maskCanvas.getContext('2d');
+        if (!maskCtx) {
+            logToConsole('BodySegmentMask: Failed to get context for mask canvas.', 'error');
+            return;
+        }
+
+        maskCtx.fillStyle = 'white'; // Mask color, opaque areas will keep video pixels
+
+        poses.forEach(pose => {
+            if (!pose || !pose.keypoints) return;
+            const keypoints = pose.keypoints;
+            const confidenceThreshold = 0.2;
+
+            const kp = (index) => {
+                if (keypoints[index] && keypoints[index].score > confidenceThreshold) {
+                    // Return coordinates already scaled to the destination canvas dimensions
+                    return { x: keypoints[index].x * scaleX, y: keypoints[index].y * scaleY };
+                }
+                return null;
+            };
+
+            const lShoulder = kp(5);
+            const rShoulder = kp(6);
+            const lHip = kp(11);
+            const rHip = kp(12);
+            const nose = kp(0);
+            const lElbow = kp(7);
+            const rElbow = kp(8);
+            const lWrist = kp(9);
+            const rWrist = kp(10);
+            const lKnee = kp(13);
+            const rKnee = kp(14);
+            // const lAnkle = kp(15);
+            // const rAnkle = kp(16);
+
+            // Torso
+            if (lShoulder && rShoulder && rHip && lHip) {
+                maskCtx.beginPath();
+                maskCtx.moveTo(lShoulder.x, lShoulder.y);
+                maskCtx.lineTo(rShoulder.x, rShoulder.y);
+                maskCtx.lineTo(rHip.x, rHip.y);
+                maskCtx.lineTo(lHip.x, lHip.y);
+                maskCtx.closePath();
+                maskCtx.fill();
+            }
+
+            // Head
+            if (nose) {
+                let headRadius = 15; // Default radius in pixels on the canvas
+                if (lShoulder && rShoulder) {
+                    headRadius = Math.abs(rShoulder.x - lShoulder.x) / 2.5; // Estimate from shoulder width
+                }
+                headRadius = Math.max(headRadius, 10); // Minimum size
+                maskCtx.beginPath();
+                maskCtx.arc(nose.x, nose.y, headRadius, 0, 2 * Math.PI);
+                maskCtx.closePath();
+                maskCtx.fill();
+            }
+
+            const limbThickness = Math.max(15, (lShoulder && rShoulder ? Math.abs(rShoulder.x - lShoulder.x) / 5 : 15)); // Dynamic thickness
+
+            const fillLimbPoly = (p1, p2, thickness) => {
+                if (!p1 || !p2) return;
+                const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                const offsetX = Math.sin(angle) * thickness / 2;
+                const offsetY = Math.cos(angle) * thickness / 2;
+
+                maskCtx.beginPath();
+                maskCtx.moveTo(p1.x - offsetX, p1.y + offsetY);
+                maskCtx.lineTo(p2.x - offsetX, p2.y + offsetY);
+                maskCtx.lineTo(p2.x + offsetX, p2.y - offsetY);
+                maskCtx.lineTo(p1.x + offsetX, p1.y - offsetY);
+                maskCtx.closePath();
+                maskCtx.fill();
+            };
+
+            fillLimbPoly(lShoulder, lElbow, limbThickness);
+            fillLimbPoly(lElbow, lWrist, limbThickness);
+            fillLimbPoly(rShoulder, rElbow, limbThickness);
+            fillLimbPoly(rElbow, rWrist, limbThickness);
+            fillLimbPoly(lHip, lKnee, limbThickness);
+            // fillLimbPoly(lKnee, lAnkle, limbThickness * 0.8); // Ankles could be thinner
+            fillLimbPoly(rHip, rKnee, limbThickness);
+            // fillLimbPoly(rKnee, rAnkle, limbThickness * 0.8);
+        });
+
+        // Apply the mask: current video frame (already on ctx) is kept where maskCanvas is opaque.
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.drawImage(maskCanvas, 0, 0, canvasWidth, canvasHeight);
+        ctx.globalCompositeOperation = 'source-over'; // Reset for subsequent drawing (e.g., skeleton overlay)
+    }
 
     // --- Restored Skeleton Drawing Method ---
     _drawSkeleton(poses) { // UNCOMMENTED
