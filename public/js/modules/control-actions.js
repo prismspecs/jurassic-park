@@ -3,9 +3,17 @@ import { sendWebSocketMessage } from './websocket-handler.js';
 import { updateAssemblyUI } from './scene-assembly.js';
 
 let currentShotData = null; // To store the current shot's data, including its cameras
+export let currentDinosaurName = null; // To store the name of the dinosaur for the mask
 let activeCanvasRecorders = {}; // { cameraName: MediaRecorder instance }
 let recordedCanvasBlobs = {};   // { cameraName: [chunks] }
 let currentShotDurationSec = 0; // To be updated by WebSocket SHOT_START event
+let compositorInstance = null; // Reference to the main VideoCompositor
+
+// --- Function to allow home.js to set the compositor instance ---
+export function setMainCompositor(instance) {
+  compositorInstance = instance;
+  logToConsole('VideoCompositor instance set in control-actions.', 'info');
+}
 
 // --- Control Button Functions ---
 
@@ -105,15 +113,52 @@ export function clearTeleprompter() {
 
 function updateDinosaurModeIndicator(shotData) {
   const indicator = document.getElementById('dinosaur-mode-indicator');
-  if (indicator) {
+  const testMaskBtn = document.getElementById('test-dinosaur-mask-btn');
+  const testMaskBtnLabel = testMaskBtn ? testMaskBtn : null; // For changing text
+  currentDinosaurName = null; // Reset
+
+  if (indicator && testMaskBtn) {
     if (shotData && shotData.type === 'dinosaur') {
       indicator.textContent = 'dinosaur mode';
-      indicator.style.display = 'inline'; // Or 'block', depending on desired layout
-      logToConsole('Dinosaur mode activated.', 'info');
+      indicator.style.display = 'inline';
+      testMaskBtn.style.display = 'block'; // Or 'inline-block' or as appropriate
+      if (testMaskBtnLabel && compositorInstance && compositorInstance.isDinosaurMaskActive && compositorInstance.isDinosaurMaskActive()) {
+        testMaskBtnLabel.textContent = 'Clear Dinosaur Mask';
+        testMaskBtnLabel.classList.remove('btn-warning');
+        testMaskBtnLabel.classList.add('btn-danger');
+      } else if (testMaskBtnLabel) {
+        testMaskBtnLabel.textContent = 'Test Dinosaur Mask';
+        testMaskBtnLabel.classList.remove('btn-danger');
+        testMaskBtnLabel.classList.add('btn-warning');
+      }
+
+      if (shotData.dinosaur && typeof shotData.dinosaur === 'string') {
+        currentDinosaurName = shotData.dinosaur;
+        logToConsole(`Dinosaur mode activated. Dinosaur asset: ${currentDinosaurName}.mp4`, 'info');
+      } else {
+        logToConsole('Dinosaur mode activated, but shot.dinosaur property is missing or not a string.', 'warn');
+        testMaskBtn.style.display = 'none'; // Hide button if no dino name
+        // Also clear mask if it was somehow active and dino name is now missing
+        if (compositorInstance && compositorInstance.clearVideoMask && compositorInstance.isDinosaurMaskActive && compositorInstance.isDinosaurMaskActive()) {
+          compositorInstance.clearVideoMask();
+        }
+      }
     } else {
       indicator.textContent = '';
       indicator.style.display = 'none';
-      if (shotData) { // Only log if it was a different type, not if clearing due to no shot
+      testMaskBtn.style.display = 'none';
+      // Clear the mask if dinosaur mode is deactivated
+      if (compositorInstance && compositorInstance.clearVideoMask && compositorInstance.isDinosaurMaskActive && compositorInstance.isDinosaurMaskActive()) {
+        compositorInstance.clearVideoMask();
+        logToConsole('Dinosaur mask cleared due to shot change / mode deactivation.', 'info');
+        // Reset button text via direct DOM manipulation if needed, though it's hidden
+        if (testMaskBtnLabel) {
+          testMaskBtnLabel.textContent = 'Test Dinosaur Mask';
+          testMaskBtnLabel.classList.remove('btn-danger');
+          testMaskBtnLabel.classList.add('btn-warning');
+        }
+      }
+      if (shotData) {
         logToConsole('Dinosaur mode deactivated (shot type is not dinosaur or no shot active).', 'info');
       }
     }

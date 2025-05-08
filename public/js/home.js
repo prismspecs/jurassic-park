@@ -25,7 +25,9 @@ import {
   pauseAllTeleprompters,
   playAllTeleprompters,
   handlePipelineChange,
-  handleResolutionChange
+  handleResolutionChange,
+  currentDinosaurName,
+  setMainCompositor
 } from './modules/control-actions.js';
 import { AudioManager } from './modules/audio-manager.js';
 import { VideoCompositor } from './modules/video-compositor.js';
@@ -49,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (mainOutputCanvasElement) {
     mainRecordingCompositor = new VideoCompositor('main-output-canvas');
     logToConsole('Main recording compositor initialized.', 'info');
+    setMainCompositor(mainRecordingCompositor);
   } else {
     logToConsole('main-output-canvas not found. Main recording compositor NOT initialized.', 'error');
   }
@@ -81,6 +84,82 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('addCameraBtn')?.addEventListener('click', () => cameraManager?.addCamera());
   document.getElementById('addAudioDeviceBtn')?.addEventListener('click', () => audioManager?.addDeviceCard());
+
+  // Test Dinosaur Mask Button
+  const testDinoMaskBtn = document.getElementById('test-dinosaur-mask-btn');
+  let currentTestDinoVideoElement = null; // Keep a reference if we create it
+
+  testDinoMaskBtn?.addEventListener('click', () => {
+    if (mainRecordingCompositor && mainRecordingCompositor.isDinosaurMaskActive()) {
+      mainRecordingCompositor.clearVideoMask();
+      if (currentTestDinoVideoElement) {
+        currentTestDinoVideoElement.pause(); // Stop playback
+        currentTestDinoVideoElement.src = ''; // Release resource
+        currentTestDinoVideoElement.remove(); // Remove from DOM if it was ever added
+        currentTestDinoVideoElement = null;
+      }
+      testDinoMaskBtn.textContent = 'Test Dinosaur Mask';
+      testDinoMaskBtn.classList.remove('btn-danger');
+      testDinoMaskBtn.classList.add('btn-warning');
+      logToConsole('Dinosaur mask cleared by button.', 'info');
+    } else if (currentDinosaurName) {
+      const videoPath = `/database/dinosaurs/${currentDinosaurName}.mp4`;
+      logToConsole(`Test Dinosaur Mask clicked. Video path: ${videoPath}`, 'info');
+
+      // Clean up previous video element if any (e.g., if a previous attempt failed before playing)
+      if (currentTestDinoVideoElement) {
+        currentTestDinoVideoElement.remove();
+        currentTestDinoVideoElement = null;
+      }
+
+      const videoPlayer = document.createElement('video');
+      currentTestDinoVideoElement = videoPlayer; // Store reference
+
+      videoPlayer.id = 'dinosaur-mask-source-video'; // For potential debugging, not displayed
+      videoPlayer.src = videoPath;
+      videoPlayer.crossOrigin = 'anonymous'; // Important if source is different origin and for some canvas operations
+      videoPlayer.loop = true;
+      videoPlayer.muted = true; // Autoplay usually requires muted
+      // videoPlayer.style.display = 'none'; // Hide it - it's a source, not for display
+      // No need to append to body if VideoCompositor handles it
+
+      videoPlayer.oncanplay = () => {
+        logToConsole(`Dinosaur mask video '${currentDinosaurName}.mp4' can play. Attempting to set as mask.`, 'success');
+        videoPlayer.play().then(() => {
+          if (mainRecordingCompositor) {
+            mainRecordingCompositor.setVideoMask(videoPlayer);
+            testDinoMaskBtn.textContent = 'Clear Dinosaur Mask';
+            testDinoMaskBtn.classList.remove('btn-warning');
+            testDinoMaskBtn.classList.add('btn-danger');
+          }
+        }).catch(e => {
+          logToConsole(`Error playing dinosaur video for mask: ${e}`, 'error');
+          if (mainRecordingCompositor) mainRecordingCompositor.clearVideoMask();
+          testDinoMaskBtn.textContent = 'Test Dinosaur Mask'; // Reset button
+          testDinoMaskBtn.classList.remove('btn-danger');
+          testDinoMaskBtn.classList.add('btn-warning');
+          currentTestDinoVideoElement = null; // Clear reference
+        });
+      };
+
+      videoPlayer.onerror = (e) => {
+        logToConsole(`Error loading dinosaur mask video '${currentDinosaurName}.mp4': ${e.target?.error?.message || 'Unknown error'}`, 'error');
+        if (mainRecordingCompositor) mainRecordingCompositor.clearVideoMask(); // Attempt to clear if it was somehow set
+        testDinoMaskBtn.textContent = 'Test Dinosaur Mask'; // Reset button
+        testDinoMaskBtn.classList.remove('btn-danger');
+        testDinoMaskBtn.classList.add('btn-warning');
+        currentTestDinoVideoElement = null; // Clear reference
+      };
+
+      // It might be necessary to append the video to the DOM for it to load/play reliably, even if hidden.
+      // Let's append it and hide it.
+      videoPlayer.style.display = 'none';
+      document.body.appendChild(videoPlayer);
+
+    } else {
+      logToConsole('Test Dinosaur Mask clicked, but no currentDinosaurName is set.', 'warn');
+    }
+  });
 
   // Shot container listener (delegated)
   const shotContainer = document.querySelector('.shot-container');

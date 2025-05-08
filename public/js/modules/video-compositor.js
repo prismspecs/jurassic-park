@@ -57,6 +57,17 @@ export class VideoCompositor {
         this._initializeTfjsAndDetector();
         // --- End New/Modified State ---
 
+        this.dinosaurVideoMask = null; // Video element for the dinosaur mask
+        this.dinosaurMaskActive = false; // Is the dinosaur mask currently active?
+
+        // Offscreen canvas for processing luma matte
+        this.lumaMaskCanvas = document.createElement('canvas');
+        this.lumaMaskCtx = this.lumaMaskCanvas.getContext('2d', { willReadFrequently: true }); // Optimize for frequent readback
+        if (!this.lumaMaskCtx) {
+            logToConsole('VideoCompositor: Failed to get 2D context for lumaMaskCanvas.', 'error');
+            // Potentially throw an error or disable masking if this fails
+        }
+
         logToConsole(`VideoCompositor initialized for canvas '#${this.canvas.id || '(no ID yet)'}'.`, 'info');
     }
 
@@ -293,6 +304,49 @@ export class VideoCompositor {
                 }
             }
 
+            // APPLY DINOSAUR VIDEO MASK (if active)
+            if (this.dinosaurMaskActive && this.dinosaurVideoMask &&
+                this.dinosaurVideoMask.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+                !this.dinosaurVideoMask.paused && this.lumaMaskCtx) { // Check lumaMaskCtx
+
+                const maskVideo = this.dinosaurVideoMask;
+                const maskWidth = maskVideo.videoWidth;
+                const maskHeight = maskVideo.videoHeight;
+
+                if (maskWidth > 0 && maskHeight > 0) {
+                    if (this.lumaMaskCanvas.width !== maskWidth) this.lumaMaskCanvas.width = maskWidth;
+                    if (this.lumaMaskCanvas.height !== maskHeight) this.lumaMaskCanvas.height = maskHeight;
+
+                    try {
+                        // 1. Draw B&W video frame to offscreen lumaMaskCanvas
+                        this.lumaMaskCtx.drawImage(maskVideo, 0, 0, maskWidth, maskHeight);
+
+                        // 2. Get imageData and process for luma matte
+                        const imageData = this.lumaMaskCtx.getImageData(0, 0, maskWidth, maskHeight);
+                        const data = imageData.data;
+                        for (let i = 0; i < data.length; i += 4) {
+                            // Assuming B&W, R=G=B. Use Red channel as luma value.
+                            // White (255) = opaque mask (alpha=255)
+                            // Black (0)   = transparent mask (alpha=0)
+                            data[i + 3] = data[i]; // Set alpha to the red channel value
+                        }
+                        this.lumaMaskCtx.putImageData(imageData, 0, 0);
+
+                        // 3. Apply the processed lumaMaskCanvas as the mask
+                        this.ctx.save();
+                        this.ctx.globalCompositeOperation = 'destination-in';
+                        // Draw lumaMaskCanvas onto the main canvas, scaled to main canvas size
+                        this.ctx.drawImage(this.lumaMaskCanvas, 0, 0, this.canvas.width, this.canvas.height);
+                        this.ctx.restore();
+
+                    } catch (e) {
+                        logToConsole(`Error processing or drawing luma matte dinosaur mask: ${e.message}`, 'error');
+                    }
+                }
+            } else if (this.dinosaurMaskActive && this.dinosaurVideoMask) {
+                logToConsole(`DinoMask luma processing SKIPPED: Time=${this.dinosaurVideoMask.currentTime.toFixed(2)}, RS=${this.dinosaurVideoMask.readyState}, Paused=${this.dinosaurVideoMask.paused}`, 'debug');
+            }
+
             let posesToDraw = null;
 
             if (this.enablePoseDetection && this.poseDetector && !forceClearEffects) {
@@ -482,5 +536,32 @@ export class VideoCompositor {
     // Method to potentially add other layers later
     addLayer(config) {
         logToConsole('VideoCompositor: addLayer not implemented yet.', 'warn', config);
+    }
+
+    setVideoMask(videoElement) {
+        if (videoElement instanceof HTMLVideoElement) {
+            this.dinosaurVideoMask = videoElement;
+            this.dinosaurMaskActive = true;
+            if (this.dinosaurVideoMask.paused) {
+                this.dinosaurVideoMask.play().catch(e => logToConsole(`Error trying to play dinosaur mask video: ${e}`, 'error'));
+            }
+            logToConsole('VideoCompositor: Dinosaur video mask set.', 'info');
+        } else {
+            logToConsole('VideoCompositor: Invalid element passed to setVideoMask. Expected HTMLVideoElement.', 'error');
+            this.dinosaurVideoMask = null;
+            this.dinosaurMaskActive = false;
+        }
+        if (this.isDrawing) this._drawFrame(true); // Force redraw
+    }
+
+    clearVideoMask() {
+        logToConsole('VideoCompositor: Clearing dinosaur video mask.', 'info');
+        this.dinosaurVideoMask = null;
+        this.dinosaurMaskActive = false;
+        if (this.isDrawing) this._drawFrame(true); // Force redraw
+    }
+
+    isDinosaurMaskActive() {
+        return this.dinosaurMaskActive && this.dinosaurVideoMask;
     }
 } 
