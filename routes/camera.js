@@ -14,28 +14,40 @@ const { broadcastConsole } = require('../websocket/broadcaster'); // Import broa
 // --- Auto-add default camera on startup ---
 async function initializeDefaultCamera() {
     try {
-        const defaultCameraConfig = config.cameraDefaults && config.cameraDefaults[0];
-        if (defaultCameraConfig) {
-            const defaultCameraName = 'Camera_1';
-            // Check if camera already exists (e.g., due to persistence or prior init)
-            if (!cameraControl.getCamera(defaultCameraName)) {
-                console.log(`[Server Init] Attempting to add default camera '${defaultCameraName}' on startup...`);
-                console.log(`[Server Init] Defaults from config:`, defaultCameraConfig); // Log defaults
-                await cameraControl.addCamera(
-                    defaultCameraName,
-                    defaultCameraConfig.previewDevice,
-                    defaultCameraConfig.recordingDevice,
-                    defaultCameraConfig.ptzDevice
-                );
-                console.log(`Default camera '${defaultCameraName}' added with config:`, defaultCameraConfig);
-            } else {
-                console.log(`Default camera '${defaultCameraName}' already exists.`);
+        if (config.cameraDefaults && Array.isArray(config.cameraDefaults)) {
+            const numCamerasToAdd = Math.min(config.cameraDefaults.length, 2); // Add up to 2 cameras
+
+            for (let i = 0; i < numCamerasToAdd; i++) {
+                const defaultCameraConfig = config.cameraDefaults[i];
+                const defaultCameraName = `Camera_${i + 1}`;
+
+                if (defaultCameraConfig) {
+                    // Check if camera already exists
+                    if (!cameraControl.getCamera(defaultCameraName)) {
+                        console.log(`[Server Init] Attempting to add default camera '${defaultCameraName}' on startup...`);
+                        console.log(`[Server Init] Defaults for ${defaultCameraName} from config:`, defaultCameraConfig);
+                        await cameraControl.addCamera(
+                            defaultCameraName,
+                            defaultCameraConfig.previewDevice,
+                            defaultCameraConfig.recordingDevice,
+                            defaultCameraConfig.ptzDevice
+                        );
+                        console.log(`Default camera '${defaultCameraName}' added with config:`, defaultCameraConfig);
+                    } else {
+                        console.log(`Default camera '${defaultCameraName}' already exists.`);
+                    }
+                } else {
+                    console.warn(`No default camera configuration found in config.json for camera index ${i}.`);
+                }
+            }
+            if (numCamerasToAdd === 0) {
+                console.warn('No default camera configurations found in config.json (cameraDefaults is empty or not an array).');
             }
         } else {
-            console.warn('No default camera configuration found in config.json (cameraDefaults[0]).');
+            console.warn('No default camera configurations found in config.json (cameraDefaults is missing or not an array).');
         }
     } catch (err) {
-        console.error('Error initializing default camera:', err);
+        console.error('Error initializing default camera(s):', err);
     }
 }
 

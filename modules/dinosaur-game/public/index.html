@@ -1,70 +1,63 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dinosaur Game</title>
-    <link rel="stylesheet" href="style.css" />
 
-    <!-- Update TensorFlow.js libraries to match main app versions -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.10.0/dist/tf-core.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.10.0/dist/tf-converter.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.10.0/dist/tf-backend-webgl.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@0.0.6/dist/pose-detection.min.js"></script>
-  </head>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dinosaur Game</title>
+  <link rel="stylesheet" href="style.css" />
 
-  <body>
-    <div id="loading">Loading model and webcam...</div>
-    <div id="main" style="display: none; position: relative">
-      <!-- Webcam video element (hidden but used for input) -->
-      <video id="webcam" playsinline style="display: none"></video>
+  <!-- Update TensorFlow.js libraries to match main app versions -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.10.0/dist/tf-core.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.10.0/dist/tf-converter.min.js"></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.10.0/dist/tf-backend-webgl.min.js"></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@0.0.6/dist/pose-detection.min.js"></script>
+</head>
 
-      <!-- Mask video element (hidden, loops, plays inline) -->
-      <video
-        id="mask-video"
-        playsinline
-        loop
-        muted
-        autoplay
-        style="display: none"
-      >
-        <source src="videos/walking-longneck.mp4" type="video/mp4" />
-        Your browser does not support the video tag.
-      </video>
+<body>
+  <div id="loading">Loading model and webcam...</div>
+  <div id="main" style="display: none; position: relative">
+    <!-- Webcam video element (hidden but used for input) -->
+    <video id="webcam" playsinline style="display: none"></video>
 
-      <!-- Canvas layers for drawing -->
-      <div class="canvas-container">
-        <button
-          id="fullscreen-btn"
-          class="fullscreen-button"
-          title="Toggle fullscreen"
-        >
-          ⤢
-        </button>
-        <div class="canvas-scaler">
-          <!-- Base canvas for webcam and mask -->
-          <canvas id="base-canvas" class="canvas-layer"></canvas>
-          <!-- Silhouette layer -->
-          <canvas id="silhouette-canvas" class="canvas-layer"></canvas>
-          <!-- Difference layer to show overlapping areas -->
-          <canvas id="difference-canvas" class="canvas-layer"></canvas>
-          <!-- Skeleton layer on top -->
-          <canvas id="skeleton-canvas" class="canvas-layer"></canvas>
-        </div>
-      </div>
+    <!-- Mask video element (hidden, loops, plays inline) -->
+    <video id="mask-video" playsinline loop muted autoplay style="display: none">
+      <source src="videos/walking-longneck.mp4" type="video/mp4" />
+      Your browser does not support the video tag.
+    </video>
 
-      <!-- Optional: Display score -->
-      <div id="score">Score: 0%</div>
-      <!-- Add Status/Controls -->
-      <div id="controls">
-        <p id="status">Initializing...</p>
-        <button id="start-button" disabled>Start Game</button>
-        <button id="stop-button" disabled>Stop Game</button>
-        <button id="change-mask-button">Change Mask Video</button>
+    <!-- Canvas layers for drawing -->
+    <div class="canvas-container">
+      <button id="fullscreen-btn" class="fullscreen-button" title="Toggle fullscreen">
+        ⤢
+      </button>
+      <div class="canvas-scaler">
+        <!-- Base canvas for webcam and mask -->
+        <canvas id="base-canvas" class="canvas-layer"></canvas>
+        <!-- Silhouette layer -->
+        <canvas id="silhouette-canvas" class="canvas-layer"></canvas>
+        <!-- Difference layer to show overlapping areas -->
+        <canvas id="difference-canvas" class="canvas-layer"></canvas>
+        <!-- Skeleton layer on top -->
+        <canvas id="skeleton-canvas" class="canvas-layer"></canvas>
       </div>
     </div>
 
-    <!-- Load the application script -->
-    <script src="main.js" type="module"></script>
-  </body>
+    <!-- Optional: Display score -->
+    <div id="score">Score: 0%</div>
+    <!-- Add Status/Controls -->
+    <div id="controls">
+      <p id="status">Initializing...</p>
+      <button id="start-button" disabled>Start Game</button>
+      <button id="stop-button" disabled>Stop Game</button>
+      <button id="change-mask-button">Change Mask Video</button>
+    </div>
+  </div>
+
+  <!-- Load the application script -->
+  <script src="main.js" type="module"></script>
+</body>
+
 </html>
