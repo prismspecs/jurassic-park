@@ -134,8 +134,9 @@ document.addEventListener('DOMContentLoaded', () => {
       videoPlayer.id = 'dinosaur-mask-source-video'; // For potential debugging, not displayed
       videoPlayer.src = videoPath;
       videoPlayer.crossOrigin = 'anonymous'; // Important if source is different origin and for some canvas operations
-      videoPlayer.loop = true;
+      videoPlayer.loop = false; // Explicitly set to false for manual looping by VideoCompositor
       videoPlayer.muted = true; // Autoplay usually requires muted
+      videoPlayer.playsinline = true; // Good practice for video elements
       // videoPlayer.style.display = 'none'; // Hide it - it's a source, not for display
       // No need to append to body if VideoCompositor handles it
 

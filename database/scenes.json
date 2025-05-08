@@ -119,7 +119,7 @@
             {
                 "name": "dinosaur",
                 "type": "dinosaur",
-                "dinosaur": "longneck-1",
+                "dinosaur": "longneck-2",
                 "number": 1,
                 "duration": "0:15",
                 "description": "Testing the dinosaur tracking system",

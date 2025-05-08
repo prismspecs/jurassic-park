@@ -69,6 +69,7 @@ export class VideoCompositor {
         }
 
         this.isMirrored = false; // Added for mirror toggle
+        this.boundDinosaurMaskEndedHandler = null; // For manual looping of dino mask
 
         logToConsole(`VideoCompositor initialized for canvas '#${this.canvas.id || '(no ID yet)'}'.`, 'info');
     }
@@ -541,26 +542,50 @@ export class VideoCompositor {
     }
 
     setVideoMask(videoElement) {
+        // Clear any existing mask and its listener first
+        if (this.dinosaurVideoMask && this.boundDinosaurMaskEndedHandler) {
+            this.dinosaurVideoMask.removeEventListener('ended', this.boundDinosaurMaskEndedHandler);
+            logToConsole('VideoCompositor: Removed old ended listener from previous dinosaur mask.', 'debug');
+        }
+        this.boundDinosaurMaskEndedHandler = null; // Clear old handler ref
+
         if (videoElement instanceof HTMLVideoElement) {
             this.dinosaurVideoMask = videoElement;
             this.dinosaurMaskActive = true;
+            this.dinosaurVideoMask.loop = false; // Ensure native loop is off for manual control
+
+            this.boundDinosaurMaskEndedHandler = () => {
+                if (this.dinosaurVideoMask) { // Check if the mask video still exists
+                    this.dinosaurVideoMask.currentTime = 0;
+                    this.dinosaurVideoMask.play().catch(e => logToConsole(`Error re-playing dinosaur mask video: ${e.message}`, 'error'));
+                }
+            };
+            this.dinosaurVideoMask.addEventListener('ended', this.boundDinosaurMaskEndedHandler);
+
             if (this.dinosaurVideoMask.paused) {
-                this.dinosaurVideoMask.play().catch(e => logToConsole(`Error trying to play dinosaur mask video: ${e}`, 'error'));
+                this.dinosaurVideoMask.play().catch(e => logToConsole(`Error trying to play dinosaur mask video initially: ${e.message}`, 'error'));
             }
-            logToConsole('VideoCompositor: Dinosaur video mask set.', 'info');
+            logToConsole('VideoCompositor: Dinosaur video mask set and manual loop handler attached.', 'info');
         } else {
             logToConsole('VideoCompositor: Invalid element passed to setVideoMask. Expected HTMLVideoElement.', 'error');
+            // If an invalid element is passed, ensure we clear out any old mask setup completely
             this.dinosaurVideoMask = null;
             this.dinosaurMaskActive = false;
+            // this.boundDinosaurMaskEndedHandler is already null or cleared above
         }
-        if (this.isDrawing) this._drawFrame(true); // Force redraw
+        if (this.isDrawing) this._drawFrame(true); // Force redraw to apply/clear mask immediately
     }
 
     clearVideoMask() {
         logToConsole('VideoCompositor: Clearing dinosaur video mask.', 'info');
+        if (this.dinosaurVideoMask && this.boundDinosaurMaskEndedHandler) {
+            this.dinosaurVideoMask.removeEventListener('ended', this.boundDinosaurMaskEndedHandler);
+            logToConsole('VideoCompositor: Removed ended listener from dinosaur mask.', 'debug');
+        }
         this.dinosaurVideoMask = null;
         this.dinosaurMaskActive = false;
-        if (this.isDrawing) this._drawFrame(true); // Force redraw
+        this.boundDinosaurMaskEndedHandler = null;
+        if (this.isDrawing) this._drawFrame(true); // Force redraw to clear mask immediately
     }
 
     isDinosaurMaskActive() {
