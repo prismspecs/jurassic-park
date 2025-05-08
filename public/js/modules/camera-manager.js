@@ -441,7 +441,7 @@ export class CameraManager {
     controlsDiv.appendChild(skeletonToggle);
 
     const maskToggle = this._createToggleSwitch(
-      `Enable Background Mask`,
+      `Enable Pose Rect Cut-out`,
       `mask-toggle-${camera.name}`,
       compositor.drawBoundingBoxMask,
       (isChecked) => {
