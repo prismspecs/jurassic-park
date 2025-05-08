@@ -58,6 +58,7 @@ export class VideoCompositor {
         this.drawBodySegmentMask = false; // Controls body segment mask drawing
         this.drawDifferenceMask = false; // CONTROLS THE NEW DIFFERENCE MASK DRAWING
         this.lastDetectedPoses = [];
+        this.differenceScore = 0; // Initialize score for difference mask
         this._initializeTfjsAndDetector();
         // --- End New/Modified State ---
 
@@ -1143,12 +1144,20 @@ export class VideoCompositor {
         const outputImageData = this.lowResPersonCtx.createImageData(lowResWidth, lowResHeight); // Create low-res image data
         const outputData = outputImageData.data;
 
+        let matchedPixelCount = 0;
+        let dinoPixelCount = 0;
+
         for (let i = 0; i < outputData.length; i += 4) {
             const personAlpha = personData[i + 3];
             const isPerson = personAlpha > 128;
             const isDino = dinoData[i + 3] > 128;
 
+            if (isDino) {
+                dinoPixelCount++;
+            }
+
             if (isPerson && isDino) {
+                matchedPixelCount++;
                 outputData[i] = 0;     // R - Green
                 outputData[i + 1] = 255; // G
                 outputData[i + 2] = 0;     // B
@@ -1167,6 +1176,8 @@ export class VideoCompositor {
                 outputData[i + 3] = 0; // Transparent
             }
         }
+        this.differenceScore = (dinoPixelCount > 0) ? (matchedPixelCount / dinoPixelCount) * 100 : 0;
+
         // Put the low-res result onto the lowResPersonCanvas (or any lowRes canvas, just to hold it)
         this.lowResPersonCtx.putImageData(outputImageData, 0, 0);
 
@@ -1185,5 +1196,12 @@ export class VideoCompositor {
         this.ctx.mozImageSmoothingEnabled = oldSmoothing;
         this.ctx.webkitImageSmoothingEnabled = oldSmoothing;
         this.ctx.msImageSmoothingEnabled = oldSmoothing;
+
+        // Draw the score
+        this.ctx.font = '200px monospace'; // Larger, monospace font
+        this.ctx.fillStyle = 'yellow';
+        this.ctx.textAlign = 'center'; // Centered horizontally
+        this.ctx.textBaseline = 'middle'; // Centered vertically
+        this.ctx.fillText(`Match: ${this.differenceScore.toFixed(1)}%`, this.canvas.width / 2, this.canvas.height / 2);
     }
 } 
