@@ -20,6 +20,12 @@
                 "camera": "Camera_1",
                 "in": 160,
                 "out": 300
+            },
+            {
+                "shot": "music",
+                "camera": null,
+                "in": 300,
+                "out": 380
             }
         ],
         "shots": [
@@ -82,7 +88,7 @@
                         "full-name": "Dr. Alan Grant",
                         "lines": [
                             {
-                                "text": "_It’s… it’s a dinosaur._",
+                                "text": "_It's... it's a dinosaur._",
                                 "time-in": 1,
                                 "time-out": 4
                             }
@@ -93,7 +99,7 @@
                         "full-name": "Dr. Alan Grant",
                         "lines": [
                             {
-                                "text": "_It’s… it’s a dinosaur._",
+                                "text": "_It's... it's a dinosaur._",
                                 "time-in": 1,
                                 "time-out": 4
                             }
@@ -104,7 +110,7 @@
                         "full-name": "Dr. Alan Grant",
                         "lines": [
                             {
-                                "text": "_It’s… it’s a dinosaur._",
+                                "text": "_It's... it's a dinosaur._",
                                 "time-in": 1,
                                 "time-out": 4
                             }
@@ -115,7 +121,7 @@
                         "full-name": "Dr. Alan Grant",
                         "lines": [
                             {
-                                "text": "_It’s… it’s a dinosaur._",
+                                "text": "_It's... it's a dinosaur._",
                                 "time-in": 1,
                                 "time-out": 4
                             }
@@ -172,6 +178,16 @@
                         ]
                     }
                 }
+            },
+            {
+                "name": "music",
+                "type": "music",
+                "number": 2,
+                "duration": "0:10",
+                "description": "Music shot",
+                "setup": "Setup for music shot",
+                "cameras": [],
+                "characters": {}
             }
         ]
     },
