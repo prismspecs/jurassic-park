@@ -72,6 +72,14 @@ export class VideoCompositor {
         this.isMirrored = false; // Added for mirror toggle
         this.boundDinosaurMaskEndedHandler = null; // For manual looping of dino mask
 
+        // Offscreen canvas for body segment mask
+        this.segmentMaskCanvas = document.createElement('canvas');
+        this.segmentMaskCtx = this.segmentMaskCanvas.getContext('2d');
+        if (!this.segmentMaskCtx) {
+            logToConsole('VideoCompositor: Failed to get 2D context for segmentMaskCanvas.', 'error');
+            // Fallback or disable feature if critical
+        }
+
         // Visibility API
         this._boundHandleVisibilityChange = this._handleVisibilityChange.bind(this);
         document.addEventListener('visibilitychange', this._boundHandleVisibilityChange);
@@ -479,11 +487,22 @@ export class VideoCompositor {
     // --- End Refactored Masking Method ---
 
     _applyBodySegmentMask(poses) {
-        if (!poses || poses.length === 0 || !this.currentFrameSource) return;
+        if (!poses || poses.length === 0 || !this.currentFrameSource || !this.segmentMaskCtx) return; // Added check for segmentMaskCtx
 
         const ctx = this.ctx;
         const canvasWidth = this.canvas.width;
         const canvasHeight = this.canvas.height;
+
+        // Ensure offscreen mask canvas has correct dimensions
+        if (this.segmentMaskCanvas.width !== canvasWidth) {
+            this.segmentMaskCanvas.width = canvasWidth;
+        }
+        if (this.segmentMaskCanvas.height !== canvasHeight) {
+            this.segmentMaskCanvas.height = canvasHeight;
+        }
+
+        const maskCtx = this.segmentMaskCtx;
+        maskCtx.clearRect(0, 0, canvasWidth, canvasHeight); // Clear before drawing new mask
 
         const sourceWidth = (this.sourceType === 'video') ? this.currentFrameSource.videoWidth : this.currentFrameSource.width;
         const sourceHeight = (this.sourceType === 'video') ? this.currentFrameSource.videoHeight : this.currentFrameSource.height;
@@ -495,17 +514,6 @@ export class VideoCompositor {
 
         const scaleX = canvasWidth / sourceWidth;
         const scaleY = canvasHeight / sourceHeight;
-
-        // Create or reuse an offscreen canvas for the mask
-        // For simplicity, creating a new one each time. Could be optimized by reusing a member canvas.
-        const maskCanvas = document.createElement('canvas');
-        maskCanvas.width = canvasWidth;
-        maskCanvas.height = canvasHeight;
-        const maskCtx = maskCanvas.getContext('2d');
-        if (!maskCtx) {
-            logToConsole('BodySegmentMask: Failed to get context for mask canvas.', 'error');
-            return;
-        }
 
         maskCtx.fillStyle = 'white'; // Mask color, opaque areas will keep video pixels
 
@@ -635,7 +643,7 @@ export class VideoCompositor {
 
         // Apply the mask: current video frame (already on ctx) is kept where maskCanvas is opaque.
         ctx.globalCompositeOperation = 'destination-in';
-        ctx.drawImage(maskCanvas, 0, 0, canvasWidth, canvasHeight);
+        ctx.drawImage(this.segmentMaskCanvas, 0, 0, canvasWidth, canvasHeight); // Use this.segmentMaskCanvas
         ctx.globalCompositeOperation = 'source-over'; // Reset for subsequent drawing (e.g., skeleton overlay)
     }
 
