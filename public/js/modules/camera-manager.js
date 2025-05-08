@@ -180,7 +180,16 @@ export class CameraManager {
     if (!confirm(`Are you sure you want to remove camera '${name}'?`)) return;
     logToConsole(`Attempting to remove camera: ${name}`, "info");
     try {
-      this.stopVideoStream(name);
+      this.stopVideoStream(name); // Stops tracks and nullifies srcObject
+
+      // Explicitly destroy the VideoCompositor for this camera
+      const compositor = this.cameraCompositors.get(name);
+      if (compositor && typeof compositor.destroy === 'function') {
+        compositor.destroy();
+        logToConsole(`Destroyed VideoCompositor for camera ${name}.`, 'debug');
+      }
+      this.cameraCompositors.delete(name);
+      this.processedCanvases.delete(name); // The canvas itself is removed with cameraElement
 
       // Use DELETE method and URL parameter
       const response = await fetch(`/camera/${encodeURIComponent(name)}`, { method: "DELETE" });
@@ -190,8 +199,6 @@ export class CameraManager {
         const cameraElement = this.cameraElements.get(name);
         if (cameraElement) { cameraElement.remove(); this.cameraElements.delete(name); }
         this.cameras = this.cameras.filter((cam) => cam.name !== name);
-        this.cameraCompositors.delete(name);
-        this.processedCanvases.delete(name);
         logToConsole(`Camera ${name} removed locally.`, "success");
         if (this.cameras.length === 0) {
           const container = document.getElementById("cameraControls");
@@ -475,85 +482,92 @@ export class CameraManager {
   // --- Device Update Methods ---
   async updatePreviewDevice(cameraName, browserDeviceId) {
     logToConsole(`Updating preview for ${cameraName} to browser device ID: ${browserDeviceId}`, "info");
+    const camera = this.cameras.find(c => c.name === cameraName);
     const videoElement = document.getElementById(`video-${cameraName}`);
-    const cameraCard = this.cameraElements.get(cameraName);
-    const deviceInfoElement = cameraCard?.querySelector('.device-info');
     const compositor = this.cameraCompositors.get(cameraName);
 
-    if (!videoElement || !cameraCard) {
-      logToConsole(`Preview update error: Video or card element for ${cameraName} not found.`, "error"); return;
+    if (!camera || !videoElement || !compositor) {
+      logToConsole(`Cannot update preview for ${cameraName}: Camera, video element, or compositor not found.`, "error");
+      return;
     }
-    // Stop existing stream before starting new one
-    this.stopVideoStream(cameraName);
+
+    this.stopVideoStream(cameraName); // This now also pauses and should clear listeners for the raw video element
 
     if (!browserDeviceId) {
-      logToConsole(`No preview device selected for ${cameraName}. Clearing preview.`, "info");
-      if (deviceInfoElement) deviceInfoElement.textContent = 'No device selected';
-      this._updateCameraConfig(cameraName, { previewDevice: '' }); // Update local & server
+      logToConsole(`No browser device ID selected for ${cameraName}. Clearing preview.`, "info");
+      compositor.removeFrameSource(); // Clear source from compositor
+      this._updateCameraConfig(cameraName, { previewDevice: "" });
       return;
     }
 
     try {
-      const selectedBrowserDevice = this.availableDevices.find(bd => bd.deviceId === browserDeviceId);
-      const browserDeviceLabel = selectedBrowserDevice?.label || `Device ${browserDeviceId.substring(0, 6)}...`;
-      if (deviceInfoElement) deviceInfoElement.textContent = `Connecting to: ${browserDeviceLabel}...`;
-
       // Get desired resolution from UI
       const resolutionSelect = document.getElementById('recording-resolution');
-      let constraints = { video: { deviceId: { exact: browserDeviceId }, frameRate: { ideal: 30 } } };
-      if (resolutionSelect?.value && resolutionSelect.value.includes('x')) {
-        const [width, height] = resolutionSelect.value.split('x').map(Number);
-        if (width > 0 && height > 0) constraints.video.width = { ideal: width }; constraints.video.height = { ideal: height };
+      logToConsole(`updatePreviewDevice for ${cameraName}: resolutionSelect found: ${!!resolutionSelect}`, 'debug');
+      if (resolutionSelect) {
+        logToConsole(`updatePreviewDevice for ${cameraName}: resolutionSelect.value: '${resolutionSelect.value}'`, 'debug');
       }
 
-      // Add event listener for loadedmetadata to log resolution BEFORE setting srcObject
-      const onMetadataLoaded = () => {
-        logToConsole(
-          `Preview for ${cameraName} (${browserDeviceLabel}): Metadata loaded. Video resolution: ${videoElement.videoWidth}x${videoElement.videoHeight}`,
-          "success"
-        );
-        // Clean up this specific listener after it fires
-        videoElement.removeEventListener('loadedmetadata', onMetadataLoaded);
-      };
-      videoElement.addEventListener('loadedmetadata', onMetadataLoaded);
+      let constraints = { video: { deviceId: { exact: browserDeviceId }, frameRate: { ideal: 30 } } };
+      if (resolutionSelect?.value && resolutionSelect.value.includes('x')) {
+        const [widthStr, heightStr] = resolutionSelect.value.split('x');
+        const width = parseInt(widthStr, 10);
+        const height = parseInt(heightStr, 10);
+        logToConsole(`updatePreviewDevice for ${cameraName}: Parsed resolution - width: ${width}, height: ${height}`, 'debug');
 
-      videoElement.onerror = (e) => {
-        logToConsole(`Error event on video element for ${cameraName}: ${e.message || 'Unknown video element error'}`, 'error');
-        if (deviceInfoElement) deviceInfoElement.textContent = 'Video error.';
-        // Clean up listener on error too
-        videoElement.removeEventListener('loadedmetadata', onMetadataLoaded);
-      };
+        if (width > 0 && height > 0) {
+          constraints.video.width = { ideal: width };
+          constraints.video.height = { ideal: height };
+          logToConsole(`Applying resolution constraints for ${cameraName}: ${width}x${height}`, 'debug');
+        } else {
+          logToConsole(`Invalid parsed resolution for ${cameraName}: width ${width}, height ${height}. Using default.`, 'warn');
+        }
+      } else {
+        logToConsole(`Recording resolution dropdown value '${resolutionSelect?.value}' not valid or not found for ${cameraName}. Using default resolution.`, 'warn');
+      }
+      logToConsole(`updatePreviewDevice for ${cameraName}: Final media constraints:`, 'debug', JSON.parse(JSON.stringify(constraints)));
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       videoElement.srcObject = stream;
-      await videoElement.play();
-      // Note: Actual frame rate might be available from stream.getVideoTracks()[0].getSettings().frameRate after play()
-      // but videoWidth/videoHeight from the element is reliable after loadedmetadata.
-
-      if (deviceInfoElement) deviceInfoElement.textContent = `Using: ${browserDeviceLabel}`;
-
-      // Find corresponding server ID
-      let serverIdToUpdate = null;
-      for (const [serverID, bID] of this.serverToBrowserDeviceMap.entries()) {
-        if (bID === browserDeviceId) { serverIdToUpdate = serverID; break; }
+      // Remove any old onloadedmetadata listener before adding a new one.
+      // Store the bound function to be able to remove it.
+      if (videoElement._boundOnMetadataLoaded) {
+        videoElement.removeEventListener('loadedmetadata', videoElement._boundOnMetadataLoaded);
       }
-      this._updateCameraConfig(cameraName, { previewDevice: serverIdToUpdate }); // Update local & server
+      videoElement._boundOnMetadataLoaded = () => {
+        logToConsole(`Video metadata loaded for ${cameraName}: ${videoElement.videoWidth}x${videoElement.videoHeight}`, "info");
+        if (compositor) {
+          compositor.setCurrentFrameSource(videoElement);
+        }
+        // Remove the listener after it has run once if that's the desired behavior,
+        // or manage it if multiple reloads are possible for the same element/stream.
+        // For now, let it persist for the current stream.
+      };
+      videoElement.addEventListener('loadedmetadata', videoElement._boundOnMetadataLoaded);
 
-      if (compositor) {
-        compositor.setCurrentFrameSource(videoElement);
+      await videoElement.play();
+      logToConsole(`Preview for ${cameraName} (${camera.label || browserDeviceId}): Metadata loaded. Video resolution: ${videoElement.videoWidth}x${videoElement.videoHeight}`, 'success');
+
+      // Find the server ID that maps to the selected browserDeviceId
+      let serverIdForUpdate = null;
+      for (const [serverID, bID] of this.serverToBrowserDeviceMap.entries()) {
+        if (bID === browserDeviceId) {
+          serverIdForUpdate = serverID;
+          break;
+        }
+      }
+      if (serverIdForUpdate !== null) {
+        this._updateCameraConfig(cameraName, { previewDevice: serverIdForUpdate });
       } else {
-        logToConsole(`Compositor not found for ${cameraName} after starting stream.`, 'warn');
+        logToConsole(`Could not find a server ID mapping for browser device ${browserDeviceId}. Config not updated for previewDevice.`, 'warn');
+        // Optionally, you might want to clear the previewDevice on the server if no mapping is found
+        // this._updateCameraConfig(cameraName, { previewDevice: "" }); 
       }
 
     } catch (err) {
-      logToConsole(`Error starting preview for ${cameraName}: ${err.message}`, "error");
-      if (deviceInfoElement) deviceInfoElement.textContent = `Error: ${err.message.split(':')[0]}`;
-      this.stopVideoStream(cameraName); // Ensure cleanup on error
-      const previewSelect = document.getElementById(`preview-device-${cameraName}`);
-      if (previewSelect) previewSelect.value = ''; // Reset dropdown
-      const livePreviewCheckbox = document.getElementById(`live-preview-${cameraName}`);
-      if (livePreviewCheckbox) { livePreviewCheckbox.checked = false; livePreviewCheckbox.disabled = true; } // Reset toggle
-      this._updateCameraConfig(cameraName, { previewDevice: '' }); // Clear config
+      logToConsole(`Error starting video stream for ${cameraName} with device ${browserDeviceId}: ${err.message}`, "error");
+      this.stopVideoStream(cameraName); // Clean up on error
+      compositor.removeFrameSource();
     }
   }
 
@@ -582,24 +596,45 @@ export class CameraManager {
     const camera = this.cameras.find(c => c.name === cameraName);
     if (!camera) {
       logToConsole(`Cannot update config: Camera ${cameraName} not found locally.`, 'warn');
-      return; // Exit if camera doesn't exist locally
+      return;
     }
 
-    // Store original values to revert on error
+    logToConsole(`_updateCameraConfig for ${cameraName}. Initial updates:`, 'debug', JSON.parse(JSON.stringify(updates)));
+    logToConsole(`_updateCameraConfig for ${cameraName}. Camera object:`, 'debug', JSON.parse(JSON.stringify(camera)));
+    logToConsole(`_updateCameraConfig for ${cameraName}. Camera keys: ${Object.keys(camera).join(', ')}`, 'debug');
+
     const originalValues = {};
-    for (const key in updates) {
-      if (Object.hasOwnProperty.call(updates, key) && Object.hasOwnProperty.call(camera, key)) {
-        originalValues[key] = camera[key];
-        camera[key] = updates[key]; // Update local state optimistically
-      } else {
-        logToConsole(`Skipping update for unknown property: ${key}`, 'warn');
-        delete updates[key]; // Don't send unknown properties
+    const updatesCopy = { ...updates }; // Work on a copy for inspection
+
+    for (const key in updatesCopy) {
+      if (Object.hasOwnProperty.call(updatesCopy, key)) { // Ensure key is from updates itself
+        const cameraHasKey = Object.hasOwnProperty.call(camera, key);
+        logToConsole(`_updateCameraConfig for ${cameraName}: Checking key '${key}'. Camera has own property '${key}': ${cameraHasKey}`, 'debug');
+        if (cameraHasKey) {
+          originalValues[key] = camera[key];
+          camera[key] = updatesCopy[key];
+        } else {
+          logToConsole(`Skipping update for key '${key}' as it's not an own property of camera ${cameraName}.`, 'warn');
+          delete updates[key]; // Modify the original updates object being sent to server
+        }
       }
     }
 
-    if (Object.keys(updates).length === 0) return; // Don't fetch if no valid updates
+    logToConsole(`_updateCameraConfig for ${cameraName}. Final updates to be sent:`, 'debug', JSON.parse(JSON.stringify(updates)));
 
-    logToConsole(`Updating local config for ${cameraName}:`, 'debug', updates);
+    if (Object.keys(updates).length === 0) {
+      logToConsole(`Error updating camera config for ${cameraName} on server: No valid configuration updates to send.`, 'error');
+      // Revert optimistic local changes since nothing will be sent
+      for (const key in originalValues) {
+        if (Object.hasOwnProperty.call(originalValues, key) && Object.hasOwnProperty.call(camera, key)) {
+          camera[key] = originalValues[key];
+        }
+      }
+      logToConsole(`Reverted local config changes for ${cameraName} due to no valid updates.`, 'warn');
+      return;
+    }
+
+    logToConsole(`Updating local config for ${cameraName}:`, 'debug', JSON.parse(JSON.stringify(updates))); // Log the actual data being sent
 
     // Persist change(s) to the server
     try {
@@ -642,16 +677,31 @@ export class CameraManager {
 
   stopVideoStream(cameraName) {
     const videoElement = document.getElementById(`video-${cameraName}`);
-    const compositor = this.cameraCompositors.get(cameraName);
-    if (videoElement?.srcObject) {
-      videoElement.srcObject.getTracks().forEach(track => track.stop());
-      videoElement.srcObject = null;
-      logToConsole(`Stopped video stream for ${cameraName}.`, "info");
-      if (compositor) compositor.removeFrameSource();
-      const cameraCard = this.cameraElements.get(cameraName);
-      const deviceInfoElement = cameraCard?.querySelector('.device-info');
-      if (deviceInfoElement) deviceInfoElement.textContent = 'Preview stopped';
-      videoElement.style.backgroundColor = "#222";
+    if (videoElement) {
+      logToConsole(`Stopping video stream for ${cameraName}...`, 'info');
+      if (videoElement.pause) {
+        videoElement.pause(); // Explicitly pause
+      }
+      if (videoElement.srcObject) {
+        const stream = videoElement.srcObject;
+        const tracks = stream.getTracks();
+        tracks.forEach(track => {
+          track.stop();
+          logToConsole(`Stopped track ${track.label || 'N/A'} for ${cameraName}`, 'debug');
+        });
+        videoElement.srcObject = null;
+        logToConsole(`srcObject set to null for ${cameraName}`, 'debug');
+      }
+      // Remove specific listeners if they were added with addEventListener
+      if (videoElement._boundOnMetadataLoaded) {
+        videoElement.removeEventListener('loadedmetadata', videoElement._boundOnMetadataLoaded);
+        delete videoElement._boundOnMetadataLoaded; // Clean up the stored handler
+        logToConsole(`Removed onloadedmetadata listener for ${cameraName}`, 'debug');
+      }
+      // Add any other specific listener removals here if needed
+
+    } else {
+      logToConsole(`Video element for ${cameraName} not found to stop stream.`, 'warn');
     }
   }
 
