@@ -71,6 +71,10 @@ export class VideoCompositor {
         this.isMirrored = false; // Added for mirror toggle
         this.boundDinosaurMaskEndedHandler = null; // For manual looping of dino mask
 
+        // Visibility API
+        this._boundHandleVisibilityChange = this._handleVisibilityChange.bind(this);
+        document.addEventListener('visibilitychange', this._boundHandleVisibilityChange);
+
         logToConsole(`VideoCompositor initialized for canvas '#${this.canvas.id || '(no ID yet)'}'.`, 'info');
     }
 
@@ -542,38 +546,78 @@ export class VideoCompositor {
     }
 
     setVideoMask(videoElement) {
-        // Clear any existing mask and its listener first
-        if (this.dinosaurVideoMask && this.boundDinosaurMaskEndedHandler) {
-            this.dinosaurVideoMask.removeEventListener('ended', this.boundDinosaurMaskEndedHandler);
-            logToConsole('VideoCompositor: Removed old ended listener from previous dinosaur mask.', 'debug');
+        if (!videoElement || !(videoElement instanceof HTMLVideoElement)) {
+            logToConsole('VideoCompositor: Invalid video element provided for mask.', 'error');
+            this.clearVideoMask();
+            return;
         }
-        this.boundDinosaurMaskEndedHandler = null; // Clear old handler ref
 
-        if (videoElement instanceof HTMLVideoElement) {
-            this.dinosaurVideoMask = videoElement;
-            this.dinosaurMaskActive = true;
-            this.dinosaurVideoMask.loop = false; // Ensure native loop is off for manual control
+        this.clearVideoMask(); // Clear any existing mask first
 
-            this.boundDinosaurMaskEndedHandler = () => {
-                if (this.dinosaurVideoMask) { // Check if the mask video still exists
-                    this.dinosaurVideoMask.currentTime = 0;
-                    this.dinosaurVideoMask.play().catch(e => logToConsole(`Error re-playing dinosaur mask video: ${e.message}`, 'error'));
-                }
-            };
-            this.dinosaurVideoMask.addEventListener('ended', this.boundDinosaurMaskEndedHandler);
+        this.dinosaurVideoMask = videoElement;
+        this.dinosaurVideoMask.setAttribute('playsinline', '');
+        this.dinosaurVideoMask.setAttribute('muted', '');
+        this.dinosaurVideoMask.muted = true;
+        this.dinosaurVideoMask.loop = false; // Manual loop
 
-            if (this.dinosaurVideoMask.paused) {
-                this.dinosaurVideoMask.play().catch(e => logToConsole(`Error trying to play dinosaur mask video initially: ${e.message}`, 'error'));
+        this.boundDinosaurMaskEndedHandler = () => {
+            if (!this.dinosaurVideoMask) return;
+            logToConsole(`VideoCompositor: Dinosaur mask video '${this.dinosaurVideoMask.src.split('/').pop()}' ended. Attempting to replay.`, 'info');
+            this.dinosaurVideoMask.currentTime = 0;
+
+            if (document.hidden) {
+                logToConsole('VideoCompositor: Tab is hidden, deferring dinosaur mask replay until visible.', 'info');
+                return; // Don't attempt to play if hidden; _handleVisibilityChange will manage it.
             }
-            logToConsole('VideoCompositor: Dinosaur video mask set and manual loop handler attached.', 'info');
+
+            const playPromise = this.dinosaurVideoMask.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    logToConsole(`Error re-playing dinosaur mask video in ended handler: ${error.name} - ${error.message}`, 'error');
+                    // Avoid recursive setVideoMask. Visibility handler will attempt to fix.
+                });
+            }
+        };
+        this.dinosaurVideoMask.addEventListener('ended', this.boundDinosaurMaskEndedHandler);
+
+        if (typeof this.dinosaurVideoMask.canPlayType === 'function' && this.dinosaurVideoMask.canPlayType('video/mp4')) {
+            logToConsole(`Dinosaur mask video '${this.dinosaurVideoMask.src.split('/').pop()}' can play. Attempting to set as mask.`, 'info');
+
+            // Defer initial play if tab is hidden, visibility handler will pick it up
+            if (document.hidden) {
+                logToConsole('VideoCompositor: Tab is hidden. Initial play of dinosaur mask deferred until visible.', 'info');
+                // Mark as active so visibility handler knows to play it, but it's not playing yet.
+                // It will become truly active once play() succeeds in visibility handler or here.
+                this.dinosaurMaskActive = true;
+                // We still need to attach the ended listener.
+                logToConsole('VideoCompositor: Dinosaur video mask ready, manual loop handler attached (deferred play).', 'info');
+                return; // Don't play yet
+            }
+
+            const playPromise = this.dinosaurVideoMask.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    this.dinosaurMaskActive = true;
+                    logToConsole('VideoCompositor: Dinosaur video mask set and manual loop handler attached.', 'success');
+                }).catch(error => {
+                    logToConsole(`VideoCompositor: Error initially playing dinosaur mask video: ${error.name} - ${error.message}`, 'error');
+                    this.dinosaurMaskActive = false; // Failed to start
+                    if (document.hidden) {
+                        logToConsole('VideoCompositor: Initial play failed while tab hidden. Will attempt on visibility.', 'info');
+                        // If it failed because it's hidden, mark as active so visibility handler can try
+                        this.dinosaurMaskActive = true;
+                    }
+                });
+            } else {
+                // Very old browser, or unexpected state, assume play if no promise.
+                this.dinosaurVideoMask.play(); // Attempt direct play
+                this.dinosaurMaskActive = true;
+                logToConsole('VideoCompositor: Dinosaur video mask set (no play promise). Manual loop handler attached.', 'info');
+            }
         } else {
-            logToConsole('VideoCompositor: Invalid element passed to setVideoMask. Expected HTMLVideoElement.', 'error');
-            // If an invalid element is passed, ensure we clear out any old mask setup completely
-            this.dinosaurVideoMask = null;
-            this.dinosaurMaskActive = false;
-            // this.boundDinosaurMaskEndedHandler is already null or cleared above
+            logToConsole(`Dinosaur mask video '${this.dinosaurVideoMask.src.split('/').pop()}' cannot play type 'video/mp4'. Mask not set.`, 'warn');
+            this.clearVideoMask();
         }
-        if (this.isDrawing) this._drawFrame(true); // Force redraw to apply/clear mask immediately
     }
 
     clearVideoMask() {
@@ -593,12 +637,19 @@ export class VideoCompositor {
     }
 
     setDinosaurMaskActive(isActive) {
-        this.dinosaurMaskActive = isActive;
-        logToConsole(`VideoCompositor: Dinosaur mask active set to ${isActive}`, 'info');
-        if (!isActive) {
-            // If disabling, ensure the canvas is cleared of any residual mask effects immediately
-            // if a draw loop isn't running or might be delayed.
-            // this._drawFrame(true); // forceClearEffects = true
+        this.dinosaurMaskActive = !!isActive;
+        logToConsole(`VideoCompositor: Dinosaur mask explicitly set to ${this.dinosaurMaskActive}.`, 'info');
+        // If we are activating it and it's paused (and visible), try to play.
+        if (this.dinosaurMaskActive && this.dinosaurVideoMask && this.dinosaurVideoMask.paused && !document.hidden) {
+            logToConsole('VideoCompositor: Attempting to play dinosaur mask due to explicit activation.', 'info');
+            this.dinosaurVideoMask.play().catch(err => {
+                logToConsole(`VideoCompositor: Error playing dinosaur mask on explicit activation: ${err.message}`, 'error');
+            });
+        }
+        // If deactivating, pause it.
+        else if (!this.dinosaurMaskActive && this.dinosaurVideoMask && !this.dinosaurVideoMask.paused) {
+            this.dinosaurVideoMask.pause();
+            logToConsole('VideoCompositor: Paused dinosaur mask due to explicit deactivation.', 'info');
         }
     }
 
@@ -610,5 +661,57 @@ export class VideoCompositor {
         } else {
             logToConsole('VideoCompositor: setMirrored called but canvas is not available.', 'warn');
         }
+    }
+
+    // --- New Visibility Change Handler ---
+    _handleVisibilityChange() {
+        if (this.dinosaurVideoMask && this.dinosaurMaskActive) { // Check if mask is supposed to be active
+            if (document.hidden) {
+                // Video is likely paused by the browser automatically.
+                // We could explicitly pause:
+                // if (!this.dinosaurVideoMask.paused) {
+                //     this.dinosaurVideoMask.pause();
+                //     logToConsole('VideoCompositor: Dinosaur mask explicitly paused due to tab hidden.', 'info');
+                // }
+            } else {
+                // Tab is visible
+                if (this.dinosaurVideoMask.paused) {
+                    logToConsole('VideoCompositor: Tab became visible, attempting to resume dinosaur mask video.', 'info');
+                    const playPromise = this.dinosaurVideoMask.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(error => {
+                            logToConsole(`VideoCompositor: Error resuming dinosaur mask video on visibility change: ${error.name} - ${error.message}`, 'error');
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    destroy() {
+        logToConsole('VideoCompositor: Destroying VideoCompositor instance.', 'info');
+        this.stopDrawingLoop();
+        this.removeFrameSource(); // This should also stop any video source if it's playing
+        this.clearVideoMask();    // This handles removing the 'ended' listener from the dinosaur mask
+
+        if (this.poseDetector && typeof this.poseDetector.dispose === 'function') {
+            this.poseDetector.dispose();
+            this.poseDetector = null;
+            logToConsole('VideoCompositor: Disposed of pose detector model.', 'info');
+        }
+
+        if (this._boundHandleVisibilityChange) {
+            document.removeEventListener('visibilitychange', this._boundHandleVisibilityChange);
+            logToConsole('VideoCompositor: Removed visibilitychange listener.', 'info');
+            this._boundHandleVisibilityChange = null; // Clear the bound function reference
+        }
+
+        // Nullify other properties if needed
+        this.canvas = null;
+        this.ctx = null;
+        this.currentFrameSource = null;
+        this.dinosaurVideoMask = null;
+        // ... any other resources
+        logToConsole('VideoCompositor: Instance destroyed.', 'info');
     }
 } 
