@@ -110,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
       mainRecordingCompositor.clearVideoMask();
       if (currentTestDinoVideoElement) {
         currentTestDinoVideoElement.pause(); // Stop playback
+        currentTestDinoVideoElement.onerror = null; // Prevent error from logging during intentional cleanup
         currentTestDinoVideoElement.src = ''; // Release resource
         currentTestDinoVideoElement.remove(); // Remove from DOM if it was ever added
         currentTestDinoVideoElement = null;
