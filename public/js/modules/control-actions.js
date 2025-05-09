@@ -293,206 +293,97 @@ export function actorsReady() {
 
 /** Sends the Action signal to the server. */
 export function action(cameraManager) {
-  const recordingSourceElement = document.querySelector('input[name="recordingSource"]:checked');
-  const recordingType = recordingSourceElement ? recordingSourceElement.value : 'camera'; // Default to camera if not found
-
-  logToConsole(`Sending Action signal with recording type: ${recordingType}...`, 'info');
-  document.getElementById("status").innerText = `Starting action (${recordingType} recording)...`;
-
-  if (recordingType === 'canvas') {
-    logToConsole("Canvas recording selected.", "info");
-    if (!currentShotData || !currentShotData.shot || !currentShotData.shot.cameras || currentShotData.shot.cameras.length === 0) {
-      logToConsole("Cannot start canvas recording: No current shot data, shot object, or no cameras in the current shot.", "error");
-      document.getElementById("status").innerText = "Error: No shot data for canvas recording.";
-      return;
-    }
-
-    // Add detailed logging for cameraManager state
-    logToConsole("Checking cameraManager availability before starting canvas recording...");
-    logToConsole(`cameraManager instance present: ${!!cameraManager}`);
-    if (cameraManager) {
-      logToConsole(`cameraManager.cameraCompositors present: ${!!cameraManager.cameraCompositors}`);
-      if (cameraManager.cameraCompositors) {
-        logToConsole(`cameraManager.cameraCompositors is Map: ${cameraManager.cameraCompositors instanceof Map}`);
-        logToConsole(`cameraManager.cameraCompositors size: ${cameraManager.cameraCompositors.size}`);
-        logToConsole(`cameraManager.cameraCompositors keys: ${JSON.stringify(Array.from(cameraManager.cameraCompositors.keys()))}`);
-      } else {
-        logToConsole('cameraManager.cameraCompositors is null or undefined.', 'warn');
-      }
-    } else {
-      logToConsole('cameraManager instance is null or undefined.', 'warn');
-    }
-    // End detailed logging
-
-    if (!cameraManager || !cameraManager.cameraCompositors || !(cameraManager.cameraCompositors instanceof Map)) {
-      logToConsole("Cannot start canvas recording: cameraManager instance or cameraCompositors (Map) not available/valid.", "error");
-      document.getElementById("status").innerText = "Error: Camera manager/compositors not ready.";
-      return;
-    }
-    // Check if the map is actually empty, which might also be a problem
-    if (cameraManager.cameraCompositors.size === 0) {
-      logToConsole("Cannot start canvas recording: cameraManager.cameraCompositors map is empty.", "error");
-      document.getElementById("status").innerText = "Error: No camera compositors available.";
-      return;
-    }
-
-    logToConsole(`Attempting to record canvases for ${currentShotData.shot.cameras.length} cameras in shot '${currentShotData.shot.name}'. Compositors available: ${cameraManager.cameraCompositors.size}`, "info");
-    let MimeType = 'video/webm;codecs=vp9'; // Default, good for alpha
-    if (!MediaRecorder.isTypeSupported(MimeType)) {
-      logToConsole(`MIME type ${MimeType} not supported, trying video/webm;codecs=vp8`, 'warn');
-      MimeType = 'video/webm;codecs=vp8';
-      if (!MediaRecorder.isTypeSupported(MimeType)) {
-        logToConsole(`MIME type ${MimeType} not supported, trying video/webm (default)`, 'warn');
-        MimeType = 'video/webm';
-        if (!MediaRecorder.isTypeSupported(MimeType)) {
-          logToConsole('No suitable webm MIME type supported by MediaRecorder. Canvas recording may fail or have issues.', 'error');
-          alert('Your browser does not support the required video recording formats (WebM VP9/VP8). Canvas recording might not work.');
-        }
-      }
-    } else {
-      logToConsole(`Using MediaRecorder MIME type: ${MimeType}`, 'info');
-    }
-
-    let recordersStarted = 0;
-    currentShotData.shot.cameras.forEach(shotCamera => {
-      const cameraName = shotCamera.name;
-      const compositor = cameraManager.cameraCompositors.get(cameraName);
-
-      if (!compositor || !compositor.canvas) {
-        logToConsole(`Canvas for camera '${cameraName}' not found or compositor not ready. Skipping this camera.`, "warn");
-        return; // Skips this iteration
-      }
-
-      const canvas = compositor.canvas;
-      if (canvas.width === 0 || canvas.height === 0) {
-        logToConsole(`Canvas for camera '${cameraName}' has zero dimensions. Skipping recorder.`, "warn");
-        return;
-      }
-
-      logToConsole(`Starting MediaRecorder for canvas: ${cameraName}`, "info");
-      recordedCanvasBlobs[cameraName] = []; // Reset for this recording
-
-      try {
-        const stream = canvas.captureStream(30); // Target 30 FPS
-        const options = { mimeType: MimeType };
-        if (MimeType === '') delete options.mimeType;
-
-        const recorder = new MediaRecorder(stream, options);
-
-        recorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0) {
-            recordedCanvasBlobs[cameraName].push(event.data);
-          }
-        };
-
-        recorder.onstop = () => {
-          logToConsole(`MediaRecorder stopped for ${cameraName}. Processing ${recordedCanvasBlobs[cameraName].length} chunks.`, "info");
-          const blob = new Blob(recordedCanvasBlobs[cameraName], { type: MimeType || 'video/webm' });
-          recordedCanvasBlobs[cameraName] = []; // Clear chunks after creating blob
-
-          logToConsole(`Blob created for ${cameraName}, size: ${blob.size}, type: ${blob.type}. Ready to send.`, "info");
-
-          if (!currentShotData || !currentShotData.scene || !currentShotData.shot) {
-            logToConsole('Cannot upload canvas video: currentShotData is incomplete.', 'error');
-            delete activeCanvasRecorders[cameraName];
-            return;
-          }
-
-          const formData = new FormData();
-          const sceneDirectory = currentShotData.scene.directory;
-          const shotName = currentShotData.shot.name || 'default_shot_name';
-          const takeNumber = currentShotData.shot.take || 1; // Default to 1 if not set
-          const filename = `${cameraName}_${shotName}_take${takeNumber}_canvas.webm`;
-
-          formData.append('videoBlob', blob, filename);
-          formData.append('sceneDirectory', sceneDirectory);
-          formData.append('shotName', shotName);
-          formData.append('takeNumber', takeNumber.toString());
-          formData.append('cameraName', cameraName);
-          formData.append('filename', filename);
-
-          logToConsole(`Uploading canvas recording for ${cameraName} to server...`, 'info');
-          fetch('/api/upload/canvas-video', {
-            method: 'POST',
-            body: formData, // FormData will set Content-Type to multipart/form-data automatically
-          })
-            .then(response => {
-              if (!response.ok) {
-                return response.text().then(text => {
-                  throw new Error(`Server responded with ${response.status}: ${text || 'No additional error message'}`);
-                });
-              }
-              return response.json();
-            })
-            .then(data => {
-              logToConsole(`Canvas video for ${cameraName} uploaded successfully: ${data.message}`, 'success');
-              logToConsole(`Server saved to: ${data.filePath}`, 'info'); // Assuming server sends back filePath
-            })
-            .catch(error => {
-              logToConsole(`Error uploading canvas video for ${cameraName}: ${error.message}`, 'error', error);
-              document.getElementById("status").innerText = `Error uploading ${cameraName} canvas: ${error.message}`;
-            })
-            .finally(() => {
-              delete activeCanvasRecorders[cameraName]; // Ensure recorder is removed from active list
-            });
-        };
-
-        recorder.onerror = (event) => {
-          logToConsole(`MediaRecorder error for ${cameraName}: ${event.error.name}`, 'error', event.error);
-          delete activeCanvasRecorders[cameraName]; // Clean up on error too
-        };
-
-        recorder.start();
-        activeCanvasRecorders[cameraName] = recorder;
-        recordersStarted++;
-        logToConsole(`MediaRecorder started successfully for ${cameraName}.`, "success");
-
-      } catch (e) {
-        logToConsole(`Error starting MediaRecorder for ${cameraName}: ${e.message}`, "error", e);
-        alert(`Could not start recording for ${cameraName}: ${e.message}`);
-      }
-    });
-
-    if (recordersStarted > 0) {
-      logToConsole(`${recordersStarted} canvas recorders initiated.`, 'info');
-
-      fetch("/action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recordingType: 'canvas' })
-      })
-        .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
-        .then(info => {
-          document.getElementById("status").innerText = info.message + ` (${recordersStarted} Canvases Recording)`;
-          logToConsole(`Action signal sent (canvas mode). Server response: ${info.message}`, 'success');
-        })
-        .catch(err => {
-          console.error("Action Error (canvas mode) during server POST:", err);
-          document.getElementById("status").innerText = "Error sending Action (canvas mode): " + err;
-          logToConsole(`Error sending Action (canvas mode): ${err}`, 'error');
-        });
-    } else {
-      logToConsole("No canvas recorders were started. Aborting canvas mode action.", "warn");
-      document.getElementById("status").innerText = "Failed to start canvas recorders.";
-    }
-
-  } else { // 'camera' or default
-    fetch("/action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recordingType: 'camera' })
-    })
-      .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
-      .then(info => {
-        document.getElementById("status").innerText = info.message;
-        logToConsole("Action signal sent (camera mode).", 'success');
-      })
-      .catch(err => {
-        console.error("Action Error (camera mode):", err);
-        document.getElementById("status").innerText = "Error sending Action (camera mode): " + err;
-        logToConsole(`Error sending Action(camera mode): ${err}`, 'error');
-      });
+  if (!currentShotData || !currentShotData.scene || !currentShotData.shot) {
+    const msg = "Cannot start action: No shot initialized or shot data is incomplete.";
+    logToConsole(msg, 'error');
+    document.getElementById("status").innerText = msg;
+    return;
   }
+
+  const sceneDirectory = encodeURIComponent(currentShotData.scene.directory);
+  const shotIdentifier = encodeURIComponent(currentShotData.shot.name || `shot_${currentShotData.shotIndex + 1}`); // Use index as fallback for identifier
+
+  logToConsole(`Sending 'Action' for Scene: '${currentShotData.scene.directory}', Shot: '${currentShotData.shot.name || shotIdentifier}'`, 'info');
+  document.getElementById("status").innerText = `Starting action for Scene '${currentShotData.scene.directory}', Shot '${currentShotData.shot.name || shotIdentifier}'...`;
+
+  let recordingType = 'camera'; // Default to server-side recording
+
+  if (currentShotData.shot.type === 'music') {
+    logToConsole('Music shot type detected. Setting recordingType to \'camera\' for server endpoint.', 'info');
+    recordingType = 'camera';
+  } else {
+    // Not a music shot, so proceed with determining if canvas recording is needed.
+    const canvasRecordEnabled = document.getElementById('canvas-record-toggle') && document.getElementById('canvas-record-toggle').checked;
+    const mainOutputCanvas = document.getElementById('main-output-canvas');
+
+    if (canvasRecordEnabled && mainOutputCanvas && mainOutputCanvas.offsetParent !== null) { // Check if canvas is visible
+      logToConsole('Canvas recording is enabled and main output canvas is visible.', 'info');
+      // Tentatively set to canvas, but will fallback if no recorders actually start.
+      recordingType = 'canvas';
+      let actualCanvasRecordersStarted = 0;
+
+      // Check if there is a source selected for the main compositor
+      if (compositorInstance && compositorInstance.currentSourceId) {
+        logToConsole(`Main compositor source ID: ${compositorInstance.currentSourceId}`, 'info');
+        const mainRecorder = startCanvasRecording('main-output-canvas', 'main_output');
+        if (mainRecorder) {
+          activeCanvasRecorders['main_output'] = mainRecorder;
+          actualCanvasRecordersStarted++;
+          logToConsole('Main output canvas recording initiated.', 'info');
+        }
+      } else {
+        logToConsole('Main compositor has no source, canvas recording for main output will not start.', 'warn');
+      }
+
+      // Additionally, handle individual camera canvas recordings if CameraManager is available
+      if (cameraManager && typeof cameraManager.getAllCameras === 'function') {
+        const cameras = cameraManager.getAllCameras();
+        cameras.forEach(camera => {
+          if (camera.isRecordingToCanvas) {
+            const canvasId = `processed-canvas-${camera.name}`;
+            const canvasElement = document.getElementById(canvasId);
+            if (canvasElement && canvasElement.offsetParent !== null) { // Check if canvas is visible
+              logToConsole(`Attempting canvas recording for visible camera: ${camera.name} on canvas ${canvasId}`, 'info');
+              const recorder = startCanvasRecording(canvasId, camera.name);
+              if (recorder) {
+                activeCanvasRecorders[camera.name] = recorder;
+                actualCanvasRecordersStarted++;
+              }
+            } else {
+              logToConsole(`Canvas for camera ${camera.name} (${canvasId}) is not visible. Skipping canvas recording.`, 'warn');
+            }
+          }
+        });
+      }
+
+      if (actualCanvasRecordersStarted === 0) {
+        logToConsole('Canvas recording was enabled, but no canvas recorders were actually started (e.g., no sources). Falling back to server-side camera recording.', 'warn');
+        recordingType = 'camera'; // Fallback if no canvas recorders were started
+      } else {
+        logToConsole(`${actualCanvasRecordersStarted} canvas recorder(s) were initiated. recordingType is 'canvas'.`, 'info');
+      }
+
+    } else {
+      logToConsole('Canvas recording is not enabled or main output canvas is not visible. Using server-side camera recording.', 'info');
+      recordingType = 'camera';
+    }
+  }
+
+  fetch("/action", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sceneDirectory, shotIdentifier, recordingType }), // Pass determined recordingType
+  })
+    .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
+    .then(info => {
+      document.getElementById("status").innerText = info.message;
+      logToConsole(`'Action' initiated for Scene '${currentShotData.scene.directory}', Shot '${currentShotData.shot.name || shotIdentifier}'. Server says: ${info.message}`, 'success');
+    })
+    .catch(err => {
+      console.error("Action Error:", err);
+      document.getElementById("status").innerText = "Error starting action: " + err;
+      logToConsole(`Error sending 'Action' signal: ${err}`, 'error');
+    });
 }
 
 /** Sends a test message to the server console log. */
