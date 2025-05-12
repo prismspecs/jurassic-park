@@ -1202,6 +1202,20 @@ export class VideoCompositor {
         this.ctx.fillStyle = 'yellow';
         this.ctx.textAlign = 'center'; // Centered horizontally
         this.ctx.textBaseline = 'middle'; // Centered vertically
-        this.ctx.fillText(`Match: ${this.differenceScore.toFixed(1)}%`, this.canvas.width / 2, this.canvas.height / 2);
+
+        // Save context for potential mirroring
+        this.ctx.save();
+
+        if (this.isMirrored) {
+            // Flip horizontally
+            this.ctx.scale(-1, 1);
+            // Adjust position to draw on the other side
+            this.ctx.fillText(`Match: ${this.differenceScore.toFixed(1)}%`, -this.canvas.width / 2, this.canvas.height / 2);
+        } else {
+            this.ctx.fillText(`Match: ${this.differenceScore.toFixed(1)}%`, this.canvas.width / 2, this.canvas.height / 2);
+        }
+
+        // Restore context
+        this.ctx.restore();
     }
 } 
