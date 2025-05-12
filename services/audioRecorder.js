@@ -96,7 +96,6 @@ class AudioRecorder {
                     return [];
                 }
 
-
                 const devices = [];
                 const lines = arecordOutput.split(/\\r?\\n/);
                 const deviceLineRegex = /^card\\s+(\\d+):\\s+([^\\[]+)\\s+\\[.*?],\\s+device\\s+(\\d+):\\s+([^\\[]+)\\s+\\[.*?]/;
@@ -116,7 +115,6 @@ class AudioRecorder {
                             potentialDevices.push({
                                 id: deviceId,
                                 name: `${cardName} - ${deviceName}`,
-                                // channelCount will be added below
                             });
                         }
                     }
@@ -129,61 +127,76 @@ class AudioRecorder {
 
                 console.log(`Found ${potentialDevices.length} potential Linux devices. Checking channel counts via SoX...`);
 
-                // Sequentially check channel counts to avoid overwhelming the system
                 for (const device of potentialDevices) {
                     console.log(`Checking channels for ${device.name} (${device.id})...`);
-                    // Use the internal helper method now
                     const channelCount = await this._getSoxChannelCount(platform, device.id);
                     devices.push({ ...device, channelCount });
-                    // Optional: Add a small delay if needed
-                    // await new Promise(resolve => setTimeout(resolve, 100));
                 }
-
 
                 console.log('Linux - Found audio input devices with channel counts:', devices);
                 return devices;
 
             } catch (error) {
                 console.error('Error detecting audio devices on Linux:', error.stderr || error.message);
-                throw new Error(`Failed to list audio devices on Linux: ${error.message}`); // Re-throw for calling code
+                throw new Error(`Failed to list audio devices on Linux: ${error.message}`);
             }
         } else if (platform === 'darwin') {
-            // Existing macOS detection logic (to be replaced/updated in next step)
+            // REVERT to using system_profiler for macOS detection
             try {
                 console.log("Detecting macOS audio devices using system_profiler...");
-                const { stdout: profilerOutput } = await execPromise('system_profiler SPAudioDataType -json', { maxBuffer: 1024 * 1024 }); // Increase buffer as JSON can be large
+                const { stdout: profilerOutput } = await execPromise('system_profiler SPAudioDataType -json', { maxBuffer: 1024 * 1024 });
                 const data = JSON.parse(profilerOutput);
                 const spAudioData = data?.SPAudioDataType;
                 const items = spAudioData?.[0]?._items;
                 const audioDevices = items || [];
 
-                const inputDevicesPromises = audioDevices
-                    .filter(device => device?.coreaudio_device_input && parseInt(device.coreaudio_device_input, 10) > 0)
-                    .map(async (device, index) => { // Make map callback async
-                        const deviceName = device._name || `Unknown macOS Audio Input ${index}`;
+                const inputDevices = audioDevices
+                    // Filter for devices that have *some* input capability
+                    .filter(device => device?._name && (parseInt(device.coreaudio_device_input, 10) > 0 || parseInt(device.coreaudio_device_input_channels, 10) > 0))
+                    .map((device, index) => {
+                        const deviceName = device._name; // Should exist due to filter
                         const deviceId = deviceName; // Use name as ID for macOS/coreaudio
 
-                        console.log(`Checking channels for macOS device: ${deviceName}...`);
-                        // Call the helper function with the device name
-                        const channelCount = await this._getSoxChannelCount(platform, deviceName);
+                        // Attempt to parse specific input channel count, fallback to coreaudio_device_input, then default 2
+                        let channelCount = 2; // Default
+                        if (device.coreaudio_device_input_channels) {
+                            const parsedCount = parseInt(device.coreaudio_device_input_channels, 10);
+                            if (!isNaN(parsedCount) && parsedCount > 0) {
+                                channelCount = parsedCount;
+                                console.log(`[ProfilerCheck] Found channel count ${channelCount} via coreaudio_device_input_channels for ${deviceName}`);
+                            } else {
+                                console.warn(`[ProfilerCheck] Found non-numeric coreaudio_device_input_channels for ${deviceName}: ${device.coreaudio_device_input_channels}`);
+                            }
+                        } else if (device.coreaudio_device_input) {
+                            // Fallback: Try coreaudio_device_input if _channels property is missing
+                            const parsedInput = parseInt(device.coreaudio_device_input, 10);
+                            if (!isNaN(parsedInput) && parsedInput > 0) {
+                                channelCount = parsedInput; // Use this as a fallback count
+                                console.log(`[ProfilerCheck] Found channel count ${channelCount} via coreaudio_device_input (fallback) for ${deviceName}`);
+                            } else {
+                                console.warn(`[ProfilerCheck] Found non-numeric coreaudio_device_input fallback for ${deviceName}: ${device.coreaudio_device_input}`);
+                            }
+                        } else {
+                            console.warn(`[ProfilerCheck] Could not find channel count property for ${deviceName}. Defaulting to ${channelCount}.`);
+                        }
 
                         return {
                             id: deviceId,
                             name: deviceName,
-                            channelCount: channelCount // Use determined channel count
+                            channelCount: channelCount
                         };
                     });
 
-                const inputDevices = await Promise.all(inputDevicesPromises);
+                // Filter out devices that might be outputs listed weirdly (e.g., have 0 input channels detected)
+                const finalInputDevices = inputDevices.filter(d => d.channelCount > 0);
 
-                console.log('macOS - Found audio input devices with channel counts:', inputDevices);
-                return inputDevices;
+                console.log('macOS - Found audio input devices via system_profiler:', finalInputDevices);
+                return finalInputDevices;
+
             } catch (error) {
-                console.error('Error detecting audio devices on macOS:', error.stderr || error.stdout || error.message);
-                // Attempt fallback using SoX listing? Simpler to just fail for now.
-                console.warn("Falling back to empty device list for macOS due to error.");
-                // throw new Error(`Failed to list audio devices on macOS: ${error.message}`); // Re-throw
-                return []; // Return empty on error for now
+                console.error('Error detecting audio devices on macOS using system_profiler:', error.stderr || error.stdout || error.message);
+                console.warn("Falling back to empty device list for macOS due to system_profiler error.");
+                return []; // Return empty on error
             }
         } else {
             console.warn(`Audio device detection not implemented for platform: ${platform}`);

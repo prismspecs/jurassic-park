@@ -194,17 +194,15 @@ export class AudioManager {
         const gainSlider = document.createElement('input');
         gainSlider.type = 'range';
         gainSlider.id = `gain-${cardId}`;
-        gainSlider.min = '-24'; // Example range -24dB to +12dB
-        gainSlider.max = '12';
+        gainSlider.min = '-6';
+        gainSlider.max = '24';
         gainSlider.step = '1';
-        // Set initial slider value from state (which includes defaults)
         gainSlider.value = String(this.deviceCardStates[cardId].gainDb);
-        gainSlider.style.width = 'calc(100% - 100px)'; // Adjust width
+        gainSlider.style.width = 'calc(100% - 100px)';
         gainSlider.style.verticalAlign = 'middle';
 
         const gainValueSpan = document.createElement('span');
         gainValueSpan.id = `gain-value-${cardId}`;
-        // Set initial span text from state
         gainValueSpan.textContent = ` ${this.deviceCardStates[cardId].gainDb} dB`;
         gainValueSpan.style.marginLeft = '10px';
 
