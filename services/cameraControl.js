@@ -458,7 +458,12 @@ class CameraControl {
                 try {
                     // Assuming home is 0, 0, 0 for pan, tilt, zoom
                     // Adjust if specific cameras have different home positions
-                    await this.setPTZ(camera.name, { pan: 0, tilt: 0, zoom: 0 });
+                    // The PTZ doesn't like 0, so use 3600
+                    await this.setPTZ(camera.name, {
+                        pan: config.homePan !== undefined ? config.homePan : 3600,
+                        tilt: config.homeTilt !== undefined ? config.homeTilt : 3600,
+                        zoom: config.homeZoom !== undefined ? config.homeZoom : 0
+                    });
                 } catch (error) {
                     console.error(`Failed to reset PTZ for camera ${camera.name}:`, error);
                 }

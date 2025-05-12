@@ -1,5 +1,8 @@
 {
     "appUrl": "http://localhost:3000/",
+    "homePan": 3600,
+    "homeTilt": 3600,
+    "homeZoom": 0,
     "framesRawDir": "frames_raw",
     "framesOverlayDir": "frames_overlay",
     "videoOriginal": "original.mp4",

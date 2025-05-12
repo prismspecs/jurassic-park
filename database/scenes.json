@@ -50,22 +50,7 @@
                         "description": "Front-facing main camera",
                         "position": "F",
                         "direction": "front",
-                        "movements": [
-                            {
-                                "pan": 10,
-                                "tilt": 10,
-                                "zoom": 0,
-                                "height": 1.4,
-                                "time": 0
-                            },
-                            {
-                                "pan": 0,
-                                "tilt": 0,
-                                "zoom": 0,
-                                "height": 1.2,
-                                "time": 3
-                            }
-                        ]
+                        "movements": []
                     },
                     {
                         "name": "Camera_2",
@@ -225,13 +210,6 @@
                                 "zoom": 0,
                                 "height": 1.4,
                                 "time": 0
-                            },
-                            {
-                                "pan": -30,
-                                "tilt": -10,
-                                "zoom": 100,
-                                "height": 1.2,
-                                "time": 3
                             }
                         ]
                     },
