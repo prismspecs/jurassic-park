@@ -241,6 +241,14 @@
                     "hammond": {
                         "full-name": "John Hammond",
                         "props": "john"
+                    },
+                    "malcolm": {
+                        "full-name": "Malcolm",
+                        "props": "malcolm"
+                    },
+                    "donald": {
+                        "full-name": "Donald the Lawyer",
+                        "props": "donald"
                     }
                 }
             }

@@ -53,6 +53,12 @@ document.addEventListener('DOMContentLoaded', () => {
     logToConsole('Main recording compositor initialized.', 'info');
     setMainCompositor(mainRecordingCompositor);
 
+    // Set mirrored state to true by default on initialization
+    mainRecordingCompositor.setMirrored(true);
+    logToConsole('Main output canvas mirroring set to true by default.', 'info');
+    updateTeleprompterMirrorState(true); // Ensure teleprompter also mirrors by default
+    logToConsole('Teleprompter mirror state updated to true by default.', 'info');
+
     // Event listener for the new mirror toggle for main-output-canvas
     if (mainRecordingCompositor) {
       const mirrorToggle = document.getElementById('mirror-main-output-toggle');
