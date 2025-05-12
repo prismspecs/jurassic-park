@@ -2,6 +2,8 @@ const { exec, spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const util = require('util'); // Import util for promisify
+const execPromise = util.promisify(exec); // Promisified exec
 // const record = require('node-record-lpcm16'); // Reverted: Commenting out node-record-lpcm16
 
 // Add a note about SoX dependency:
@@ -17,7 +19,7 @@ class AudioRecorder {
         }
         AudioRecorder.instance = this;
         this.platform = os.platform();
-        this.activeDevices = new Map(); // deviceId -> { name: string, process: ChildProcess | null, filePath: string | null }
+        this.activeDevices = new Map(); // deviceId -> { name: string, channelCount: number | null, process: ChildProcess | null, filePath: string | null }
         this.recordingProcesses = new Map(); // deviceId -> { process: ChildProcess, filePath: string, stopping: boolean }
         this.testRecordingProcesses = new Map(); // Separate map for test recordings: deviceId -> { process: ChildProcess, filePath: string, stopping: boolean, timeoutId: Timeout }
         this.deviceConfigs = new Map(); // deviceId -> { gainDb: number | null, channels: number[] | null }
@@ -32,98 +34,172 @@ class AudioRecorder {
         return AudioRecorder.instance;
     }
 
-    async detectAudioInputDevices() {
-        // TODO: Enhance device detection to include channelCount
-        // Linux: Parse 'arecord -L' or 'sox --info -t alsa DEVICEID -n'
-        // macOS: Parse 'system_profiler SPAudioDataType' (coreaudio_device_input?) or 'sox --info -t coreaudio DEVICENAME -n'
-        return new Promise((resolve, reject) => {
-            if (this.platform === 'linux') {
-                // Use arecord -l to list capture devices
-                exec('arecord -l', (error, stdout, stderr) => {
-                    if (error) {
-                        console.error('Error detecting audio devices on Linux (arecord -l):', stderr || error.message);
-                        return reject(new Error(`Failed to list audio devices: ${stderr || error.message}`));
-                    }
+    // Helper function to get channel count using sox --info
+    async _getSoxChannelCount(platform, deviceIdentifier) {
+        const command = 'sox';
+        const args = ['--info'];
+        if (platform === 'linux') {
+            args.push('-t', 'alsa', deviceIdentifier, '-n');
+        } else if (platform === 'darwin') {
+            // Ensure the deviceIdentifier is the name for macOS
+            args.push('-t', 'coreaudio', deviceIdentifier, '-n');
+        } else {
+            console.warn(`Channel count detection not supported for platform ${platform} via SoX.`);
+            return 2; // Default to stereo if platform unknown/unsupported by this method
+        }
 
-                    const devices = [];
-                    // Split lines safely, handling potential Windows/Unix line endings
-                    const lines = stdout.split(/\r?\n/);
+        try {
+            console.log(`[ChannelCheck] Running: ${command} ${args.join(' ')}`);
+            // Increase maxBuffer size if necessary, sox --info can be verbose
+            const { stdout, stderr } = await execPromise(`${command} ${args.join(' ')}`, { maxBuffer: 1024 * 1024 });
 
-                    // Regex to capture relevant info from lines like:
-                    // card 1: C920 [HD Pro Webcam C920], device 0: USB Audio [USB Audio]
-                    const deviceLineRegex = /^card\s+(\d+):\s+([^\[]+)\s+\[.*?],\s+device\s+(\d+):\s+([^\[]+)\s+\[.*?]/;
-
-                    lines.forEach(line => {
-                        const match = line.match(deviceLineRegex);
-                        if (match) {
-                            const cardNum = match[1];
-                            const cardName = match[2].trim();
-                            const deviceNum = match[3];
-                            const deviceName = match[4].trim();
-                            // Construct the standard ALSA device ID (e.g., hw:1,0)
-                            const deviceId = `hw:${cardNum},${deviceNum}`;
-
-                            // Basic filtering to exclude likely output devices
-                            if (!deviceName.toLowerCase().includes('playback') && !deviceName.toLowerCase().includes('hdmi')) {
-                                devices.push({
-                                    id: deviceId,
-                                    // Combine card and device name for a more descriptive label
-                                    name: `${cardName} - ${deviceName}`,
-                                    // channelCount: null // Placeholder for future enhancement
-                                });
-                            }
-                        }
-                    });
-
-                    if (devices.length === 0) {
-                        // Log the raw output only if parsing fails, to aid debugging
-                        console.warn("arecord -l parsing yielded no devices. Full output was:\n", stdout);
-                    }
-
-                    console.log('Linux - Found audio input devices:', devices);
-                    resolve(devices);
-                });
-            } else if (this.platform === 'darwin') {
-                // Example using system_profiler SPAudioDataType
-                exec('system_profiler SPAudioDataType -json', (error, stdout, stderr) => {
-                    if (error) {
-                        console.error('Error detecting audio devices on macOS (system_profiler):', stderr || error.message);
-                        return reject(new Error(`Failed to list audio devices: ${stderr || error.message}`));
-                    }
-                    try {
-                        const data = JSON.parse(stdout);
-                        // Replace optional chaining with standard checks
-                        const spAudioData = data && data.SPAudioDataType;
-                        const items = spAudioData && spAudioData.length > 0 ? spAudioData[0]["_items"] : null;
-                        const audioDevices = items || []; // Default to empty array if items is null/undefined
-
-                        const inputDevices = audioDevices
-                            .filter(device => device && device.coreaudio_device_input && parseInt(device.coreaudio_device_input, 10) > 0) // Add checks for device and property existence
-                            .map((device, index) => ({
-                                // Use the device name (_name) as the ID, fallback if name is missing
-                                id: device._name || `Unknown macOS Audio Input ${index}`,
-                                name: device._name || `Unknown macOS Audio Input ${index}`,
-                                // channelCount: parseInt(device.coreaudio_device_input, 10) || null // Attempt to get channel count
-                                // TODO: Verify if coreaudio_device_input is reliable for channel count
-                            }));
-                        console.log('macOS - Found audio input devices:', inputDevices);
-                        resolve(inputDevices);
-                    } catch (parseError) {
-                        console.error('Error parsing macOS audio device list:', parseError);
-                        reject(new Error('Failed to parse audio device list on macOS'));
-                    }
-                });
-            } else {
-                console.warn(`Audio device detection not implemented for platform: ${this.platform}`);
-                resolve([]); // Resolve with empty array for unsupported platforms
+            if (stderr && stderr.toLowerCase().includes('error')) {
+                // SoX often prints info to stderr, but check for actual errors
+                const errorLines = stderr.split('\\n').filter(line => line.toLowerCase().includes('error'));
+                if (errorLines.length > 0) {
+                    console.warn(`[ChannelCheck] SoX stderr reported errors for ${deviceIdentifier}: ${errorLines.join('\\n')}`);
+                    // Decide if this is fatal, maybe return default?
+                }
             }
-        });
+
+            // Combine stdout and stderr as SoX might print info to either
+            const output = stdout + '\\n' + stderr;
+            const channelLine = output.split('\\n').find(line => line.trim().startsWith('Channels       :'));
+            if (channelLine) {
+                const count = parseInt(channelLine.split(':')[1].trim(), 10);
+                console.log(`[ChannelCheck] Detected ${count} channels for ${deviceIdentifier}`);
+                return !isNaN(count) ? count : 2; // Default to stereo if parsing fails
+            } else {
+                console.warn(`[ChannelCheck] Could not find 'Channels :' line in SoX output for ${deviceIdentifier}. Output:\\n${output}`);
+            }
+        } catch (error) {
+            console.error(`[ChannelCheck] Error running sox --info for ${deviceIdentifier}:`, error.stderr || error.stdout || error.message);
+        }
+        console.warn(`[ChannelCheck] Defaulting to 2 channels for ${deviceIdentifier}`);
+        return 2; // Default to stereo on error
     }
 
-    addActiveDevice(deviceId, deviceName) {
+    async detectAudioInputDevices() {
+        console.log("Starting audio input device detection...");
+        const platform = this.platform; // Get platform from constructor
+
+        if (platform === 'linux') {
+            try {
+                console.log("Detecting Linux audio devices using arecord -l...");
+                const { stdout: arecordOutput, stderr: arecordStderr } = await execPromise('arecord -l');
+
+                if (arecordStderr) {
+                    console.warn("arecord -l produced stderr output:", arecordStderr);
+                }
+                if (!arecordOutput) {
+                    console.error("arecord -l produced no output.");
+                    return [];
+                }
+
+
+                const devices = [];
+                const lines = arecordOutput.split(/\\r?\\n/);
+                const deviceLineRegex = /^card\\s+(\\d+):\\s+([^\\[]+)\\s+\\[.*?],\\s+device\\s+(\\d+):\\s+([^\\[]+)\\s+\\[.*?]/;
+                let potentialDevices = [];
+
+                lines.forEach(line => {
+                    const match = line.match(deviceLineRegex);
+                    if (match) {
+                        const cardNum = match[1];
+                        const cardName = match[2].trim();
+                        const deviceNum = match[3];
+                        const deviceName = match[4].trim();
+                        const deviceId = `hw:${cardNum},${deviceNum}`;
+
+                        // Basic filtering
+                        if (!deviceName.toLowerCase().includes('playback') && !deviceName.toLowerCase().includes('hdmi')) {
+                            potentialDevices.push({
+                                id: deviceId,
+                                name: `${cardName} - ${deviceName}`,
+                                // channelCount will be added below
+                            });
+                        }
+                    }
+                });
+
+                if (potentialDevices.length === 0) {
+                    console.warn("arecord -l parsing yielded no potential input devices. Full output was:\\n", arecordOutput);
+                    return [];
+                }
+
+                console.log(`Found ${potentialDevices.length} potential Linux devices. Checking channel counts via SoX...`);
+
+                // Sequentially check channel counts to avoid overwhelming the system
+                for (const device of potentialDevices) {
+                    console.log(`Checking channels for ${device.name} (${device.id})...`);
+                    // Use the internal helper method now
+                    const channelCount = await this._getSoxChannelCount(platform, device.id);
+                    devices.push({ ...device, channelCount });
+                    // Optional: Add a small delay if needed
+                    // await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+
+                console.log('Linux - Found audio input devices with channel counts:', devices);
+                return devices;
+
+            } catch (error) {
+                console.error('Error detecting audio devices on Linux:', error.stderr || error.message);
+                throw new Error(`Failed to list audio devices on Linux: ${error.message}`); // Re-throw for calling code
+            }
+        } else if (platform === 'darwin') {
+            // Existing macOS detection logic (to be replaced/updated in next step)
+            try {
+                console.log("Detecting macOS audio devices using system_profiler...");
+                const { stdout: profilerOutput } = await execPromise('system_profiler SPAudioDataType -json', { maxBuffer: 1024 * 1024 }); // Increase buffer as JSON can be large
+                const data = JSON.parse(profilerOutput);
+                const spAudioData = data?.SPAudioDataType;
+                const items = spAudioData?.[0]?._items;
+                const audioDevices = items || [];
+
+                const inputDevicesPromises = audioDevices
+                    .filter(device => device?.coreaudio_device_input && parseInt(device.coreaudio_device_input, 10) > 0)
+                    .map(async (device, index) => { // Make map callback async
+                        const deviceName = device._name || `Unknown macOS Audio Input ${index}`;
+                        const deviceId = deviceName; // Use name as ID for macOS/coreaudio
+
+                        console.log(`Checking channels for macOS device: ${deviceName}...`);
+                        // Call the helper function with the device name
+                        const channelCount = await this._getSoxChannelCount(platform, deviceName);
+
+                        return {
+                            id: deviceId,
+                            name: deviceName,
+                            channelCount: channelCount // Use determined channel count
+                        };
+                    });
+
+                const inputDevices = await Promise.all(inputDevicesPromises);
+
+                console.log('macOS - Found audio input devices with channel counts:', inputDevices);
+                return inputDevices;
+            } catch (error) {
+                console.error('Error detecting audio devices on macOS:', error.stderr || error.stdout || error.message);
+                // Attempt fallback using SoX listing? Simpler to just fail for now.
+                console.warn("Falling back to empty device list for macOS due to error.");
+                // throw new Error(`Failed to list audio devices on macOS: ${error.message}`); // Re-throw
+                return []; // Return empty on error for now
+            }
+        } else {
+            console.warn(`Audio device detection not implemented for platform: ${platform}`);
+            return [];
+        }
+    }
+
+    addActiveDevice(deviceId, deviceName, channelCount = null) {
         if (!this.activeDevices.has(deviceId)) {
-            this.activeDevices.set(deviceId, { name: deviceName, process: null, filePath: null });
-            console.log(`Added active audio device: ${deviceName} (${deviceId})`);
+            this.activeDevices.set(deviceId, {
+                name: deviceName,
+                channelCount: channelCount,
+                process: null,
+                filePath: null
+            });
+            console.log(`Added active audio device: ${deviceName} (${deviceId}), Channels: ${channelCount ?? 'Unknown'}`);
             return true;
         }
         console.log(`Audio device already active: ${deviceName} (${deviceId})`);
@@ -132,8 +208,8 @@ class AudioRecorder {
 
     removeActiveDevice(deviceId) {
         if (this.activeDevices.has(deviceId)) {
-            const device = this.activeDevices.get(deviceId);
-            if (device.process) {
+            const deviceData = this.activeDevices.get(deviceId);
+            if (deviceData && deviceData.process) {
                 console.warn(`Removing active device ${deviceId} while recording is in progress. Stopping recording.`);
                 this._stopDeviceRecording(deviceId); // Stop recording if active
             }
@@ -146,7 +222,7 @@ class AudioRecorder {
     }
 
     getActiveDevices() {
-        return Array.from(this.activeDevices.entries()).map(([id, data]) => ({ id, name: data.name }));
+        return Array.from(this.activeDevices.entries()).map(([id, data]) => ({ id, name: data.name /*, channelCount: data.channelCount */ }));
     }
 
     // Internal helper to stop a specific device's recording
@@ -255,8 +331,11 @@ class AudioRecorder {
 
         // --- Get Device Config ---
         const config = this.deviceConfigs.get(deviceId) || { gainDb: null, channels: null };
-        console.log(`Using config for ${deviceId}:`, config);
-        // --- End Get Config ---
+        // --- Get Actual Device Channel Count --- (Stored when device was activated)
+        const activeDeviceInfo = this.activeDevices.get(deviceId);
+        const detectedChannelCount = activeDeviceInfo?.channelCount; // Get stored channel count
+        console.log(`Using config for ${deviceId}:`, config, `| Detected Channels: ${detectedChannelCount ?? 'Unknown'}`);
+        // --- End Get Config & Channel Count ---
 
         // Ensure the output directory exists (outputBasePath is now e.g. .../Audio_1)
         try {
@@ -293,14 +372,27 @@ class AudioRecorder {
             soxArgs.push('vol', `${config.gainDb}dB`);
             console.log(`Applied gain for ${deviceId}: ${config.gainDb}dB`);
         }
-        if (Array.isArray(config.channels) && config.channels.length > 0) {
-            // Validate channels are positive integers
+
+        // Only apply remix if we have selected channels AND the device has more than 1 channel
+        if (detectedChannelCount && detectedChannelCount > 1 && Array.isArray(config.channels) && config.channels.length > 0) {
+            const validChannels = config.channels.filter(ch => Number.isInteger(ch) && ch >= 1 && ch <= detectedChannelCount);
+            if (validChannels.length > 0) {
+                soxArgs.push('remix', validChannels.join(','));
+                console.log(`Applied channel selection for ${deviceId} (Device Channels: ${detectedChannelCount}): ${validChannels.join(',')}`);
+            } else {
+                console.warn(`Invalid or no channels selected/validated for multi-channel device ${deviceId} (Device Channels: ${detectedChannelCount}), requested: ${JSON.stringify(config.channels)}. Recording all channels.`);
+                // If validation fails on multi-channel, maybe record all channels instead of default?
+            }
+        } else if (detectedChannelCount === 1) {
+            console.log(`Device ${deviceId} is mono (1 channel). Skipping SoX remix effect.`);
+        } else if (Array.isArray(config.channels) && config.channels.length > 0) {
+            // Device channel count is unknown, but channels were selected - apply remix cautiously
+            console.warn(`Device ${deviceId} channel count is unknown. Attempting remix based on selection: ${JSON.stringify(config.channels)}`);
             const validChannels = config.channels.filter(ch => Number.isInteger(ch) && ch >= 1);
             if (validChannels.length > 0) {
                 soxArgs.push('remix', validChannels.join(','));
-                console.log(`Applied channel selection for ${deviceId}: ${validChannels.join(',')}`);
             } else {
-                console.warn(`Invalid channel selection ignored for ${deviceId}: ${JSON.stringify(config.channels)}`);
+                console.warn(`Invalid channel selection ignored for ${deviceId} (Unknown Channel Count): ${JSON.stringify(config.channels)}`);
             }
         }
         // --- End Config Application ---
@@ -404,6 +496,12 @@ class AudioRecorder {
             console.log(`Using config for test recording ${deviceId}:`, config);
             // --- End Get Config ---
 
+            // --- Get Actual Device Channel Count --- 
+            const activeDeviceInfo = this.activeDevices.get(deviceId);
+            const detectedChannelCount = activeDeviceInfo?.channelCount;
+            console.log(`Using config for test recording ${deviceId}:`, config, `| Detected Channels: ${detectedChannelCount ?? 'Unknown'}`);
+            // --- End Get Channel Count ---
+
             // Generate temporary file path within the session's temp directory
             const tempDir = sessionPath; // Use the provided sessionPath directly as the target directory
             try {
@@ -437,14 +535,25 @@ class AudioRecorder {
                 soxArgs.push('vol', `${config.gainDb}dB`);
                 console.log(`[Test] Applied gain for ${deviceId}: ${config.gainDb}dB`);
             }
-            if (Array.isArray(config.channels) && config.channels.length > 0) {
-                // Validate channels are positive integers
+            // Only apply remix if we have selected channels AND the device has more than 1 channel
+            if (detectedChannelCount && detectedChannelCount > 1 && Array.isArray(config.channels) && config.channels.length > 0) {
+                const validChannels = config.channels.filter(ch => Number.isInteger(ch) && ch >= 1 && ch <= detectedChannelCount);
+                if (validChannels.length > 0) {
+                    soxArgs.push('remix', validChannels.join(','));
+                    console.log(`[Test] Applied channel selection for ${deviceId} (Device Channels: ${detectedChannelCount}): ${validChannels.join(',')}`);
+                } else {
+                    console.warn(`[Test] Invalid or no channels selected/validated for multi-channel device ${deviceId} (Device Channels: ${detectedChannelCount}), requested: ${JSON.stringify(config.channels)}. Recording all channels.`);
+                }
+            } else if (detectedChannelCount === 1) {
+                console.log(`[Test] Device ${deviceId} is mono (1 channel). Skipping SoX remix effect.`);
+            } else if (Array.isArray(config.channels) && config.channels.length > 0) {
+                // Device channel count is unknown, but channels were selected - apply remix cautiously
+                console.warn(`[Test] Device ${deviceId} channel count is unknown. Attempting remix based on selection: ${JSON.stringify(config.channels)}`);
                 const validChannels = config.channels.filter(ch => Number.isInteger(ch) && ch >= 1);
                 if (validChannels.length > 0) {
                     soxArgs.push('remix', validChannels.join(','));
-                    console.log(`[Test] Applied channel selection for ${deviceId}: ${validChannels.join(',')}`);
                 } else {
-                    console.warn(`[Test] Invalid channel selection ignored for ${deviceId}: ${JSON.stringify(config.channels)}`);
+                    console.warn(`[Test] Invalid channel selection ignored for ${deviceId} (Unknown Channel Count): ${JSON.stringify(config.channels)}`);
                 }
             }
             // --- End Config Application ---

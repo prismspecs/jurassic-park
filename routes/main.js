@@ -607,17 +607,27 @@ router.get('/api/audio/active-devices', (req, res) => {
 
 // POST to add an active audio device
 router.post('/api/audio/active-devices', (req, res) => {
-    const { deviceId, name } = req.body; // Expect { deviceId: "hw:0,0", name: "Microphone (Built-in)" }
+    // Expect { deviceId: "hw:0,0", name: "Microphone (Built-in)", channelCount: 2 }
+    const { deviceId, name, channelCount } = req.body;
     if (!deviceId || !name) {
         return res.status(400).json({ success: false, error: "deviceId and name are required" });
     }
+    // channelCount is optional but useful
+    if (channelCount !== undefined && (typeof channelCount !== 'number' || !Number.isInteger(channelCount) || channelCount < 1)) {
+        console.warn(`Received invalid channelCount type (${typeof channelCount}) or value (${channelCount}) for device ${deviceId}. Proceeding without channel count.`);
+        // Don't reject the request, just proceed without channel count if it's invalid
+    }
+
     try {
-        const added = audioRecorder.addActiveDevice(deviceId, name);
+        // Pass channelCount (which might be undefined or null if not provided/invalid) to addActiveDevice
+        const added = audioRecorder.addActiveDevice(deviceId, name, channelCount);
         if (added) {
             res.status(201).json({ success: true, message: `Device ${name} added to active list.` });
         } else {
             // Device already existed
             res.status(200).json({ success: true, message: `Device ${name} was already active.` });
+            // Optionally, we could update the channel count here if it differs, but 
+            // addActiveDevice currently doesn't update if already active.
         }
     } catch (error) {
         console.error("Error adding active audio device:", error);
