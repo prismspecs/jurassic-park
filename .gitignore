@@ -42,3 +42,4 @@ Thumbs.db
 .cursor/*
 
 modules/skeletor-py/skeletor_debug_output/
+public/models/

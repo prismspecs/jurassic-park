@@ -5,6 +5,7 @@ export class AudioManager {
         this.container = document.getElementById('audioDeviceControls');
         this.availableDevices = []; // Fetched from /api/audio/devices
         this.selectedDevices = {}; // Store selected devices: { cardId: { deviceId: '', name: '' } }
+        this.deviceCardStates = {}; // Store UI state per card: { cardId: { gainDb: number, channels: number[] } }
         this.deviceCardCounter = 0;
 
         if (!this.container) {
@@ -15,10 +16,10 @@ export class AudioManager {
     async initialize() {
         logToConsole('Initializing AudioManager...', 'info');
         if (!this.container) return; // Don't proceed if container missing
-        
+
         // Fetch available devices first
         await this.fetchAvailableDevices();
-        
+
         // Then fetch defaults
         let audioDefaults = [];
         try {
@@ -39,7 +40,7 @@ export class AudioManager {
                 if (defaultConfig && defaultConfig.device) {
                     const defaultNameLower = defaultConfig.device.toLowerCase();
                     // Find the best partial match (case-insensitive)
-                    const matchedDevice = this.availableDevices.find(availDevice => 
+                    const matchedDevice = this.availableDevices.find(availDevice =>
                         availDevice.name && availDevice.name.toLowerCase().includes(defaultNameLower)
                     );
 
@@ -50,10 +51,10 @@ export class AudioManager {
                         // For now, we just add based on the default index.
                         const existingCardForIndex = document.getElementById(`audio-card-${index + 1}`);
                         if (!existingCardForIndex) {
-                           logToConsole(`Adding default audio device card for index ${index}...`, 'info');
-                           this.addDeviceCard(matchedDevice.id, matchedDevice.name);
+                            logToConsole(`Adding default audio device card for index ${index}...`, 'info');
+                            this.addDeviceCard(matchedDevice.id, matchedDevice.name);
                         } else {
-                           logToConsole(`Card for default audio index ${index} already exists. Skipping auto-add.`, 'info');
+                            logToConsole(`Card for default audio index ${index} already exists. Skipping auto-add.`, 'info');
                         }
                     } else {
                         logToConsole(`Could not find a matching available device for default audio: '${defaultConfig.device}'`, 'warn');
@@ -89,7 +90,7 @@ export class AudioManager {
         const cardId = `audio-card-${this.deviceCardCounter}`;
         const cardDiv = document.createElement('div');
         // Use similar class structure to camera card for potential style reuse
-        cardDiv.classList.add('audio-device-card', 'camera-control'); 
+        cardDiv.classList.add('audio-device-card', 'camera-control');
         cardDiv.id = cardId;
 
         // --- Title and Remove Button (similar to camera card) ---
@@ -100,7 +101,7 @@ export class AudioManager {
 
         const title = document.createElement('h3');
         title.textContent = `Recording Device ${this.deviceCardCounter}`;
-        
+
         const removeBtn = document.createElement('button');
         removeBtn.textContent = '❌'; // Changed from '✖' to '❌' to match camera panel
         removeBtn.classList.add('remove-btn'); // Add specific class for styling/selection
@@ -129,6 +130,98 @@ export class AudioManager {
         selectionDiv.appendChild(select);
         cardDiv.appendChild(selectionDiv);
 
+        // --- Initialize state for this card (Moved Earlier) ---
+        this.selectedDevices[cardId] = { deviceId: '', name: '' };
+        const defaultGain = 0; // Default gain 0 dB
+        const defaultChannels = [1]; // Default to mono channel 1
+        this.deviceCardStates[cardId] = { gainDb: defaultGain, channels: defaultChannels };
+        // --- End Initialization ---
+
+        // --- Gain Control --- 
+        const gainDiv = document.createElement('div');
+        gainDiv.classList.add('control-group', 'audio-gain-control');
+
+        const gainLabel = document.createElement('label');
+        gainLabel.setAttribute('for', `gain-${cardId}`);
+        gainLabel.textContent = 'Gain (dB):';
+
+        const gainSlider = document.createElement('input');
+        gainSlider.type = 'range';
+        gainSlider.id = `gain-${cardId}`;
+        gainSlider.min = '-24'; // Example range -24dB to +12dB
+        gainSlider.max = '12';
+        gainSlider.step = '1';
+        gainSlider.value = String(this.deviceCardStates[cardId].gainDb); // Set initial value from state
+        gainSlider.style.width = 'calc(100% - 100px)'; // Adjust width
+        gainSlider.style.verticalAlign = 'middle';
+
+        const gainValueSpan = document.createElement('span');
+        gainValueSpan.id = `gain-value-${cardId}`;
+        gainValueSpan.textContent = ` ${this.deviceCardStates[cardId].gainDb} dB`; // Set initial value from state
+        gainValueSpan.style.marginLeft = '10px';
+
+        gainSlider.addEventListener('input', (event) => {
+            const newGainDb = parseInt(event.target.value, 10);
+            gainValueSpan.textContent = ` ${newGainDb} dB`;
+            this.deviceCardStates[cardId].gainDb = newGainDb;
+            this.sendConfigUpdate(cardId);
+        });
+
+        gainDiv.appendChild(gainLabel);
+        gainDiv.appendChild(gainSlider);
+        gainDiv.appendChild(gainValueSpan);
+        cardDiv.appendChild(gainDiv);
+
+        // --- Channel Selection --- 
+        // TODO: Base channel selection dynamically on detected channelCount when implemented
+        const channelDiv = document.createElement('div');
+        channelDiv.classList.add('control-group', 'audio-channel-control');
+
+        const channelLabel = document.createElement('label');
+        channelLabel.textContent = 'Channels:';
+        channelDiv.appendChild(channelLabel);
+
+        const options = [
+            { label: 'Mono (Ch 1)', value: [1] },
+            { label: 'Mono (Ch 2)', value: [2] },
+            { label: 'Stereo (Ch 1+2)', value: [1, 2] }
+            // Add more options if channelCount > 2 is detected later
+        ];
+
+        options.forEach(option => {
+            const wrapper = document.createElement('span');
+            wrapper.style.marginRight = '15px';
+
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = `channels-${cardId}`;
+            radio.id = `channels-${cardId}-${option.label.replace(/[^a-zA-Z0-9]/g, '-')}`;
+            radio.value = JSON.stringify(option.value);
+            // Check if this option matches the default/current state
+            if (JSON.stringify(option.value) === JSON.stringify(this.deviceCardStates[cardId].channels)) {
+                radio.checked = true;
+            }
+
+            radio.addEventListener('change', (event) => {
+                if (event.target.checked) {
+                    const newChannels = JSON.parse(event.target.value);
+                    this.deviceCardStates[cardId].channels = newChannels;
+                    this.sendConfigUpdate(cardId);
+                }
+            });
+
+            const label = document.createElement('label');
+            label.setAttribute('for', radio.id);
+            label.textContent = option.label;
+            label.style.marginLeft = '5px';
+
+            wrapper.appendChild(radio);
+            wrapper.appendChild(label);
+            channelDiv.appendChild(wrapper);
+        });
+
+        cardDiv.appendChild(channelDiv);
+
         // --- Test Button and Status --- 
         const controlsDiv = document.createElement('div');
         controlsDiv.classList.add('audio-controls'); // Class for styling test/status
@@ -150,9 +243,6 @@ export class AudioManager {
 
         // Append the fully constructed card to the main container
         this.container.appendChild(cardDiv);
-
-        // Initialize state for this card
-        this.selectedDevices[cardId] = { deviceId: '', name: '' };
 
         // If a default device was provided, select it
         if (defaultDeviceId) {
@@ -214,6 +304,10 @@ export class AudioManager {
         const deviceName = device ? device.name : 'Unknown';
         const testButton = document.getElementById(`test-${cardId}`);
         const statusSpan = document.getElementById(`status-${cardId}`);
+        // Reset gain/channel UI elements when device changes (optional, but good practice)
+        const gainSlider = document.getElementById(`gain-${cardId}`);
+        const gainValueSpan = document.getElementById(`gain-value-${cardId}`);
+        const channelRadios = document.querySelectorAll(`input[name="channels-${cardId}"]`);
         statusSpan.textContent = ''; // Clear status
 
         // If a device was previously selected, deactivate it first
@@ -226,10 +320,18 @@ export class AudioManager {
             testButton.disabled = false;
             // Activate the new device on the backend
             await this.activateDevice(newDeviceId, deviceName, cardId);
+            await this.sendConfigUpdate(cardId); // Send current gain/channel settings for the newly selected device
         } else {
             // Placeholder selected
             this.selectedDevices[cardId] = { deviceId: '', name: '' };
             testButton.disabled = true;
+            // Reset/clear UI state if needed when no device is selected
+            if (gainSlider) gainSlider.value = '0';
+            if (gainValueSpan) gainValueSpan.textContent = ' 0 dB';
+            // Reset radios to default (e.g., Mono Ch 1)
+            const defaultChannelRadio = document.getElementById(`channels-${cardId}-Mono--Ch-1-`);
+            if (defaultChannelRadio) defaultChannelRadio.checked = true;
+            this.deviceCardStates[cardId] = { gainDb: 0, channels: [1] }; // Reset internal state too
             // No need to explicitly deactivate if oldDeviceId was already handled
         }
 
@@ -243,37 +345,37 @@ export class AudioManager {
         try {
             // TODO: Replace with actual API call POST /api/audio/activate
             const response = await fetch('/api/audio/activate', { // Placeholder URL
-                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify({ deviceId, name: deviceName }),
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deviceId, name: deviceName }),
             });
             const result = await response.json();
             if (!response.ok) {
                 throw new Error(result.error || `HTTP error ${response.status}`);
             }
             logToConsole(`Device ${deviceId} activated successfully.`, 'success');
-             if(statusSpan) statusSpan.textContent = ''; // Removed 'Active' text
+            if (statusSpan) statusSpan.textContent = ''; // Removed 'Active' text
         } catch (error) {
             logToConsole(`Error activating audio device ${deviceId}: ${error.message}`, 'error');
-             if(statusSpan) statusSpan.textContent = ''; // Removed 'Active' text, change from 'Active' to empty string
-             // Optional: Revert selection in UI?
+            if (statusSpan) statusSpan.textContent = ''; // Removed 'Active' text, change from 'Active' to empty string
+            // Optional: Revert selection in UI?
         }
     }
 
     async deactivateDevice(deviceId, cardId) {
         logToConsole(`Deactivating audio device: ${deviceId}`, 'warn');
-         const statusSpan = document.getElementById(`status-${cardId}`);
+        const statusSpan = document.getElementById(`status-${cardId}`);
         try {
             // TODO: Replace with actual API call DELETE /api/audio/deactivate/:deviceId
             const response = await fetch(`/api/audio/deactivate/${encodeURIComponent(deviceId)}`, { // Placeholder URL
                 method: 'DELETE',
             });
-             const result = await response.json();
+            const result = await response.json();
             if (!response.ok) {
                 throw new Error(result.error || `HTTP error ${response.status}`);
             }
             logToConsole(`Device ${deviceId} deactivated successfully.`, 'success');
-             if(statusSpan && !document.getElementById(`select-${cardId}`).value) statusSpan.textContent = ''; // Clear only if no new device selected
+            if (statusSpan && !document.getElementById(`select-${cardId}`).value) statusSpan.textContent = ''; // Clear only if no new device selected
         } catch (error) {
             logToConsole(`Error deactivating audio device ${deviceId}: ${error.message}`, 'error');
             // Don't show error in status span usually, as it might be replaced by 'Active' immediately
@@ -309,9 +411,9 @@ export class AudioManager {
             logToConsole(`Test successful for ${deviceId}: ${result.message}`, 'success');
             // Optionally show result.filePath briefly
             setTimeout(() => {
-                 if (statusSpan.textContent === 'Test OK') {
-                     statusSpan.textContent = ''; // Removed 'Active' text, change from 'Active' to empty string
-                 }
+                if (statusSpan.textContent === 'Test OK') {
+                    statusSpan.textContent = ''; // Removed 'Active' text, change from 'Active' to empty string
+                }
             }, 3000);
 
         } catch (error) {
@@ -321,14 +423,14 @@ export class AudioManager {
             // Re-enable button only if a device is still selected
             const selectElement = document.getElementById(`select-${cardId}`);
             if (selectElement && selectElement.value) {
-                 testButton.disabled = false;
+                testButton.disabled = false;
             }
             // Clear Fail/OK status after a bit, revert to 'Active' if appropriate
             setTimeout(() => {
-                 if (statusSpan.textContent === 'Test Failed') {
+                if (statusSpan.textContent === 'Test Failed') {
                     const selectElement = document.getElementById(`select-${cardId}`);
                     statusSpan.textContent = selectElement && selectElement.value ? '' : ''; // Changed from 'Active'/'Activation Error' to empty
-                 }
+                }
             }, 5000);
         }
     }
@@ -348,8 +450,47 @@ export class AudioManager {
             cardElement.remove();
         }
 
+        // Remove the card's state
+        delete this.deviceCardStates[cardId];
+
         logToConsole(`Removed audio device card: ${cardId}`, 'info');
         // Update dropdowns in remaining cards
         this.updateAllDropdowns();
     }
+
+    // --- NEW: Send config update to backend ---
+    async sendConfigUpdate(cardId) {
+        const state = this.deviceCardStates[cardId];
+        const device = this.selectedDevices[cardId];
+        if (!device || !device.deviceId) {
+            logToConsole(`Cannot send config update for ${cardId}: No device selected.`, 'warn');
+            return;
+        }
+        const deviceId = device.deviceId; // Get the actual device ID
+
+        const payload = {
+            gainDb: state.gainDb,
+            channels: state.channels
+        };
+
+        logToConsole(`Sending config update for ${deviceId}: ${JSON.stringify(payload)}`, 'info');
+
+        try {
+            const response = await fetch(`/api/audio/config/${encodeURIComponent(deviceId)}`, { // Ensure deviceId is encoded
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+                const errorResult = await response.json();
+                throw new Error(`Failed to update config: ${response.status} - ${errorResult.error || 'Unknown error'}`);
+            }
+            const result = await response.json();
+            logToConsole(`Config update successful for ${deviceId}: ${result.message}`, 'info');
+        } catch (error) {
+            logToConsole(`Error sending config update for ${deviceId}: ${error.message}`, 'error');
+            // Optionally revert UI state or show error to user
+        }
+    }
+    // --- END NEW ---
 } 

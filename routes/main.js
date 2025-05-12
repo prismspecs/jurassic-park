@@ -693,4 +693,49 @@ router.get('/api/props', (req, res) => {
 // --- NEW: Route for uploading canvas video ---
 router.post('/api/upload/canvas-video', canvasUpload.single('videoBlob'), sceneController.uploadCanvasVideo);
 
+// --- NEW: Endpoint to configure Gain/Channels for an active device ---
+router.post('/api/audio/config/:deviceId(*)', (req, res) => {
+    const { deviceId } = req.params;
+    const { gainDb, channels } = req.body; // Expect { gainDb: number | null, channels: number[] | null }
+
+    if (!deviceId) {
+        return res.status(400).json({ success: false, error: "Device ID parameter is required" });
+    }
+
+    // Validate input types (basic)
+    const configToUpdate = {};
+    if (gainDb !== undefined) {
+        if (typeof gainDb === 'number' || gainDb === null) {
+            configToUpdate.gainDb = gainDb;
+        } else {
+            return res.status(400).json({ success: false, error: "Invalid gainDb value. Must be a number or null." });
+        }
+    }
+    if (channels !== undefined) {
+        if (Array.isArray(channels) || channels === null) {
+            // Further validation (e.g., array of positive integers) happens in audioRecorder service
+            configToUpdate.channels = channels;
+        } else {
+            return res.status(400).json({ success: false, error: "Invalid channels value. Must be an array of positive integers or null." });
+        }
+    }
+
+    if (Object.keys(configToUpdate).length === 0) {
+        return res.status(400).json({ success: false, error: "No valid configuration parameters provided (gainDb, channels)." });
+    }
+
+    try {
+        const success = audioRecorder.updateDeviceConfig(deviceId, configToUpdate);
+        if (success) {
+            res.json({ success: true, message: `Configuration updated for device ${deviceId}.` });
+        } else {
+            // updateDeviceConfig returns false if device isn't active
+            res.status(404).json({ success: false, error: `Device ${deviceId} not found or is not active.` });
+        }
+    } catch (error) {
+        console.error("Error updating audio device configuration:", error);
+        res.status(500).json({ success: false, error: `Failed to update configuration: ${error.message}` });
+    }
+});
+
 module.exports = router;

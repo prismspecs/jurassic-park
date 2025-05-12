@@ -33,7 +33,15 @@ The **AI director** orchestrates the performance and ensures that each shot clos
 - **Live Pose Tracking & Overlay**: Pose tracking is performed _client-side_ in the browser directly on the live camera preview streams using **TensorFlow.js (MoveNet)**. The skeleton is drawn onto an overlay canvas in the UI (`public/js/modules/camera-manager.js`). This provides immediate visual feedback but is _not_ part of the recorded video file.
 - **Skeletor** is a separate Node.js module designed to take a _recorded_ video file as input and use skeletal data (potentially generated offline or via a different process) to create a new video with the subject isolated on a transparent background. Its integration with the live recording process needs clarification.
 - **Actor dialogue and audience sound effects** are stored separately for post-processing.
-- A **final scene compilation** is created based on the best takes.
+
+#### **Audio Recording Enhancements**
+*   **Device Control**: The UI now allows selecting specific audio input devices for recording.
+*   **Gain Control**: Each selected audio device card includes a slider (-24dB to +12dB) to adjust the input gain using the `sox` command's `vol` effect.
+*   **Channel Selection**: Each selected audio device card provides options (Mono Ch1, Mono Ch2, Stereo Ch1+2) to select input channels using the `sox` command's `remix` effect. (Future enhancement: Dynamically populate channel options based on detected device capabilities).
+*   **Backend**: The `AudioRecorder` service (`services/audioRecorder.js`) uses `sox` for recording and applies gain/channel settings via command-line arguments. API endpoints (`/api/audio/*`) manage device selection and configuration.
+
+#### **Final Scene Compilation**
+*   A final scene compilation is created based on the best takes.
 
 #### **Audience Sound & Music Participation**
 
@@ -124,6 +132,7 @@ The application is built with **Node.js**, acting as the core event controller:
 │           └── actor-loader.js         # Handles actor loading UI and logic
 │           └── source-selector.js      # Handles recording source selection UI and logic
 │           └── canvas-recorder.js      # Handles main canvas recording logic
+│           └── audio-manager.js        # Handles audio device selection, gain, and channel UI controls
 │           └── ui-initializer.js       # Initializes UI components (collapsibles, fullscreen, secret panel)
 │           └── scene-assembly.js       # Handles scene assembly UI and logic
 ├── /recordings         # Stored video and audio files per session
@@ -135,6 +144,7 @@ The application is built with **Node.js**, acting as the core event controller:
 │   ├── camera.js         # Camera control routes, uses sessionService
 │   ├── main.js           # Main application routes, includes session API endpoints (/api/sessions, /api/select-session)
 │   └── teleprompter.js   # Teleprompter related routes
+│   └── main.js           # Also includes audio API endpoints (/api/audio/*)
 ├── /services           # Business logic services
 │   ├── aiVoice.js        # Text-to-speech service
 │   ├── callsheetService.js # Manages callsheet/actor assignment logic
@@ -145,6 +155,7 @@ The application is built with **Node.js**, acting as the core event controller:
 │   ├── poseTracker.js    # Pose tracking service (DEPRECATED/REPURPOSED? Verify usage - pose tracking now client-side)
 │   ├── sceneService.js   # Service for managing scene progression (DEPRECATED? Verify usage)
 │   └── sessionService.js # Manages session ID and directories
+│   └── audioRecorder.js  # Manages audio device detection and recording via SoX, including gain/channel control
 ├── /skeletor           # Cuts participants from video using skeletal data
 ├── /temp               # Temporary files (e.g., uploaded audio, actor files)
 ├── /views              # Server-side templates and view logic
@@ -169,5 +180,11 @@ The application is built with **Node.js**, acting as the core event controller:
 (Add a summary of key endpoints if desired, including the new session ones)
 
 - `GET /api/sessions`: Returns a list of existing session IDs (directory names in `recordings/`).
-- `POST /api/select-session`: Sets the active session ID for the application. Expects `sessionId` in the body.
-- `POST /loadActors`: Handles uploading actor files (JSON, images) and updating the callsheet. **Currently under investigation for hanging requests.**
+- `POST /api/select-session`: Sets the active session ID.
+- `POST /loadActors`: Handles uploading actor files.
+
+### Audio API Endpoints (subset)
+- `GET /api/audio/devices`: Lists available input devices.
+- `POST /api/audio/active-devices`: Activates a device for recording.
+- `DELETE /api/audio/active-devices/:deviceId`: Deactivates a device.
+- `POST /api/audio/config/:deviceId`: Sets gain (dB) and channel selection (array) for an active device.
