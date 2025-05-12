@@ -36,25 +36,40 @@ export class AudioManager {
 
         // Attempt to add default devices
         if (this.availableDevices.length > 0 && audioDefaults.length > 0) {
+            // Log available devices to help user configure defaults
+            logToConsole('Available audio devices for matching defaults:', 'debug', JSON.stringify(this.availableDevices.map(d => ({ id: d.id, name: d.name }))));
+
+            logToConsole('Loaded audioDefaults from config:', 'debug', JSON.stringify(audioDefaults)); // Log the actual defaults being used
+
             audioDefaults.forEach((defaultConfig, index) => {
                 if (defaultConfig && defaultConfig.device) {
                     const defaultNameLower = defaultConfig.device.toLowerCase();
+                    logToConsole(`Attempting to match default config device: '${defaultConfig.device}' (lowercase: '${defaultNameLower}')`, 'debug');
+
                     // Find the best partial match (case-insensitive)
-                    const matchedDevice = this.availableDevices.find(availDevice =>
-                        availDevice.name && availDevice.name.toLowerCase().includes(defaultNameLower)
-                    );
+                    const matchedDevice = this.availableDevices.find(availDevice => {
+                        const availDeviceNameLower = availDevice.name ? availDevice.name.toLowerCase() : '';
+                        const isMatch = availDevice.name && availDeviceNameLower.includes(defaultNameLower);
+                        logToConsole(`  Comparing with available: '${availDevice.name}' (lowercase: '${availDeviceNameLower}'). Includes '${defaultNameLower}'? ${isMatch}`, 'debug');
+                        return isMatch;
+                    });
 
                     if (matchedDevice) {
-                        logToConsole(`Found match for default audio device ${index} ('${defaultConfig.device}'): ${matchedDevice.name} (${matchedDevice.id})`, 'info');
-                        // Check if a card for this index already exists (e.g., manually added)
-                        // This check assumes we might add more robust card management later.
-                        // For now, we just add based on the default index.
-                        const existingCardForIndex = document.getElementById(`audio-card-${index + 1}`);
-                        if (!existingCardForIndex) {
-                            logToConsole(`Adding default audio device card for index ${index}...`, 'info');
+                        logToConsole(`Found match for default audio device ('${defaultConfig.device}'): ${matchedDevice.name} (${matchedDevice.id})`, 'info');
+                        // Check if a card for this DEVICE ID already exists
+                        let cardAlreadyExists = false;
+                        for (const cardId in this.selectedDevices) {
+                            // Check if the deviceId associated with any existing card matches the one we just found
+                            if (this.selectedDevices[cardId].deviceId === matchedDevice.id) {
+                                cardAlreadyExists = true;
+                                logToConsole(`Device ${matchedDevice.name} (${matchedDevice.id}) is already added to a card (${cardId}). Skipping auto-add.`, 'info');
+                                break; // Exit the loop once found
+                            }
+                        }
+
+                        if (!cardAlreadyExists) {
+                            logToConsole(`Adding default audio device card for: ${matchedDevice.name}`, 'info');
                             this.addDeviceCard(matchedDevice.id, matchedDevice.name);
-                        } else {
-                            logToConsole(`Card for default audio index ${index} already exists. Skipping auto-add.`, 'info');
                         }
                     } else {
                         logToConsole(`Could not find a matching available device for default audio: '${defaultConfig.device}'`, 'warn');

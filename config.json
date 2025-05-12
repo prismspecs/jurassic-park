@@ -32,7 +32,7 @@
     ],
     "audioDefaults": [
         {
-            "device": "C920"
+            "device": "MacBook Air Microphone"
         }
     ],
     "auth": {
