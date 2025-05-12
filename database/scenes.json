@@ -71,46 +71,18 @@
                 "characters": {
                     "alan": {
                         "full-name": "Dr. Alan Grant",
-                        "lines": [
-                            {
-                                "text": "_It's... it's a dinosaur._",
-                                "time-in": 1,
-                                "time-out": 4
-                            }
-                        ],
                         "props": "alan"
                     },
                     "alan2": {
                         "full-name": "Dr. Alan Grant",
-                        "lines": [
-                            {
-                                "text": "_It's... it's a dinosaur._",
-                                "time-in": 1,
-                                "time-out": 4
-                            }
-                        ],
                         "props": "alan"
                     },
                     "alan3": {
                         "full-name": "Dr. Alan Grant",
-                        "lines": [
-                            {
-                                "text": "_It's... it's a dinosaur._",
-                                "time-in": 1,
-                                "time-out": 4
-                            }
-                        ],
                         "props": "alan"
                     },
                     "alan4": {
                         "full-name": "Dr. Alan Grant",
-                        "lines": [
-                            {
-                                "text": "_It's... it's a dinosaur._",
-                                "time-in": 1,
-                                "time-out": 4
-                            }
-                        ],
                         "props": "alan"
                     }
                 }
@@ -139,28 +111,9 @@
                         ]
                     }
                 ],
-                "ins-outs": [
-                    {
-                        "in": 1,
-                        "out": 3,
-                        "sequence": 1
-                    },
-                    {
-                        "in": 3,
-                        "out": 5,
-                        "sequence": 2
-                    }
-                ],
                 "characters": {
                     "dinosaur": {
-                        "full-name": "Dinosaur",
-                        "lines": [
-                            {
-                                "text": "Brrr!!",
-                                "time-in": 1,
-                                "time-out": 4
-                            }
-                        ]
+                        "full-name": "Dinosaur"
                     }
                 }
             },
@@ -249,6 +202,66 @@
                     "donald": {
                         "full-name": "Donald the Lawyer",
                         "props": "donald"
+                    }
+                }
+            },
+            {
+                "name": "longneck",
+                "type": "dinosaur",
+                "dinosaur": "longneck-2",
+                "number": 1,
+                "duration": "0:15",
+                "description": "Dinosaur from the first shot",
+                "setup": "Setup for dinosaur...",
+                "cameras": [
+                    {
+                        "name": "Camera_1",
+                        "description": "Front-facing main camera",
+                        "position": "F",
+                        "direction": "front",
+                        "movements": [
+                            {
+                                "pan": 0,
+                                "tilt": 0,
+                                "zoom": 0,
+                                "time": 0
+                            }
+                        ]
+                    }
+                ],
+                "characters": {
+                    "dinosaur": {
+                        "full-name": "Dinosaur"
+                    }
+                }
+            },
+            {
+                "name": "humpback",
+                "type": "dinosaur",
+                "dinosaur": "humpback-1",
+                "number": 1,
+                "duration": "0:15",
+                "description": "Hadrosaur for the background",
+                "setup": "Setup for dinosaur...",
+                "cameras": [
+                    {
+                        "name": "Camera_1",
+                        "description": "Front-facing main camera",
+                        "position": "F",
+                        "direction": "front",
+                        "movements": [
+                            {
+                                "pan": 0,
+                                "tilt": 0,
+                                "zoom": 0,
+                                "time": 0
+                            }
+                        ]
+                    }
+                ],
+                "characters": {
+                    "dinosaur": {
+                        "full-name": "Dinosaur"
                     }
                 }
             }
