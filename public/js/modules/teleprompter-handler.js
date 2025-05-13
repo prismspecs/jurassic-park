@@ -1,5 +1,7 @@
 import { logToConsole } from './logger.js';
 
+const TELEPROMPTER_WINDOW_NAME = 'LiveStreamTeleprompter';
+
 // --- Globals (potentially to be managed or passed in) ---
 // These were global in home.js. Consider how to manage state if these modules become more independent.
 let activeTeleprompterFeedWindow = null;
@@ -54,14 +56,59 @@ function setupTeleprompterStream(win, streamToPlay) {
     }
 }
 
-// New function to encapsulate the streaming logic
-export function openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordingCompositor, toggleTeleprompterFeedBtn) {
-    logToConsole('Attempting to stream main output canvas to /teleprompter page...', 'info');
-    if (!mainRecordingCompositor || !mainRecordingCompositor.currentFrameSource) {
-        alert('Please select a camera source for the main output first.');
-        logToConsole('Streaming to /teleprompter aborted: No source for mainRecordingCompositor or compositor itself is null.', 'warn');
+// Helper function for when the teleprompter window is confirmed ready
+function onTeleprompterReady(win, stream, compositor, toggleBtn) {
+    logToConsole('Teleprompter window is ready. Current URL: ' + (win ? win.location.href : 'win is null/closed'), 'info');
+    if (!win || win.closed) {
+        logToConsole('Teleprompter window was closed before onTeleprompterReady could fully execute.', 'warn');
+        if (activeTeleprompterFeedWindow === win) activeTeleprompterFeedWindow = null;
+        if (toggleBtn) toggleBtn.style.display = 'none';
+        localStorage.removeItem('teleprompterShouldBeStreaming');
         return;
     }
+    // Check again for about:blank, as onload can sometimes fire too early or on failed navigation
+    if (win.location.href === 'about:blank') {
+        logToConsole('Teleprompter window onTeleprompterReady: URL is still about:blank. Aborting stream setup.', 'error');
+        if (activeTeleprompterFeedWindow === win) activeTeleprompterFeedWindow = null;
+        if (toggleBtn) toggleBtn.style.display = 'none';
+        localStorage.removeItem('teleprompterShouldBeStreaming');
+        return;
+    }
+
+    setupTeleprompterStream(win, stream);
+    if (compositor && typeof compositor.isMirrored !== 'undefined') {
+        updateTeleprompterMirrorState(compositor.isMirrored);
+    } else {
+        logToConsole('Cannot set initial teleprompter mirror state: compositor or isMirrored property unavailable.', 'warn');
+    }
+    localStorage.setItem('teleprompterShouldBeStreaming', 'true');
+    logToConsole('Teleprompter stream successfully set up and teleprompterShouldBeStreaming flag set.', 'info');
+}
+
+// Modified function to encapsulate the streaming logic
+export function openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordingCompositor, toggleTeleprompterFeedBtn, isAutoResume = false) {
+    logToConsole(`Attempting to stream main output canvas to /teleprompter page... (Auto-resume: ${isAutoResume})`, 'info');
+
+    // Enhanced check for compositor and frame source
+    logToConsole(`openAndStreamToTeleprompter: Checking compositor and source. mainRecordingCompositor exists: ${!!mainRecordingCompositor}, currentFrameSource: ${mainRecordingCompositor ? mainRecordingCompositor.currentFrameSource : 'N/A'}`, 'debug');
+    if (!mainRecordingCompositor || !mainRecordingCompositor.currentFrameSource) {
+        alert('Please select a camera source for the main output first. The teleprompter stream cannot be started/resumed without an active video source.');
+        logToConsole('Streaming to /teleprompter aborted: mainRecordingCompositor is missing or has no currentFrameSource.', 'warn');
+        localStorage.removeItem('teleprompterShouldBeStreaming'); // Ensure flag is cleared
+        if (toggleTeleprompterFeedBtn) { // Reset toggle button state
+            toggleTeleprompterFeedBtn.style.display = 'none';
+            toggleTeleprompterFeedBtn.textContent = 'Hide Teleprompter Live Feed';
+        }
+        // If a teleprompter window was somehow opened/acquired by this call, close it.
+        if (activeTeleprompterFeedWindow && !activeTeleprompterFeedWindow.closed && activeTeleprompterFeedWindow.name === TELEPROMPTER_WINDOW_NAME) {
+            // Check name to be a bit safer, ensuring we only close the one we might have just opened/re-referenced
+            logToConsole('Closing teleprompter window because streaming cannot proceed due to missing source.', 'warn');
+            activeTeleprompterFeedWindow.close();
+            activeTeleprompterFeedWindow = null;
+        }
+        return;
+    }
+
     if (!mainOutputCanvasElement) {
         alert('Main output canvas element is not available for streaming.');
         logToConsole('Streaming to /teleprompter aborted: mainOutputCanvasElement is null.', 'warn');
@@ -70,12 +117,14 @@ export function openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordi
 
     try {
         if (activeTeleprompterFeedWindow && !activeTeleprompterFeedWindow.closed) {
-            activeTeleprompterFeedWindow.close();
-            logToConsole('Closed previous live feed teleprompter window.', 'info');
+            logToConsole('An active teleprompter feed window from this session exists. Closing it before opening a new one.', 'info');
+            activeTeleprompterFeedWindow.close(); // Close window controlled by this session
+            activeTeleprompterFeedWindow = null; // Clear our reference
         }
 
-        const teleprompterWin = window.open('/teleprompter', 'LiveStreamTeleprompter_' + Date.now(), 'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no');
-        activeTeleprompterFeedWindow = teleprompterWin;
+        // Use fixed window name
+        const teleprompterWin = window.open('/teleprompter', TELEPROMPTER_WINDOW_NAME, 'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no');
+        activeTeleprompterFeedWindow = teleprompterWin; // Track the window opened/re-focused by this session
         isTeleprompterFeedVisibleState = false;
         if (toggleTeleprompterFeedBtn) toggleTeleprompterFeedBtn.style.display = 'none';
 
@@ -85,48 +134,50 @@ export function openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordi
             return;
         }
 
-        const stream = mainOutputCanvasElement.captureStream(25);
-        logToConsole('Captured stream from mainOutputCanvasElement for /teleprompter.', 'debug', stream);
+        const setupStreamAndWindow = () => {
+            const stream = mainOutputCanvasElement.captureStream(25);
+            logToConsole('Captured stream from mainOutputCanvasElement for /teleprompter.', 'debug', stream);
 
-        teleprompterWin.onerror = (eventOrMessage, source, lineno, colno, error) => {
-            const errorMessage = error ? error.message : eventOrMessage;
-            logToConsole(`Teleprompter window onerror: ${errorMessage}`, 'error', { eventOrMessage, source, lineno, colno, error });
-            alert('The teleprompter window encountered an error while loading its content. Check its console.');
-        };
+            teleprompterWin.onerror = (eventOrMessage, source, lineno, colno, error) => {
+                const errorMessage = error ? error.message : eventOrMessage;
+                logToConsole(`Teleprompter window onerror: ${errorMessage}`, 'error', { eventOrMessage, source, lineno, colno, error });
+                alert('The teleprompter window encountered an error while loading its content. Check its console.');
+                localStorage.removeItem('teleprompterShouldBeStreaming'); // Clear flag on error
+                if (activeTeleprompterFeedWindow === teleprompterWin) {
+                    activeTeleprompterFeedWindow = null;
+                }
+                if (toggleTeleprompterFeedBtn) toggleTeleprompterFeedBtn.style.display = 'none';
+            };
 
-        logToConsole('Setting up onload listener for /teleprompter window.', 'debug');
-        teleprompterWin.onload = () => {
-            logToConsole('Teleprompter (/teleprompter) window ONLOAD event fired. Current URL: ' + (teleprompterWin ? teleprompterWin.location.href : 'teleprompterWin is null/closed'), 'info');
-            if (!teleprompterWin || teleprompterWin.closed) {
-                logToConsole('Teleprompter (/teleprompter) window was closed before onload handler could fully execute.', 'warn');
-                activeTeleprompterFeedWindow = null;
-                if (toggleTeleprompterFeedBtn) toggleTeleprompterFeedBtn.style.display = 'none';
-                return;
-            }
-            if (teleprompterWin.location.href === 'about:blank') {
-                logToConsole('Teleprompter (/teleprompter) window onload fired but URL is still about:blank.', 'error');
-                activeTeleprompterFeedWindow = null;
-                if (toggleTeleprompterFeedBtn) toggleTeleprompterFeedBtn.style.display = 'none';
-                return;
-            }
-            setupTeleprompterStream(teleprompterWin, stream);
-            // Set initial mirror state
-            if (mainRecordingCompositor && typeof mainRecordingCompositor.isMirrored !== 'undefined') {
-                updateTeleprompterMirrorState(mainRecordingCompositor.isMirrored);
+            logToConsole(`Checking teleprompter window state. Current readyState: ${teleprompterWin.document.readyState}, location: ${teleprompterWin.location.href}`, 'debug');
+            if (teleprompterWin.document.readyState === 'complete' && teleprompterWin.location.href !== 'about:blank' && teleprompterWin.location.pathname === '/teleprompter') {
+                logToConsole('Teleprompter window already loaded and seems valid. Proceeding with stream setup immediately.', 'info');
+                onTeleprompterReady(teleprompterWin, stream, mainRecordingCompositor, toggleTeleprompterFeedBtn);
             } else {
-                logToConsole('Cannot set initial teleprompter mirror state: mainRecordingCompositor or isMirrored property unavailable.', 'warn');
+                logToConsole('Teleprompter window not yet fully loaded or is about:blank/incorrect. Setting up onload listener.', 'debug');
+                teleprompterWin.onload = () => {
+                    onTeleprompterReady(teleprompterWin, stream, mainRecordingCompositor, toggleTeleprompterFeedBtn);
+                };
             }
         };
+
+        if (isAutoResume) {
+            logToConsole('Auto-resume: Delaying stream capture slightly to allow first frame rendering.', 'info');
+            setTimeout(setupStreamAndWindow, 250); // 250ms delay, adjust if needed
+        } else {
+            setupStreamAndWindow(); // No delay for manual clicks
+        }
 
         const teleprompterWinClosedCheckInterval = setInterval(() => {
             if (activeTeleprompterFeedWindow && activeTeleprompterFeedWindow.closed) {
-                logToConsole('Live feed teleprompter window was closed by user.', 'info');
+                logToConsole('Live feed teleprompter window was closed by user (detected by interval check).', 'info');
                 activeTeleprompterFeedWindow = null;
                 isTeleprompterFeedVisibleState = false;
                 if (toggleTeleprompterFeedBtn) {
                     toggleTeleprompterFeedBtn.style.display = 'none';
                     toggleTeleprompterFeedBtn.textContent = 'Hide Teleprompter Live Feed';
                 }
+                localStorage.removeItem('teleprompterShouldBeStreaming'); // Clear flag
                 clearInterval(teleprompterWinClosedCheckInterval);
             }
         }, 1000);
@@ -144,7 +195,7 @@ export function initializeTeleprompterStreaming(mainOutputCanvasElement, mainRec
 
     if (streamMainOutputToTeleprompterBtn && mainOutputCanvasElement && mainRecordingCompositor) {
         streamMainOutputToTeleprompterBtn.addEventListener('click', () => {
-            openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordingCompositor, toggleTeleprompterFeedBtn);
+            openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordingCompositor, toggleTeleprompterFeedBtn, false); // Pass false for isAutoResume
         });
     } else {
         if (!streamMainOutputToTeleprompterBtn) logToConsole('streamMainOutputToTeleprompterBtn not found.', 'warn');

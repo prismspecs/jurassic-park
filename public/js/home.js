@@ -41,6 +41,7 @@ import { initializeSceneAssembly, updateAssemblyUI as updateAssemblyUIFromModule
 let cameraManager;
 let mainRecordingCompositor;
 let voiceBypassEnabled = true;
+let shouldAttemptTeleprompterResume = false; // Flag for pending teleprompter resume
 
 document.addEventListener('DOMContentLoaded', () => {
   logToConsole("DOM loaded. Initializing components...", "info");
@@ -132,9 +133,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (openTeleprompterBtn) {
     openTeleprompterBtn.addEventListener('click', () => {
       const toggleBtn = document.getElementById('toggleTeleprompterFeedBtn');
-      // Use mainOutputCanvasElement defined earlier in this scope
       if (mainOutputCanvasElement && mainRecordingCompositor) {
-        openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordingCompositor, toggleBtn);
+        openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordingCompositor, toggleBtn, false);
       } else {
         logToConsole('Cannot open and stream teleprompter: main output canvas or compositor not ready.', 'error');
         alert('Main output canvas or compositor not ready to stream to teleprompter.');
@@ -311,10 +311,24 @@ document.addEventListener('DOMContentLoaded', () => {
       logToConsole('Recording source selector not ready or no cameras available for default selection.', 'warn');
     }
     // ---- END: Set default recording source ----
+
     document.addEventListener('cameramanagerupdate', () => {
-      logToConsole('cameramanagerupdate event received.', 'info');
+      logToConsole('cameramanagerupdate event received in home.js.', 'info');
       populateAllSourceSelectors();
+
+      if (shouldAttemptTeleprompterResume) {
+        logToConsole('cameramanagerupdate: Attempting to resume teleprompter stream now.', 'info');
+        const toggleBtn = document.getElementById('toggleTeleprompterFeedBtn');
+        if (mainOutputCanvasElement && mainRecordingCompositor && mainRecordingCompositor.currentFrameSource) {
+          logToConsole('cameramanagerupdate: Conditions met, calling openAndStreamToTeleprompter for resume.', 'info');
+          openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordingCompositor, toggleBtn, true);
+          shouldAttemptTeleprompterResume = false;
+        } else {
+          logToConsole('cameramanagerupdate: Could not auto-resume teleprompter: main canvas, compositor, or frame source not ready. Flag remains for next update.', 'warn');
+        }
+      }
     });
+
   }).catch(error => logToConsole(`CameraManager initialization failed: ${error}`, 'error'));
 
   const audioManager = new AudioManager();
@@ -349,6 +363,15 @@ document.addEventListener('DOMContentLoaded', () => {
   initializeActorLoader();
   // Scene Assembly Initialization
   initializeSceneAssembly();
+
+  // --- Check if teleprompter stream should be resumed (after other initializations) ---
+  if (localStorage.getItem('teleprompterShouldBeStreaming') === 'true') {
+    logToConsole('Teleprompter stream was active. Setting flag to attempt resume after camera manager is ready.', 'info');
+    shouldAttemptTeleprompterResume = true;
+    // The actual call to openAndStreamToTeleprompter is now handled by the 'cameramanagerupdate' event listener.
+  } else {
+    logToConsole('No teleprompterShouldBeStreaming flag, or not true. No auto-resume planned.', 'debug');
+  }
 
   logToConsole("Jurassic Park AI Director UI Initialized (Corrected Structure)", "success");
 }); // End DOMContentLoaded
