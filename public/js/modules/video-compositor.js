@@ -554,7 +554,8 @@ export class VideoCompositor {
 
             // Add background color at the end of all drawing operations 
             // (after all masks and overlays have been applied)
-            if (this.appConfig && this.appConfig.videoBackground &&
+            if (!this.drawDifferenceMask && // Skip background color when difference mask is active
+                this.appConfig && this.appConfig.videoBackground &&
                 this.appConfig.videoBackground.length === 4 &&
                 this.canvas.width > 0 && this.canvas.height > 0) {
 
@@ -1158,6 +1159,30 @@ export class VideoCompositor {
 
         const personShapeImageData = this.lowResPersonCtx.getImageData(0, 0, lowResWidth, lowResHeight);
         const personData = personShapeImageData.data;
+
+        // Process person data to set binary alpha based on luminance
+        // This helps with the comparison by focusing on the actual shape
+        for (let i = 0; i < personData.length; i += 4) {
+            // Calculate luminance from RGB
+            const r = personData[i];
+            const g = personData[i + 1];
+            const b = personData[i + 2];
+            // Typical luminance formula: 0.299*R + 0.587*G + 0.114*B
+            const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+
+            // Clear out any background color (like magenta) that might interfere
+            const isMagenta = r > 200 && g < 50 && b > 200; // Detect magenta-ish pixels
+
+            if (isMagenta) {
+                // Make magenta pixels transparent in the comparison
+                personData[i + 3] = 0;
+            } else {
+                // For regular pixels, use a threshold on luminance to determine if it's "person" or not
+                personData[i + 3] = luma > 30 ? 255 : 0; // Binary alpha based on threshold
+            }
+        }
+        // Put processed person data back
+        this.lowResPersonCtx.putImageData(personShapeImageData, 0, 0);
 
         // 2. Prepare Low-Resolution Dinosaur Shape Data
         const dinoVideo = this.dinosaurVideoMask;
