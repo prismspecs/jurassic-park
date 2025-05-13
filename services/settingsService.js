@@ -4,7 +4,7 @@
  */
 
 let currentSettings = {
-    recordingPipeline: 'ffmpeg', // Default to ffmpeg
+    recordingPipeline: 'gstreamer', // Default to gstreamer
     recordingResolution: { width: 1920, height: 1080 } // Default to 1080p
 };
 
@@ -39,8 +39,8 @@ function setRecordingResolution(resolutionString) {
             console.log(`[SettingsService] Recording resolution set to: ${width}x${height}`);
             return true;
         } else {
-             console.error(`[SettingsService] Invalid resolution dimensions parsed from: ${resolutionString}`);
-             return false;
+            console.error(`[SettingsService] Invalid resolution dimensions parsed from: ${resolutionString}`);
+            return false;
         }
     } else {
         console.error(`[SettingsService] Invalid resolution string format: ${resolutionString}`);
@@ -50,7 +50,7 @@ function setRecordingResolution(resolutionString) {
 
 function getRecordingResolution() {
     // Return a copy to prevent accidental modification
-    return { ...currentSettings.recordingResolution }; 
+    return { ...currentSettings.recordingResolution };
 }
 
 module.exports = {

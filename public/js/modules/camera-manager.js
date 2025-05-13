@@ -365,19 +365,13 @@ export class CameraManager {
 
     // Auto-start preview and set devices if a valid initial device is set
     if (initialUnifiedDeviceId) {
-      logToConsole(`Camera ${camera.name} has initial unified device ID: ${initialUnifiedDeviceId}. Auto-configuring.`, "info");
-      setTimeout(async () => {
-        try {
-          const selectEl = document.getElementById(`unified-device-selector-${camera.name}`);
-          if (selectEl && selectEl.value === initialUnifiedDeviceId) {
-            await this.updateUnifiedDevice(camera.name, initialUnifiedDeviceId);
-            // updateUnifiedDevice will handle preview starting and other setups.
-            // Visual feedback for preview (like toggle button state) is handled within updatePreviewDevice.
-          }
-        } catch (err) {
-          logToConsole(`Error auto-configuring unified device for ${camera.name}: ${err.message}`, "error");
-        }
-      }, 250);
+      logToConsole(`Camera ${camera.name} has initial unified device ID: ${initialUnifiedDeviceId}. Attempting immediate auto-configuration.`, "info");
+      // Call directly, ensuring the select element's value is indeed what we expect.
+      // The select element is part of unifiedSelectGroup which was just appended to controlsDiv.
+      // Its value should be correctly set by _createSelectGroup.
+      this.updateUnifiedDevice(camera.name, initialUnifiedDeviceId).catch(err => {
+        logToConsole(`Error during immediate auto-configuration for ${camera.name}: ${err.message}`, "error");
+      });
     }
 
     // --- PTZ Controls Container (still needed, populated by updateUnifiedDevice/renderPTZControlsForCamera) ---
