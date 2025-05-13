@@ -49,6 +49,14 @@ export class VideoCompositor {
         this.isDrawing = false;
         this.frameCount = 0; // Add frame counter
 
+        // App configuration
+        this.appConfig = {
+            videoFormat: 'mp4',
+            videoBackground: [255, 0, 255, 255] // Default Magenta
+        };
+        this.configFetched = false;
+        this._fetchAppConfig(); // Initialize config
+
         // --- New/Modified Pose Detection State ---
         this.poseDetector = null;
         this.tfjsBackendReady = false;
@@ -108,6 +116,25 @@ export class VideoCompositor {
         document.addEventListener('visibilitychange', this._boundHandleVisibilityChange);
 
         logToConsole(`VideoCompositor initialized for canvas '#${this.canvas.id || '(no ID yet)'}'.`, 'info');
+    }
+
+    // Fetch app configuration from the server
+    async _fetchAppConfig() {
+        if (this.configFetched) return;
+
+        try {
+            const response = await fetch('/api/app-config');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            this.appConfig = await response.json();
+            this.configFetched = true;
+            logToConsole('App configuration loaded for video-compositor.', 'info', this.appConfig);
+        } catch (e) {
+            logToConsole(`Failed to fetch app configuration for video-compositor: ${e.message}. Using defaults.`, 'warn', e);
+            // Default values are already set in constructor, no need to reset
+            this.configFetched = true; // Mark as fetched to avoid retry
+        }
     }
 
     // --- New TFJS/Detector Methods (from CameraManager) ---
@@ -523,6 +550,29 @@ export class VideoCompositor {
                     catch (skeletonError) { logToConsole(`Error drawing skeleton: ${skeletonError}`, 'error'); }
                 }
                 // --- End Standard Drawing Path ---
+            }
+
+            // Add background color at the end of all drawing operations 
+            // (after all masks and overlays have been applied)
+            if (this.appConfig && this.appConfig.videoBackground &&
+                this.appConfig.videoBackground.length === 4 &&
+                this.canvas.width > 0 && this.canvas.height > 0) {
+
+                const [r, g, b, aGui] = this.appConfig.videoBackground;
+                const aNormalized = aGui / 255;
+
+                // For MP4 always apply background, for WebM only if not fully transparent
+                const needsBackground =
+                    (this.appConfig.videoFormat === 'mp4') ||
+                    (this.appConfig.videoFormat === 'webm' && aNormalized > 0);
+
+                if (needsBackground) {
+                    this.ctx.save();
+                    this.ctx.fillStyle = `rgba(${r},${g},${b},${aNormalized})`;
+                    this.ctx.globalCompositeOperation = 'destination-over';
+                    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.ctx.restore();
+                }
             }
 
         } catch (drawError) {

@@ -748,4 +748,19 @@ router.post('/api/audio/config/:deviceId(*)', (req, res) => {
     }
 });
 
+// Endpoint to provide specific configuration details to the client
+router.get('/api/app-config', (req, res) => {
+    try {
+        // Extract only the necessary configuration for the client
+        const clientConfig = {
+            videoFormat: config.videoFormat || 'mp4', // Provide default if not set
+            videoBackground: config.videoBackground || [255, 0, 255, 255] // Default magenta
+        };
+        res.json(clientConfig);
+    } catch (error) {
+        console.error("Error fetching client app configuration:", error);
+        res.status(500).json({ error: "Failed to retrieve app configuration" });
+    }
+});
+
 module.exports = router;

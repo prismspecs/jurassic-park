@@ -723,9 +723,9 @@ async function uploadCanvasVideo(req, res) {
         const { sceneDirectory, shotName, takeNumber, cameraName, filename: clientFilename } = req.body;
         const videoBuffer = req.file.buffer;
 
-        if (!sceneDirectory || !shotName || !takeNumber || !cameraName) {
-            broadcastConsole('Canvas upload error: Missing metadata (scene, shot, take, or cameraName).', 'error');
-            return res.status(400).json({ success: false, message: 'Missing required metadata.' });
+        if (!sceneDirectory || !shotName || !takeNumber || !cameraName || !clientFilename) {
+            broadcastConsole('Canvas upload error: Missing metadata (scene, shot, take, cameraName, or filename).', 'error');
+            return res.status(400).json({ success: false, message: 'Missing required metadata or filename.' });
         }
 
         const sessionDir = sessionService.getSessionDirectory();
@@ -748,9 +748,8 @@ async function uploadCanvasVideo(req, res) {
             broadcastConsole(`Created directory for canvas recording: ${cameraSpecificPath}`, 'info');
         }
 
-        // Use a consistent naming scheme, incorporating cameraName and ensuring .webm extension
-        // const serverFilename = sanitize(clientFilename || `${cameraName}_${safeShotName}_take${takeNumStr}_canvas.webm`); // Old filename
-        const serverFilename = 'canvas.webm'; // New filename
+        // Use the filename (including extension) provided by the client, after sanitizing it.
+        const serverFilename = sanitize(clientFilename);
         const finalFilePath = path.join(cameraSpecificPath, serverFilename);
 
         fs.writeFileSync(finalFilePath, videoBuffer);

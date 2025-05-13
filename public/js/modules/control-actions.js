@@ -8,6 +8,32 @@ let activeCanvasRecorders = {}; // { cameraName: MediaRecorder instance }
 let recordedCanvasBlobs = {};   // { cameraName: [chunks] }
 let currentShotDurationSec = 0; // To be updated by WebSocket SHOT_START event
 let compositorInstance = null; // Reference to the main VideoCompositor
+let appConfig = {}; // Store fetched config
+let configFetched = false;
+
+// Function to fetch app configuration
+async function ensureAppConfig() {
+  if (configFetched) return;
+  try {
+    const response = await fetch('/api/app-config');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    appConfig = await response.json();
+    configFetched = true;
+    logToConsole('App configuration loaded for control-actions.', 'info', appConfig);
+  } catch (e) {
+    logToConsole(`Failed to fetch app configuration for control-actions: ${e.message}`, 'error', e);
+    // Default values if config fails to load
+    appConfig = {
+      videoFormat: 'mp4',
+      videoBackground: [255, 0, 255, 255] // Default Magenta
+    };
+    logToConsole('Using default videoFormat and videoBackground for control-actions.', 'warn', appConfig);
+    // We can still mark configFetched as true to avoid refetching on error, or handle retries differently.
+    configFetched = true;
+  }
+}
 
 // --- Function to allow home.js to set the compositor instance ---
 export function setMainCompositor(instance) {
@@ -292,7 +318,9 @@ export function actorsReady() {
 }
 
 /** Sends the Action signal to the server. */
-export function action(cameraManager) {
+export async function action(cameraManager) {
+  await ensureAppConfig(); // Ensure config is loaded
+
   const recordingSourceElement = document.querySelector('input[name="recordingSource"]:checked');
   const recordingType = recordingSourceElement ? recordingSourceElement.value : 'camera'; // Default to camera if not found
 
@@ -337,20 +365,39 @@ export function action(cameraManager) {
     }
 
     logToConsole(`Attempting to record canvases for ${currentShotData.shot.cameras.length} cameras in shot '${currentShotData.shot.name}'. Compositors available: ${cameraManager.cameraCompositors.size}`, "info");
-    let MimeType = 'video/webm;codecs=vp9'; // Default, good for alpha
-    if (!MediaRecorder.isTypeSupported(MimeType)) {
-      logToConsole(`MIME type ${MimeType} not supported, trying video/webm;codecs=vp8`, 'warn');
-      MimeType = 'video/webm;codecs=vp8';
-      if (!MediaRecorder.isTypeSupported(MimeType)) {
-        logToConsole(`MIME type ${MimeType} not supported, trying video/webm (default)`, 'warn');
-        MimeType = 'video/webm';
-        if (!MediaRecorder.isTypeSupported(MimeType)) {
-          logToConsole('No suitable webm MIME type supported by MediaRecorder. Canvas recording may fail or have issues.', 'error');
-          alert('Your browser does not support the required video recording formats (WebM VP9/VP8). Canvas recording might not work.');
-        }
+
+    const configuredFormat = appConfig.videoFormat || 'mp4';
+    let MimeType = '';
+
+    if (configuredFormat === 'mp4') {
+      if (MediaRecorder.isTypeSupported('video/mp4')) {
+        MimeType = 'video/mp4';
+      } else {
+        logToConsole('MP4 format configured but not supported by MediaRecorder. Falling back to WebM.', 'warn');
       }
-    } else {
+    }
+
+    if (!MimeType) { // If MP4 not chosen or not supported
+      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+        MimeType = 'video/webm;codecs=vp9';
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+        MimeType = 'video/webm;codecs=vp8';
+        logToConsole('WebM VP9 not supported, using VP8.', 'warn');
+      } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        MimeType = 'video/webm';
+        logToConsole('WebM VP9/VP8 not supported, using default video/webm.', 'warn');
+      } else {
+        logToConsole('No suitable MP4 or WebM MIME type supported by MediaRecorder. Canvas recording may fail.', 'error');
+        alert('Your browser does not support common video recording formats (MP4, WebM VP9/VP8). Canvas recording might not work.');
+        // MimeType remains '' which will be handled later
+      }
+    }
+
+    if (MimeType) {
       logToConsole(`Using MediaRecorder MIME type: ${MimeType}`, 'info');
+    } else {
+      logToConsole('No supported MIME type found. MediaRecorder will likely fail.', 'error');
+      // Allow to proceed, MediaRecorder instantiation might pick a browser default or fail explicitly
     }
 
     let recordersStarted = 0;
@@ -368,6 +415,14 @@ export function action(cameraManager) {
         logToConsole(`Canvas for camera '${cameraName}' has zero dimensions. Skipping recorder.`, "warn");
         return;
       }
+
+      // Instead of applying background once here, the background is now handled by the video-compositor
+      // which will apply it on each frame. The background settings are fetched by the compositor 
+      // from the /api/app-config endpoint.
+
+      // Log selected format information
+      const actualVideoFormat = MimeType.includes('mp4') ? 'mp4' : 'webm'; // Determine based on actual MimeType chosen
+      logToConsole(`Starting recording for ${cameraName} in ${actualVideoFormat} format.`, 'info');
 
       logToConsole(`Starting MediaRecorder for canvas: ${cameraName}`, "info");
       recordedCanvasBlobs[cameraName] = []; // Reset for this recording
@@ -402,7 +457,9 @@ export function action(cameraManager) {
           const sceneDirectory = currentShotData.scene.directory;
           const shotName = currentShotData.shot.name || 'default_shot_name';
           const takeNumber = currentShotData.shot.take || 1; // Default to 1 if not set
-          const filename = `${cameraName}_${shotName}_take${takeNumber}_canvas.webm`;
+
+          const fileExtension = actualVideoFormat; // mp4 or webm based on chosen MimeType
+          const filename = `${cameraName}_${shotName}_take${takeNumber}_canvas.${fileExtension}`;
 
           formData.append('videoBlob', blob, filename);
           formData.append('sceneDirectory', sceneDirectory);

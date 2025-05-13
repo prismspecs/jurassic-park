@@ -7,6 +7,13 @@
     "framesOverlayDir": "frames_overlay",
     "videoOriginal": "original.mp4",
     "videoOverlay": "overlay.mp4",
+    "videoFormat": "mp4",
+    "videoBackground": [
+        255,
+        0,
+        255,
+        255
+    ],
     "scenes": "./database/scenes.json",
     "actorsDir": "./database/actors",
     "callsheet": "./database/actors/callsheet.json",

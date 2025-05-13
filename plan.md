@@ -131,7 +131,7 @@ The application is built with **Node.js**, acting as the core event controller:
 │           └── teleprompter-handler.js # Handles teleprompter streaming logic
 │           └── actor-loader.js         # Handles actor loading UI and logic
 │           └── source-selector.js      # Handles recording source selection UI and logic
-│           └── canvas-recorder.js      # Handles main canvas recording logic
+│           └── canvas-recorder.js      # Handles main canvas recording logic (configurable format: mp4/webm, and background color via config.json)
 │           └── audio-manager.js        # Handles audio device selection, gain, and channel UI controls
 │           └── ui-initializer.js       # Initializes UI components (collapsibles, fullscreen, secret panel)
 │           └── scene-assembly.js       # Handles scene assembly UI and logic
