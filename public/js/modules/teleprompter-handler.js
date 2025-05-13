@@ -190,19 +190,22 @@ export function openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordi
 
 // --- Initialize Teleprompter Streaming Logic ---
 export function initializeTeleprompterStreaming(mainOutputCanvasElement, mainRecordingCompositor) {
-    const streamMainOutputToTeleprompterBtn = document.getElementById('streamMainOutputToTeleprompterBtn');
+    // const streamMainOutputToTeleprompterBtn = document.getElementById('streamMainOutputToTeleprompterBtn'); // Removed
     const toggleTeleprompterFeedBtn = document.getElementById('toggleTeleprompterFeedBtn');
 
-    if (streamMainOutputToTeleprompterBtn && mainOutputCanvasElement && mainRecordingCompositor) {
-        streamMainOutputToTeleprompterBtn.addEventListener('click', () => {
-            openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordingCompositor, toggleTeleprompterFeedBtn, false); // Pass false for isAutoResume
-        });
-    } else {
-        if (!streamMainOutputToTeleprompterBtn) logToConsole('streamMainOutputToTeleprompterBtn not found.', 'warn');
-        if (!mainOutputCanvasElement) logToConsole('mainOutputCanvasElement not found (for teleprompter streaming).', 'warn');
-        if (!mainRecordingCompositor) logToConsole('mainRecordingCompositor not found (for teleprompter streaming).', 'warn');
-    }
+    // The following block related to streamMainOutputToTeleprompterBtn is removed as the button is gone.
+    // if (streamMainOutputToTeleprompterBtn && mainOutputCanvasElement && mainRecordingCompositor) {
+    //     streamMainOutputToTeleprompterBtn.addEventListener('click', () => {
+    //         openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordingCompositor, toggleTeleprompterFeedBtn, false);
+    //     });
+    // } else {
+    //     // Warnings related to streamMainOutputToTeleprompterBtn can be removed or adapted if necessary
+    //     // if (!streamMainOutputToTeleprompterBtn) logToConsole('streamMainOutputToTeleprompterBtn not found.', 'warn'); // Button removed
+    //     if (!mainOutputCanvasElement) logToConsole('mainOutputCanvasElement not found (for teleprompter streaming init).', 'warn');
+    //     if (!mainRecordingCompositor) logToConsole('mainRecordingCompositor not found (for teleprompter streaming init).', 'warn');
+    // }
 
+    // Keep the logic for toggleTeleprompterFeedBtn
     if (toggleTeleprompterFeedBtn) {
         toggleTeleprompterFeedBtn.addEventListener('click', () => {
             if (activeTeleprompterFeedWindow && !activeTeleprompterFeedWindow.closed) {
@@ -223,9 +226,11 @@ export function initializeTeleprompterStreaming(mainOutputCanvasElement, mainRec
                 }
             } else {
                 logToConsole('Toggle button clicked but no active/open teleprompter feed window.', 'warn');
-                toggleTeleprompterFeedBtn.style.display = 'none';
+                toggleTeleprompterFeedBtn.style.display = 'none'; // Hide if no window
             }
         });
+    } else {
+        logToConsole('toggleTeleprompterFeedBtn not found during initialization.', 'warn');
     }
 }
 
