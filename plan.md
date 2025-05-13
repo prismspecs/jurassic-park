@@ -122,7 +122,7 @@ The application is built with **Node.js**, acting as the core event controller:
 │       └── /modules    # Reusable JS modules
 │           └── logger.js
 │           └── layout-resizer.js
-│           └── camera-manager.js # Handles camera previews, controls, and CLIENT-SIDE POSE DETECTION
+│           └── camera-manager.js # Handles camera previews, controls, CLIENT-SIDE POSE DETECTION, and unified device selection for preview/record/PTZ.
 │           └── session-manager.js
 │           └── websocket-handler.js
 │           └── control-actions.js

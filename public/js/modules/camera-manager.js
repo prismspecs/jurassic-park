@@ -107,11 +107,11 @@ export class CameraManager {
         );
       }
       if (matchedBrowserDevice) {
-        this.serverToBrowserDeviceMap.set(serverDevice.id, matchedBrowserDevice.deviceId);
+        this.serverToBrowserDeviceMap.set(String(serverDevice.id), matchedBrowserDevice.deviceId);
         logToConsole(`Mapped server ${serverDevice.id} (${serverDevice.name}) to browser ${matchedBrowserDevice.deviceId} (${matchedBrowserDevice.label})`, "success");
       } else {
         logToConsole(`Could not map server device ${serverDevice.id} (${serverDevice.name || 'No Name'}).`, "warn");
-        this.serverToBrowserDeviceMap.set(serverDevice.id, null);
+        this.serverToBrowserDeviceMap.set(String(serverDevice.id), null);
       }
     });
     logToConsole("Finished mapping server devices.", "info");
@@ -335,96 +335,59 @@ export class CameraManager {
     const controlsDiv = document.createElement("div");
     controlsDiv.className = "camera-controls-grid"; // Main div for all selectors and toggles
 
-    // --- Preview Device Selector ---
-    const previewDeviceOptions = this.availableDevices.map(d => ({ value: d.deviceId, text: d.label || d.deviceId }));
-    const initialBrowserPreviewDeviceId = this.serverToBrowserDeviceMap.get(camera.previewDevice) || ""; // Get initial mapped device ID
-
-    const previewSelectGroup = this._createSelectGroup(
-      'Preview Device (Browser):',
-      `preview-device-${camera.name}`,
-      previewDeviceOptions,
-      initialBrowserPreviewDeviceId, // Set the initial value for the dropdown
-      async (e) => await this.updatePreviewDevice(camera.name, e.target.value)
-    );
-    controlsDiv.appendChild(previewSelectGroup);
-
-    // Auto-start preview if a valid initial device is set
-    if (initialBrowserPreviewDeviceId) {
-      logToConsole(`Camera ${camera.name} has default preview device ID: ${initialBrowserPreviewDeviceId}. Auto-starting preview.`, "info");
-      // Use a timeout to allow DOM to settle and other elements (like toggle button) to be created.
-      setTimeout(async () => {
-        try {
-          // Check if the select element still reflects this initial device, in case of rapid user interaction.
-          const selectEl = document.getElementById(`preview-device-${camera.name}`);
-          if (selectEl && selectEl.value === initialBrowserPreviewDeviceId) {
-            await this.updatePreviewDevice(camera.name, initialBrowserPreviewDeviceId);
-            // updatePreviewDevice should handle starting the stream and updating the VideoCompositor.
-            // Now, let's try to update the toggle button if it exists.
-            const toggleBtn = document.getElementById(`toggle-preview-${camera.name}`);
-            const videoEl = document.getElementById(`video-${camera.name}`); // Assuming videoEl ID structure
-            if (toggleBtn && videoEl && videoEl.srcObject && !videoEl.paused) {
-              toggleBtn.textContent = 'Stop Preview';
-              toggleBtn.classList.remove('btn-success');
-              toggleBtn.classList.add('btn-danger');
-            } else if (toggleBtn) {
-              // If for some reason it didn't start, or button state is off
-              toggleBtn.textContent = 'Start Preview';
-              toggleBtn.classList.remove('btn-danger');
-              toggleBtn.classList.add('btn-success');
-            }
-          }
-        } catch (err) {
-          logToConsole(`Error auto-starting preview for ${camera.name}: ${err.message}`, "error");
-        }
-      }, 250); // Increased delay slightly just in case
-    }
-
-    // --- Recording Device Selector ---
-    const recordingDeviceOptions = [{ value: "", text: "Select Rec. Device (Server)" }];
-    this.serverDevices.forEach(serverDevice => recordingDeviceOptions.push({ value: serverDevice.id, text: serverDevice.name || serverDevice.id }));
-    controlsDiv.appendChild(this._createSelectGroup(
-      'Recording Device (Server):',
-      `recording-device-selector-${camera.name}`,
-      recordingDeviceOptions,
-      camera.recordingDevice || "",
-      (e) => this.updateRecordingDevice(camera.name, e.target.value)
-    ));
-
-    // --- PTZ Device Selector ---
-    const ptzDeviceOptions = [{ value: "", text: "Select PTZ Device" }];
-    this.ptzDevices.forEach(ptzDevice => {
-      const value = ptzDevice.id !== undefined ? ptzDevice.id : ptzDevice.path;
-      ptzDeviceOptions.push({ value: value, text: ptzDevice.name || value });
+    // --- Unified Device Selector (Replaces individual selectors) ---
+    const unifiedDeviceOptions = [{ value: "", text: "Select Device (P/R/Z)" }];
+    this.serverDevices.forEach(serverDevice => {
+      const hasPreview = this.serverToBrowserDeviceMap.has(serverDevice.id);
+      const hasPtz = this.ptzDevices.some(pd => (pd.id !== undefined ? pd.id : pd.path) === serverDevice.id);
+      let capabilities = " (R"; // All server devices are assumed recordable
+      if (hasPreview) capabilities += ", P";
+      if (hasPtz) capabilities += ", Z";
+      capabilities += ")";
+      unifiedDeviceOptions.push({
+        value: serverDevice.id,
+        text: `${serverDevice.name || serverDevice.id}${capabilities}`
+      });
     });
 
-    // Determine effective PTZ device: use camera.ptzDevice if it's in the available list, otherwise default to ""
-    const ptzDeviceIsAvailable = this.ptzDevices.some(pd => (pd.id !== undefined ? pd.id : pd.path) === camera.ptzDevice);
-    const effectivePtzDevice = ptzDeviceIsAvailable ? (camera.ptzDevice || "") : "";
-    logToConsole(`For ${camera.name}, configured ptzDevice: '${camera.ptzDevice}', available: ${ptzDeviceIsAvailable}, effectivePtzDevice: '${effectivePtzDevice}'`, 'debug');
+    // Use camera.recordingDevice as the default unified choice if available, otherwise empty.
+    // This assumes camera.recordingDevice stores the server device ID.
+    const initialUnifiedDeviceId = camera.recordingDevice || "";
 
+    const unifiedSelectGroup = this._createSelectGroup(
+      'Device (Preview/Rec/PTZ):',
+      `unified-device-selector-${camera.name}`,
+      unifiedDeviceOptions,
+      initialUnifiedDeviceId,
+      async (e) => await this.updateUnifiedDevice(camera.name, e.target.value)
+    );
+    controlsDiv.appendChild(unifiedSelectGroup);
+
+    // Auto-start preview and set devices if a valid initial device is set
+    if (initialUnifiedDeviceId) {
+      logToConsole(`Camera ${camera.name} has initial unified device ID: ${initialUnifiedDeviceId}. Auto-configuring.`, "info");
+      setTimeout(async () => {
+        try {
+          const selectEl = document.getElementById(`unified-device-selector-${camera.name}`);
+          if (selectEl && selectEl.value === initialUnifiedDeviceId) {
+            await this.updateUnifiedDevice(camera.name, initialUnifiedDeviceId);
+            // updateUnifiedDevice will handle preview starting and other setups.
+            // Visual feedback for preview (like toggle button state) is handled within updatePreviewDevice.
+          }
+        } catch (err) {
+          logToConsole(`Error auto-configuring unified device for ${camera.name}: ${err.message}`, "error");
+        }
+      }, 250);
+    }
+
+    // --- PTZ Controls Container (still needed, populated by updateUnifiedDevice/renderPTZControlsForCamera) ---
     const ptzControlsContainerOriginal = document.createElement('div');
     ptzControlsContainerOriginal.id = `ptz-controls-${camera.name}`;
     ptzControlsContainerOriginal.className = 'ptz-controls-container';
-    // Visibility will be handled by renderPTZControlsForCamera based on effectivePtzDevice
-
-    const ptzSelectGroup = this._createSelectGroup(
-      'PTZ Device (Server):',
-      `ptz-device-selector-${camera.name}`,
-      ptzDeviceOptions,
-      effectivePtzDevice, // Use effectivePtzDevice for the initial selection
-      (e) => {
-        this.updatePTZDevice(camera.name, e.target.value);
-        // renderPTZControlsForCamera is called by updatePTZDevice internally,
-        // but it's also fine to call it here to ensure UI updates immediately
-        // if updatePTZDevice logic changes.
-        this.renderPTZControlsForCamera(camera.name, e.target.value, ptzControlsContainerOriginal);
-      }
-    );
-    controlsDiv.appendChild(ptzSelectGroup);
     controlsDiv.appendChild(ptzControlsContainerOriginal);
-
-    // Initial rendering of PTZ controls (sliders or placeholder) based on the effectivePtzDevice
-    this.renderPTZControlsForCamera(camera.name, effectivePtzDevice, ptzControlsContainerOriginal);
+    // Initial rendering of PTZ controls will be handled by the updateUnifiedDevice call if an initial device is set,
+    // or when a device is selected. We can force an initial empty render if desired.
+    this.renderPTZControlsForCamera(camera.name, "", ptzControlsContainerOriginal);
 
     // --- Effect Toggles ---
     const skeletonToggle = this._createToggleSwitch(
@@ -492,9 +455,69 @@ export class CameraManager {
     return card;
   }
 
-  // --- Device Update Methods ---
+  async updateUnifiedDevice(cameraName, selectedServerDeviceId) {
+    logToConsole(`Updating unified device for ${cameraName} to ${selectedServerDeviceId}`, "info");
+    const camera = this.cameras.find(c => c.name === cameraName);
+    if (!camera) {
+      logToConsole(`Camera ${cameraName} not found for unified update.`, "error");
+      return;
+    }
+
+    // 1. Update Recording Device
+    // camera.recordingDevice = selectedServerDeviceId; // Client-side state
+    // await this.updateRecordingDevice(cameraName, selectedServerDeviceId); // Server-side update via its own _updateCameraConfig call
+
+    // 2. Update Preview Device
+    const browserDeviceId = selectedServerDeviceId ? this.serverToBrowserDeviceMap.get(selectedServerDeviceId) : "";
+    logToConsole(`Unified selected for ${cameraName}: serverID '${selectedServerDeviceId}', mapped browserID: '${browserDeviceId}'`, "debug");
+    // camera.previewDevice = selectedServerDeviceId; // Client-side state (storing server ID for consistency)
+    // await this.updatePreviewDevice(cameraName, browserDeviceId || ""); // Server-side update & starts preview
+
+    // 3. Update PTZ Device
+    const ptzDeviceDetail = selectedServerDeviceId ? this.ptzDevices.find(pd => (pd.id !== undefined ? pd.id : pd.path) === selectedServerDeviceId) : null;
+    const ptzIdToUse = ptzDeviceDetail ? (ptzDeviceDetail.id !== undefined ? ptzDeviceDetail.id : ptzDeviceDetail.path) : "";
+    // camera.ptzDevice = ptzIdToUse; // Client-side state
+    // await this.updatePTZDevice(cameraName, ptzIdToUse); // Server-side update
+
+    // It's better to call the individual update functions, as they handle their specific logic
+    // and server updates. They also update the camera object's respective fields.
+
+    // Call individual update functions which will also update the client-side camera object
+    // and make their own calls to _updateCameraConfig.
+    await this.updateRecordingDevice(cameraName, selectedServerDeviceId);
+    await this.updatePreviewDevice(cameraName, browserDeviceId || "");
+    await this.updatePTZDevice(cameraName, ptzIdToUse); // This will also call renderPTZControlsForCamera
+
+    // Ensure the camera object in this.cameras reflects the latest server-side confirmed state
+    // The individual update functions should have updated the camera object already via _updateCameraConfig's success path.
+    // However, to be absolutely sure the local camera object is consistent for subsequent UI updates:
+    const updatedCamera = this.cameras.find(c => c.name === cameraName);
+    if (updatedCamera) {
+      updatedCamera.recordingDevice = selectedServerDeviceId;
+      updatedCamera.previewDevice = selectedServerDeviceId; // Store the SERVER id for preview consistency in the model
+      updatedCamera.ptzDevice = ptzIdToUse;
+    }
+
+    // The PTZ controls rendering is handled by updatePTZDevice.
+    // If selectedServerDeviceId is empty, we effectively clear all.
+    if (!selectedServerDeviceId) {
+      const ptzControlsContainer = document.getElementById(`ptz-controls-${cameraName}`);
+      if (ptzControlsContainer) {
+        this.renderPTZControlsForCamera(cameraName, "", ptzControlsContainer);
+      }
+    }
+
+    // Note: _updateCameraConfig is called by each update*Device method.
+    // If we wanted a single server update, we'd collect all changes and call _updateCameraConfig once here.
+    // For now, allowing individual updates is fine and likely what the user expects from existing behavior.
+    logToConsole(`Unified device update for ${cameraName} complete. Preview: '${browserDeviceId}', Record: '${selectedServerDeviceId}', PTZ: '${ptzIdToUse}'`, "info");
+    document.dispatchEvent(new CustomEvent('cameramanagerupdate', { detail: { action: 'modified', cameraName: cameraName, unifiedDevice: selectedServerDeviceId } }));
+  }
+
   async updatePreviewDevice(cameraName, browserDeviceId) {
     logToConsole(`Updating preview for ${cameraName} to browser device ID: ${browserDeviceId}`, "info");
+    logToConsole(`updatePreviewDevice ENTRY for ${cameraName} with browserDeviceId: '${browserDeviceId}'`, "info");
+
     const camera = this.cameras.find(c => c.name === cameraName);
     const videoElement = document.getElementById(`video-${cameraName}`);
     const compositor = this.cameraCompositors.get(cameraName);
@@ -581,6 +604,16 @@ export class CameraManager {
       logToConsole(`Error starting video stream for ${cameraName} with device ${browserDeviceId}: ${err.message}`, "error");
       this.stopVideoStream(cameraName); // Clean up on error
       compositor.removeFrameSource();
+      // Ensure server config reflects that this preview device failed
+      // camera.previewDevice should hold the server ID of the device we attempted to use.
+      if (camera && camera.previewDevice) { // camera.previewDevice is the SERVER ID that was intended for preview
+        this._updateCameraConfig(cameraName, { previewDevice: "" });
+        logToConsole(`Cleared previewDevice on server for ${cameraName} (was ${camera.previewDevice}) due to getUserMedia error for browserDevice ${browserDeviceId}.`, "warn");
+      } else {
+        // If camera.previewDevice isn't set, still attempt to clear with generic empty
+        this._updateCameraConfig(cameraName, { previewDevice: "" });
+        logToConsole(`Cleared previewDevice on server for ${cameraName} due to getUserMedia error (camera.previewDevice was not set).`, "warn");
+      }
     }
   }
 
