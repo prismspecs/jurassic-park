@@ -7,13 +7,12 @@ import {
   populateSessionList
 } from './modules/session-manager.js';
 import { initializeWebSocket, sendWebSocketMessage } from './modules/websocket-handler.js';
-import { initializeTeleprompterStreaming, updateTeleprompterMirrorState } from './modules/teleprompter-handler.js';
+import { initializeTeleprompterStreaming, updateTeleprompterMirrorState, openAndStreamToTeleprompter } from './modules/teleprompter-handler.js';
 import { initializeActorLoader } from './modules/actor-loader.js';
 import { initializeSourceSelector, populateAllSourceSelectors } from './modules/source-selector.js';
 import { initializeCanvasRecorder } from './modules/canvas-recorder.js';
 import {
   toggleVoiceBypass,
-  openTeleprompter,
   openCharacterTeleprompter,
   testTeleprompter,
   testTeleprompterVideo,
@@ -127,7 +126,22 @@ document.addEventListener('DOMContentLoaded', () => {
     voiceBypassEnabled = await toggleVoiceBypass(voiceBypassEnabled);
     updateVoiceBypassButton();
   });
-  document.getElementById('openTeleprompterBtn')?.addEventListener('click', openTeleprompter);
+
+  // Modified event listener for openTeleprompterBtn
+  const openTeleprompterBtn = document.getElementById('openTeleprompterBtn');
+  if (openTeleprompterBtn) {
+    openTeleprompterBtn.addEventListener('click', () => {
+      const toggleBtn = document.getElementById('toggleTeleprompterFeedBtn');
+      // Use mainOutputCanvasElement defined earlier in this scope
+      if (mainOutputCanvasElement && mainRecordingCompositor) {
+        openAndStreamToTeleprompter(mainOutputCanvasElement, mainRecordingCompositor, toggleBtn);
+      } else {
+        logToConsole('Cannot open and stream teleprompter: main output canvas or compositor not ready.', 'error');
+        alert('Main output canvas or compositor not ready to stream to teleprompter.');
+      }
+    });
+  }
+
   document.getElementById('openAlanTeleprompterBtn')?.addEventListener('click', () => openCharacterTeleprompter('alan'));
   document.getElementById('openEllieTeleprompterBtn')?.addEventListener('click', () => openCharacterTeleprompter('ellie'));
   document.getElementById('clearTeleprompterBtn')?.addEventListener('click', clearTeleprompter);
@@ -311,8 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initializeCanvasRecorder(mainOutputCanvasForRecording, mainRecordingCompositor);
 
   // --- Stream Main Output to Teleprompter Logic (Reverted to use /teleprompter and setupTeleprompterStream) ---
-  const mainOutputCanvasElementForTeleprompter = document.getElementById('main-output-canvas'); // Ensure this is the correct element
-  initializeTeleprompterStreaming(mainOutputCanvasElementForTeleprompter, mainRecordingCompositor);
+  initializeTeleprompterStreaming(mainOutputCanvasElement, mainRecordingCompositor);
   // --- End of moved Teleprompter Streaming Logic ---
 
   // --- WebSocket Initialization ---
