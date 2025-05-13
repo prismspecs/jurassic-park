@@ -1,260 +1,292 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="UTF-8" />
-    <title>Character Teleprompter</title>
-    <style>
-      body {
-        margin: 0;
-        padding: 0;
-        background: #000;
-        overflow: hidden;
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Character Teleprompter</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      overflow: hidden;
+    }
+
+    #character-name-header {
+      color: yellow;
+      text-align: center;
+      padding: 20px;
+      font-size: 36px;
+      /* Increased font size */
+      font-family: sans-serif;
+      position: fixed;
+      /* Keep it at the top */
+      top: 0;
+      left: 0;
+      width: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      /* Optional: slight background for readability */
+      z-index: 10;
+      /* Ensure it's above other content if necessary */
+    }
+
+    #video-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+
+    #video-container video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="character-name-header"></div>
+  <div id="video-container">
+    <video id="character-video" autoplay playsinline muted></video>
+  </div>
+
+  <script>
+    const videoElement = document.getElementById("character-video");
+    const characterName = window.location.pathname.split("/").pop();
+    document.getElementById("character-name-header").textContent = characterName.charAt(0).toUpperCase() + characterName.slice(1); // Capitalize first letter
+
+    // Function to display the waiting message
+    function showWaitingMessage() {
+      // Ensure video container exists (should from initial HTML)
+      const videoContainer = document.getElementById("video-container");
+      if (!videoContainer) {
+        console.error("Video container not found!"); // Should not happen
+        return;
+      }
+      videoContainer.style.display = "none"; // Hide video
+
+      // Get or create status message
+      let statusDiv = document.getElementById("status-message");
+      if (!statusDiv) {
+        statusDiv = document.createElement("div");
+        statusDiv.id = "status-message";
+        statusDiv.style.color = "white";
+        statusDiv.style.textAlign = "center";
+        statusDiv.style.paddingTop = "116px"; // 76px for header + 40px original top padding
+        statusDiv.style.paddingLeft = "20px";
+        statusDiv.style.paddingRight = "20px";
+        statusDiv.style.paddingBottom = "40px"; // Keep original bottom padding
+        statusDiv.style.fontSize = "32px"; /* Increased font size */
+        statusDiv.style.fontFamily = "sans-serif";
+        // Append to body, *not* replacing content
+        document.body.appendChild(statusDiv);
+      }
+      statusDiv.textContent = "Wait for scene to begin";
+      statusDiv.style.display = "block"; // Ensure status is visible
+    }
+
+    // Function to set up and play the video
+    function setupAndPlayVideo(sceneDir, shotIdentifier) {
+      // Ensure video container exists
+      const videoContainer = document.getElementById("video-container");
+      if (!videoContainer) {
+        console.error("Video container not found during setupAndPlayVideo!");
+        return;
       }
 
-      #video-container {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: #000;
+      // Hide status message if it exists
+      const statusDiv = document.getElementById("status-message");
+      if (statusDiv) {
+        statusDiv.style.display = "none"; // Just hide it
       }
 
-      #video-container video {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-      }
-    </style>
-  </head>
+      // Show video container
+      videoContainer.style.display = "block";
 
-  <body>
-    <div id="video-container">
-      <video id="character-video" autoplay playsinline muted></video>
-    </div>
+      // Construct the video source including the shot identifier
+      const videoSrc = `/database/scenes/${encodeURIComponent(
+        sceneDir
+      )}/${encodeURIComponent(
+        shotIdentifier
+      )}/characters/${characterName}/directions.mp4`;
+      videoElement.src = videoSrc;
 
-    <script>
-      const videoElement = document.getElementById("character-video");
-      const characterName = window.location.pathname.split("/").pop();
+      console.log(`Attempting to play video: ${videoElement.src}`); // Add log
 
-      // Function to display the waiting message
-      function showWaitingMessage() {
-        // Ensure video container exists (should from initial HTML)
-        const videoContainer = document.getElementById("video-container");
-        if (!videoContainer) {
-          console.error("Video container not found!"); // Should not happen
-          return;
-        }
-        videoContainer.style.display = "none"; // Hide video
-
-        // Get or create status message
-        let statusDiv = document.getElementById("status-message");
-        if (!statusDiv) {
-          statusDiv = document.createElement("div");
-          statusDiv.id = "status-message";
-          statusDiv.style.color = "white";
-          statusDiv.style.textAlign = "center";
-          statusDiv.style.padding = "40px 20px";
-          statusDiv.style.fontSize = "24px";
-          statusDiv.style.fontFamily = "sans-serif";
-          // Append to body, *not* replacing content
-          document.body.appendChild(statusDiv);
-        }
-        statusDiv.textContent = "Wait for scene to begin";
-        statusDiv.style.display = "block"; // Ensure status is visible
-      }
-
-      // Function to set up and play the video
-      function setupAndPlayVideo(sceneDir, shotIdentifier) {
-        // Ensure video container exists
-        const videoContainer = document.getElementById("video-container");
-        if (!videoContainer) {
-          console.error("Video container not found during setupAndPlayVideo!");
-          return;
-        }
-
-        // Hide status message if it exists
-        const statusDiv = document.getElementById("status-message");
-        if (statusDiv) {
-          statusDiv.style.display = "none"; // Just hide it
-        }
-
-        // Show video container
-        videoContainer.style.display = "block";
-
-        // Construct the video source including the shot identifier
-        const videoSrc = `/database/scenes/${encodeURIComponent(
-          sceneDir
-        )}/${encodeURIComponent(
-          shotIdentifier
-        )}/characters/${characterName}/directions.mp4`;
-        videoElement.src = videoSrc;
-
-        console.log(`Attempting to play video: ${videoElement.src}`); // Add log
-
-        videoElement.play().catch((err) => {
-          console.error("Error playing video:", err, "Src:", videoSrc); // Log src on error
-          // Try playing again after a short delay
-          setTimeout(() => {
-            videoElement.play().catch(
-              (e) =>
-                console.error(
-                  "Error playing video after retry:",
-                  e,
-                  "Src:",
-                  videoSrc
-                ) // Log src on error
-            );
-          }, 100);
-        });
-      }
-
-      // ---- INITIAL LOAD ----
-      // Show waiting message initially, regardless of fetch result
-      showWaitingMessage();
-
-      // Fetch current scene state but DON'T automatically play video.
-      // This fetch might be redundant now, but we'll leave it in case
-      // it's needed for other logic later or just for consistency.
-      // We primarily rely on the WebSocket message now.
-      fetch("/teleprompter/api/currentScene")
-        .then((res) => res.json())
-        .then((data) => {
-          // We don't call setupAndPlayVideo(data.scene) here anymore.
-          // We just wait for the WebSocket message.
-          if (!data.scene) {
-            // Optionally, reinforce the waiting message if needed,
-            // but showWaitingMessage() above already handled it.
-            console.log("Initial fetch: No scene currently set.");
-          } else {
-            console.log(
-              "Initial fetch: Scene is set but waiting for SHOT_START.",
-              data.scene
-            );
-          }
-        })
-        .catch((err) => {
-          console.error("Error fetching initial scene state:", err);
-          // Show error or default waiting message
-          showWaitingMessage();
-          // Optionally display error details somewhere
-          let statusDiv = document.getElementById("status-message");
-          if (statusDiv) statusDiv.textContent += ` (Error: ${err.message})`;
-        });
-
-      // ---- MESSAGE HANDLING (Previously WebSocket) ----
-      // Remove WebSocket specific code
-      let ws;
-
-      function connectWebSocket() {
-        ws = new WebSocket("ws://" + window.location.host);
-
-        ws.onopen = function () {
-          console.log("Character Teleprompter WebSocket connected");
-          showWaitingMessage();
-          console.log("Character Teleprompter reset to waiting state.");
-        };
-
-        ws.onmessage = handleWebSocketMessage;
-
-        ws.onerror = function (error) {
-          console.error("WebSocket error:", error);
-          showWaitingMessage();
-          let statusDiv = document.getElementById("status-message");
-          if (statusDiv) statusDiv.textContent += " (WebSocket Error)";
-          setTimeout(connectWebSocket, 5000);
-        };
-
-        ws.onclose = function () {
-          console.log("WebSocket connection closed");
-          showWaitingMessage();
-          let statusDiv = document.getElementById("status-message");
-          if (statusDiv) statusDiv.textContent += " (WebSocket Closed)";
-          setTimeout(connectWebSocket, 5000);
-        };
-      }
-
-      connectWebSocket();
-
-      // Function to handle messages received from the parent window (home.ejs)
-      function handleWebSocketMessage(event) {
-        // Add origin check for security if needed
-        // if (event.origin !== 'http://your-expected-origin') return;
-
-        console.log(
-          "Character Teleprompter received message via WebSocket:",
-          event.data
-        );
-
-        try {
-          const data = JSON.parse(event.data);
-          console.log("Parsed WebSocket data:", data);
-
-          if (data.type === "SHOT_START") {
-            // Extract scene directory AND shot identifier
-            const sceneDirectory = data.scene?.directory;
-            const shotId = data.shot?.name || `shot_${data.shotIndex + 1}`; // Use name or fallback
-
-            if (!sceneDirectory || !shotId) {
+      videoElement.play().catch((err) => {
+        console.error("Error playing video:", err, "Src:", videoSrc); // Log src on error
+        // Try playing again after a short delay
+        setTimeout(() => {
+          videoElement.play().catch(
+            (e) =>
               console.error(
-                "SHOT_START message missing scene directory or shot identifier:",
-                data
-              );
-              return; // Don't proceed if data is missing
-            }
+                "Error playing video after retry:",
+                e,
+                "Src:",
+                videoSrc
+              ) // Log src on error
+          );
+        }, 100);
+      });
+    }
 
-            console.log(
-              `>>> SHOT_START received! Calling setupAndPlayVideo with scene: ${sceneDirectory}, shot: ${shotId}` // Updated log
-            );
-            // Call setupAndPlayVideo with BOTH scene and shot identifiers
-            setupAndPlayVideo(sceneDirectory, shotId);
-          } else if (data.type === "TELEPROMPTER_CONTROL") {
-            if (data.action === "PAUSE") {
-              console.log("Pausing video via WebSocket message");
-              videoElement.pause();
-            } else if (data.action === "PLAY") {
-              console.log("Resuming video via WebSocket message");
-              videoElement.play().catch((err) => {
-                console.error("Error resuming video:", err);
-              });
-            }
-          } else if (
-            data.type === "SCENE_ENDED" ||
-            data.type === "SYSTEM_RESET"
-          ) {
-            console.log(
-              "Scene ended or system reset received, showing waiting message."
-            );
-            showWaitingMessage();
-          } else if (data.type === "TELEPROMPTER_STATUS") {
-            console.log("TELEPROMPTER_STATUS received:", data.message);
-            let statusDiv = document.getElementById("status-message");
-            const videoContainer = document.getElementById("video-container");
+    // ---- INITIAL LOAD ----
+    // Show waiting message initially, regardless of fetch result
+    showWaitingMessage();
 
-            if (!statusDiv) {
-              statusDiv = document.createElement("div");
-              statusDiv.id = "status-message";
-              statusDiv.style.cssText =
-                "color: white; text-align: center; padding: 40px 20px; font-size: 24px; font-family: sans-serif;";
-              document.body.appendChild(statusDiv);
-            }
-            if (videoContainer) videoContainer.style.display = "none";
-            statusDiv.textContent = data.message;
-            statusDiv.style.display = "block";
-          }
-          // Add handling for other message types if needed
-        } catch (e) {
-          console.error(
-            "Error processing message from WebSocket:",
-            e,
-            "Raw data:",
-            event.data
+    // Fetch current scene state but DON'T automatically play video.
+    // This fetch might be redundant now, but we'll leave it in case
+    // it's needed for other logic later or just for consistency.
+    // We primarily rely on the WebSocket message now.
+    fetch("/teleprompter/api/currentScene")
+      .then((res) => res.json())
+      .then((data) => {
+        // We don't call setupAndPlayVideo(data.scene) here anymore.
+        // We just wait for the WebSocket message.
+        if (!data.scene) {
+          // Optionally, reinforce the waiting message if needed,
+          // but showWaitingMessage() above already handled it.
+          console.log("Initial fetch: No scene currently set.");
+        } else {
+          console.log(
+            "Initial fetch: Scene is set but waiting for SHOT_START.",
+            data.scene
           );
         }
-      }
+      })
+      .catch((err) => {
+        console.error("Error fetching initial scene state:", err);
+        // Show error or default waiting message
+        showWaitingMessage();
+        // Optionally display error details somewhere
+        let statusDiv = document.getElementById("status-message");
+        if (statusDiv) statusDiv.textContent += ` (Error: ${err.message})`;
+      });
 
-      // Add listener for messages from the parent window
-      // window.addEventListener("message", handleParentMessage);
-    </script>
-  </body>
+    // ---- MESSAGE HANDLING (Previously WebSocket) ----
+    // Remove WebSocket specific code
+    let ws;
+
+    function connectWebSocket() {
+      ws = new WebSocket("ws://" + window.location.host);
+
+      ws.onopen = function () {
+        console.log("Character Teleprompter WebSocket connected");
+        showWaitingMessage();
+        console.log("Character Teleprompter reset to waiting state.");
+      };
+
+      ws.onmessage = handleWebSocketMessage;
+
+      ws.onerror = function (error) {
+        console.error("WebSocket error:", error);
+        showWaitingMessage();
+        let statusDiv = document.getElementById("status-message");
+        if (statusDiv) statusDiv.textContent += " (WebSocket Error)";
+        setTimeout(connectWebSocket, 5000);
+      };
+
+      ws.onclose = function () {
+        console.log("WebSocket connection closed");
+        showWaitingMessage();
+        let statusDiv = document.getElementById("status-message");
+        if (statusDiv) statusDiv.textContent += " (WebSocket Closed)";
+        setTimeout(connectWebSocket, 5000);
+      };
+    }
+
+    connectWebSocket();
+
+    // Function to handle messages received from the parent window (home.ejs)
+    function handleWebSocketMessage(event) {
+      // Add origin check for security if needed
+      // if (event.origin !== 'http://your-expected-origin') return;
+
+      console.log(
+        "Character Teleprompter received message via WebSocket:",
+        event.data
+      );
+
+      try {
+        const data = JSON.parse(event.data);
+        console.log("Parsed WebSocket data:", data);
+
+        if (data.type === "SHOT_START") {
+          // Extract scene directory AND shot identifier
+          const sceneDirectory = data.scene?.directory;
+          const shotId = data.shot?.name || `shot_${data.shotIndex + 1}`; // Use name or fallback
+
+          if (!sceneDirectory || !shotId) {
+            console.error(
+              "SHOT_START message missing scene directory or shot identifier:",
+              data
+            );
+            return; // Don't proceed if data is missing
+          }
+
+          console.log(
+            `>>> SHOT_START received! Calling setupAndPlayVideo with scene: ${sceneDirectory}, shot: ${shotId}` // Updated log
+          );
+          // Call setupAndPlayVideo with BOTH scene and shot identifiers
+          setupAndPlayVideo(sceneDirectory, shotId);
+        } else if (data.type === "TELEPROMPTER_CONTROL") {
+          if (data.action === "PAUSE") {
+            console.log("Pausing video via WebSocket message");
+            videoElement.pause();
+          } else if (data.action === "PLAY") {
+            console.log("Resuming video via WebSocket message");
+            videoElement.play().catch((err) => {
+              console.error("Error resuming video:", err);
+            });
+          }
+        } else if (
+          data.type === "SCENE_ENDED" ||
+          data.type === "SYSTEM_RESET"
+        ) {
+          console.log(
+            "Scene ended or system reset received, showing waiting message."
+          );
+          showWaitingMessage();
+        } else if (data.type === "TELEPROMPTER_STATUS") {
+          console.log("TELEPROMPTER_STATUS received:", data.message);
+          let statusDiv = document.getElementById("status-message");
+          const videoContainer = document.getElementById("video-container");
+
+          if (!statusDiv) {
+            statusDiv = document.createElement("div");
+            statusDiv.id = "status-message";
+            statusDiv.style.color = "white";
+            statusDiv.style.textAlign = "center";
+            statusDiv.style.paddingTop = "116px"; // 76px for header + 40px original top padding
+            statusDiv.style.paddingLeft = "20px";
+            statusDiv.style.paddingRight = "20px";
+            statusDiv.style.paddingBottom = "40px"; // Keep original bottom padding
+            statusDiv.style.fontSize = "24px"; // Keep original font size for this specific status
+            statusDiv.style.fontFamily = "sans-serif";
+            document.body.appendChild(statusDiv);
+          }
+          if (videoContainer) videoContainer.style.display = "none";
+          statusDiv.textContent = data.message;
+          statusDiv.style.display = "block";
+        }
+        // Add handling for other message types if needed
+      } catch (e) {
+        console.error(
+          "Error processing message from WebSocket:",
+          e,
+          "Raw data:",
+          event.data
+        );
+      }
+    }
+
+    // Add listener for messages from the parent window
+    // window.addEventListener("message", handleParentMessage);
+  </script>
+</body>
+
 </html>
