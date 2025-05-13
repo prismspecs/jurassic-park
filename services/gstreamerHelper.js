@@ -91,42 +91,33 @@ module.exports = {
                 // Add capsfilter for resolution
                 const caps = `video/x-raw,width=${resWidth},height=${resHeight}`;
                 pipelineElements = [
-                    `${sourceElementName} device-index=${serverDeviceId}`,
-                    '!',
-                    'queue',
+                    sourceElementName,
+                    `device-index=${serverDeviceId}`,
                     '!',
                     'videoconvert',
                     '!',
-                    'videoscale method=bilinear',
-                    '!',
-                    caps,
-                    '!',
-                    'videorate',
-                    '!',
-                    'queue',
-                    '!',
-                    'x264enc tune=zerolatency bitrate=8000 speed-preset=ultrafast key-int-max=60',
-                    '!',
-                    'queue',
+                    'x264enc',
+                    'tune=zerolatency',
+                    'bitrate=8000',
+                    'speed-preset=medium',
+                    'key-int-max=60',
                     '!',
                     'mp4mux',
                     '!',
-                    `filesink location=${fullOutVideoName}`
+                    'filesink',
+                    `location=${fullOutVideoName}`
                 ];
             } else {
                 return reject(new Error(`Unsupported platform for GStreamer recording: ${platform}`));
             }
             // --- End Platform specific pipeline construction ---
 
-            const pipelineString = pipelineElements.join(' ');
+            const pipelineStringForDisplay = pipelineElements.join(' ');
 
             console.log(`(${platform}) Starting GStreamer capture for ${durationSec} sec from ${sourceElementName} (ID: ${serverDeviceId}) => ${fullOutVideoName}`);
-            console.log(`(${platform}) GStreamer pipeline: ${pipelineString}`);
+            console.log(`(${platform}) GStreamer pipeline for display: ${pipelineStringForDisplay}`);
 
-            // Split carefully, considering potential spaces in paths/options if any were added (shouldn't be now)
-            const gstArgs = pipelineString.split(/\s+/).filter(arg => arg.length > 0);
-
-            const gst = spawn('gst-launch-1.0', ['-e', ...gstArgs]);
+            const gst = spawn('gst-launch-1.0', ['-e', ...pipelineElements]);
 
             let errorOutput = '';
             gst.stderr.on('data', (data) => {

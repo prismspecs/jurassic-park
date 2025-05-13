@@ -47,6 +47,7 @@ async function initShot(sceneDirectory, shotIdentifier) {
     // --- End baseUrl generation ---
 
     // Reset PTZ cameras to home position before starting the shot
+    /* // Commenting out PTZ reset on initShot
     try {
         await cameraControl.resetPTZHome();
     } catch (error) {
@@ -54,6 +55,7 @@ async function initShot(sceneDirectory, shotIdentifier) {
         // Consider if this error should prevent the shot from starting
         // throw new Error(`Failed to reset PTZ cameras: ${error.message}`); // Option to halt
     }
+    */
 
     currentStageState.scene = sceneDirectory;
     currentStageState.shotIdentifier = shotIdentifier;
@@ -393,10 +395,11 @@ async function action(req, res) {
         const resolution = settingsService.getRecordingResolution();
         broadcastConsole(`Using recording resolution from settings: ${resolution.width}x${resolution.height}`, 'info');
 
-        if (shot.cameras && shot.cameras.length > 0) {
-            broadcastConsole(`Preparing to start video recording for ${shot.cameras.length} camera(s) in shot '${shotRef}'`, 'info');
-            // activeWorkers was reset before the try block.
+        // --- Refactor Worker Launching --- 
+        const workersToCreateDetails = []; // Store details for workers to be created
 
+        if (shot.cameras && shot.cameras.length > 0) {
+            broadcastConsole(`Preparing video recording for ${shot.cameras.length} camera(s) in shot '${shotRef}'`, 'info');
             for (const shotCameraInfo of shot.cameras) {
                 const recordingCameraName = shotCameraInfo.name;
                 broadcastConsole(`Processing camera for recording: ${recordingCameraName}`, 'info');
@@ -407,17 +410,14 @@ async function action(req, res) {
                     continue;
                 }
 
-                // Check recording device setting more carefully
                 const recordingDeviceSetting = managedCamera.recordingDevice;
                 broadcastConsole(`Checking recording device for ${recordingCameraName}. Found setting: '${recordingDeviceSetting}' (type: ${typeof recordingDeviceSetting})`, 'info');
 
-                // Allow 0 or "0" as potentially valid device indices on some systems, but not null/undefined/empty string
                 if (recordingDeviceSetting === null || recordingDeviceSetting === undefined || recordingDeviceSetting === '') {
                     broadcastConsole(`Recording device *not set* for camera ${recordingCameraName}. Skipping.`, 'warn');
                     continue;
                 }
-                // If we reach here, recordingDeviceSetting has a value (could be '0', a path, etc.)
-                const recordingDevicePath = recordingDeviceSetting; // Use the validated setting
+                const recordingDevicePath = recordingDeviceSetting;
                 broadcastConsole(`Using recording device for ${recordingCameraName}: ${recordingDevicePath}`, 'info');
 
                 if (!resolution || typeof resolution.width !== 'number' || typeof resolution.height !== 'number') {
@@ -425,105 +425,117 @@ async function action(req, res) {
                     continue;
                 }
 
-                if (recordingType === 'canvas') {
-                    broadcastConsole(`[Action] Canvas recording mode for ${recordingCameraName}. Server will NOT start a video worker.`, 'info');
-                } else { // 'camera' or default
-                    const workerData = {
+                if (recordingType === 'camera') { // Only create server-side workers if type is 'camera'
+                    workersToCreateDetails.push({
                         cameraName: recordingCameraName,
-                        useFfmpeg: useFfmpeg,
-                        resolution: resolution,
-                        devicePath: recordingDevicePath,
-                        outputBasePath: outputBasePath,
-                        durationSec: shotDurationSec
-                    };
-
-                    console.log(`[Action] Preparing to start worker for ${recordingCameraName}...`);
-                    broadcastConsole(`[Action] Preparing to start worker for ${recordingCameraName}...`, 'info');
-
-                    let worker;
-                    try {
-                        worker = new Worker(path.resolve(__dirname, '../workers/recordingWorker.js'), { workerData });
-                        console.log(`[Action] Worker instance CREATED for ${recordingCameraName}.`);
-                    } catch (workerError) {
-                        console.error(`[Action] FAILED TO CREATE Worker instance for ${recordingCameraName}:`, workerError);
-                        broadcastConsole(`[Action] FAILED TO CREATE Worker instance for ${recordingCameraName}: ${workerError.message}`, 'error');
-                        continue; // Skip this camera if worker creation fails
-                    }
-
-                    activeWorkers.push({ name: recordingCameraName, worker: worker });
-                    console.log(`[Action] Worker for ${recordingCameraName} ADDED to activeWorkers. Count: ${activeWorkers.length}`);
-                    broadcastConsole(`[Action] Worker for ${recordingCameraName} added to pool.`, 'debug');
-
-                    worker.on('message', (msg) => {
-                        console.log(`[Action][Worker MSG ${recordingCameraName}]:`, msg); // Added log
-                        broadcastConsole(`Worker [${recordingCameraName}] message: ${msg.status || JSON.stringify(msg)}`, msg.type || 'info');
-                        if (msg.status === 'completed') {
-                            const initialLength = activeWorkers.length;
-                            activeWorkers = activeWorkers.filter(w => w.worker !== worker);
-                            console.log(`[Action][Worker COMPLETED ${recordingCameraName}]: Removed from activeWorkers. Before: ${initialLength}, After: ${activeWorkers.length}`); // Added log
-                            broadcastConsole(`Worker for ${recordingCameraName} completed. Active workers: ${activeWorkers.length}`, 'info');
-                        }
+                        workerData: {
+                            cameraName: recordingCameraName,
+                            useFfmpeg: useFfmpeg,
+                            resolution: resolution,
+                            devicePath: recordingDevicePath,
+                            outputBasePath: outputBasePath,
+                            durationSec: shotDurationSec
+                        },
+                        movements: shotCameraInfo.movements // Also pass movements here for later processing
                     });
-                    worker.on('error', (err) => {
-                        console.error(`[Action][Worker ERR ${recordingCameraName}]:`, err); // Added log
-                        broadcastConsole(`Worker [${recordingCameraName}] error: ${err.message}`, 'error');
-                        const initialLength = activeWorkers.length;
-                        activeWorkers = activeWorkers.filter(w => w.worker !== worker); // Remove on error
-                        console.log(`[Action][Worker ERR ${recordingCameraName}]: Removed from activeWorkers. Before: ${initialLength}, After: ${activeWorkers.length}`); // Added log
-                    });
-                    worker.on('exit', (code) => {
-                        console.log(`[Action][Worker EXIT ${recordingCameraName}]: Code ${code}`); // Added log
-                        broadcastConsole(`Worker [${recordingCameraName}] exited code ${code}`, code !== 0 ? 'warn' : 'info');
-                        const initialLength = activeWorkers.length;
-                        activeWorkers = activeWorkers.filter(w => w.worker !== worker); // Ensure removal on exit
-                        console.log(`[Action][Worker EXIT ${recordingCameraName}]: Removed from activeWorkers. Before: ${initialLength}, After: ${activeWorkers.length}`); // Added log
-                        if (code !== 0) {
-                            // Handle non-zero exit code, e.g., notify UI
-                        }
-                    });
-                }
-
-                if (shotCameraInfo.movements && shotCameraInfo.movements.length > 0) {
-                    broadcastConsole(`Scheduling ${shotCameraInfo.movements.length} PTZ for ${recordingCameraName}...`, 'info');
-                    shotCameraInfo.movements.forEach(move => {
-                        if (typeof move.time !== 'number' || move.time < 0) {
-                            broadcastConsole(`Invalid time for PTZ in ${recordingCameraName}. Skipping.`, 'warn');
-                            return;
-                        }
-                        const delayMs = move.time * 1000;
-                        const timeoutId = setTimeout(async () => {
-                            try {
-                                const ptzPayload = {};
-                                let logMsg = `PTZ ${recordingCameraName} @${move.time}s:`;
-                                if (typeof move.pan === 'number') {
-                                    ptzPayload.pan = mapPanDegreesToValue(move.pan);
-                                    logMsg += ` P=${move.pan}°`;
-                                }
-                                if (typeof move.tilt === 'number') {
-                                    ptzPayload.tilt = mapTiltDegreesToValue(move.tilt);
-                                    logMsg += ` T=${move.tilt}°`;
-                                }
-                                if (typeof move.zoom === 'number' && move.zoom >= 0 && move.zoom <= 100) {
-                                    ptzPayload.zoom = move.zoom;
-                                    logMsg += ` Z=${move.zoom}%`;
-                                }
-                                if (Object.keys(ptzPayload).length > 0) {
-                                    broadcastConsole(logMsg, 'info');
-                                    await cameraControl.setPTZ(recordingCameraName, ptzPayload);
-                                }
-                            } catch (ptzError) {
-                                broadcastConsole(`PTZ Error ${recordingCameraName}: ${ptzError.message}`, 'error');
-                            }
-                        }, delayMs);
-                        cameraMovementTimeouts.push(timeoutId);
-                    });
-                } else {
-                    broadcastConsole(`No PTZ movements for ${recordingCameraName}.`, 'info');
+                } else if (recordingType === 'canvas') {
+                    broadcastConsole(`[Action] Canvas recording mode for ${recordingCameraName}. Server will NOT start a video worker.`, 'info');
                 }
             }
         } else {
             broadcastConsole('No cameras in shot. Skipping video recording.', 'info');
         }
+
+        // Now, create and manage workers from the collected details
+        // activeWorkers was reset before the try block.
+        workersToCreateDetails.forEach(detail => {
+            const { cameraName, workerData, movements } = detail;
+
+            console.log(`[Action] Preparing to start worker for ${cameraName}...`);
+            broadcastConsole(`[Action] Preparing to start worker for ${cameraName}...`, 'info');
+
+            let worker;
+            try {
+                worker = new Worker(path.resolve(__dirname, '../workers/recordingWorker.js'), { workerData });
+                console.log(`[Action] Worker instance CREATED for ${cameraName}.`);
+            } catch (workerError) {
+                console.error(`[Action] FAILED TO CREATE Worker instance for ${cameraName}:`, workerError);
+                broadcastConsole(`[Action] FAILED TO CREATE Worker instance for ${cameraName}: ${workerError.message}`, 'error');
+                return; // Skip this camera if worker creation fails (use continue if this was in a direct loop)
+            }
+
+            activeWorkers.push({ name: cameraName, worker: worker });
+            console.log(`[Action] Worker for ${cameraName} ADDED to activeWorkers. Count: ${activeWorkers.length}`);
+            broadcastConsole(`[Action] Worker for ${cameraName} added to pool.`, 'debug');
+
+            worker.on('message', (msg) => {
+                console.log(`[Action][Worker MSG ${cameraName}]:`, msg);
+                broadcastConsole(`Worker [${cameraName}] message: ${msg.status || JSON.stringify(msg)}`, msg.type || 'info');
+                if (msg.status === 'completed') {
+                    const initialLength = activeWorkers.length;
+                    activeWorkers = activeWorkers.filter(w => w.worker !== worker);
+                    console.log(`[Action][Worker COMPLETED ${cameraName}]: Removed from activeWorkers. Before: ${initialLength}, After: ${activeWorkers.length}`);
+                    broadcastConsole(`Worker for ${cameraName} completed. Active workers: ${activeWorkers.length}`, 'info');
+                }
+            });
+            worker.on('error', (err) => {
+                console.error(`[Action][Worker ERR ${cameraName}]:`, err);
+                broadcastConsole(`Worker [${cameraName}] error: ${err.message}`, 'error');
+                const initialLength = activeWorkers.length;
+                activeWorkers = activeWorkers.filter(w => w.worker !== worker);
+                console.log(`[Action][Worker ERR ${cameraName}]: Removed from activeWorkers. Before: ${initialLength}, After: ${activeWorkers.length}`);
+            });
+            worker.on('exit', (code) => {
+                console.log(`[Action][Worker EXIT ${cameraName}]: Code ${code}`);
+                broadcastConsole(`Worker [${cameraName}] exited code ${code}`, code !== 0 ? 'warn' : 'info');
+                const initialLength = activeWorkers.length;
+                activeWorkers = activeWorkers.filter(w => w.worker !== worker);
+                console.log(`[Action][Worker EXIT ${cameraName}]: Removed from activeWorkers. Before: ${initialLength}, After: ${activeWorkers.length}`);
+                if (code !== 0) {
+                    // Handle non-zero exit code
+                }
+            });
+
+            // Handle PTZ movements for this camera
+            if (movements && movements.length > 0) {
+                broadcastConsole(`Scheduling ${movements.length} PTZ for ${cameraName}...`, 'info');
+                movements.forEach(move => {
+                    if (typeof move.time !== 'number' || move.time < 0) {
+                        broadcastConsole(`Invalid time for PTZ in ${cameraName}. Skipping.`, 'warn');
+                        return;
+                    }
+                    const delayMs = move.time * 1000;
+                    const timeoutId = setTimeout(async () => {
+                        try {
+                            const ptzPayload = {};
+                            let logMsg = `PTZ ${cameraName} @${move.time}s:`;
+                            if (typeof move.pan === 'number') {
+                                ptzPayload.pan = mapPanDegreesToValue(move.pan);
+                                logMsg += ` P=${move.pan}°`;
+                            }
+                            if (typeof move.tilt === 'number') {
+                                ptzPayload.tilt = mapTiltDegreesToValue(move.tilt);
+                                logMsg += ` T=${move.tilt}°`;
+                            }
+                            if (typeof move.zoom === 'number' && move.zoom >= 0 && move.zoom <= 100) {
+                                ptzPayload.zoom = move.zoom;
+                                logMsg += ` Z=${move.zoom}%`;
+                            }
+                            if (Object.keys(ptzPayload).length > 0) {
+                                broadcastConsole(logMsg, 'info');
+                                await cameraControl.setPTZ(cameraName, ptzPayload);
+                            }
+                        } catch (ptzError) {
+                            broadcastConsole(`PTZ Error ${cameraName}: ${ptzError.message}`, 'error');
+                        }
+                    }, delayMs);
+                    cameraMovementTimeouts.push(timeoutId);
+                });
+            } else {
+                broadcastConsole(`No PTZ movements for ${cameraName}.`, 'info');
+            }
+        });
+        // --- End Refactor Worker Launching ---
 
         broadcastConsole('Starting audio recording...', 'info');
         audioRecorder.startRecording(outputBasePath, shotDurationSec);

@@ -533,11 +533,37 @@ export async function action(cameraManager) {
       document.getElementById("status").innerText = "Failed to start canvas recorders.";
     }
 
-  } else { // 'camera' or default
+  } else { // recordingType === 'camera'
+    const pipelineSelect = document.getElementById('recording-pipeline');
+    const resolutionSelect = document.getElementById('recording-resolution');
+    const useFfmpeg = pipelineSelect ? pipelineSelect.value === 'ffmpeg' : true; // Default to ffmpeg
+    const resolution = resolutionSelect ? resolutionSelect.value : '1920x1080'; // Default resolution
+
+    if (!currentShotData || !currentShotData.scene || !currentShotData.shot) {
+      logToConsole("Cannot start server recording: No current shot data.", "error");
+      document.getElementById("status").innerText = "Error: No shot data for server recording.";
+      return;
+    }
+
+    const sceneRef = currentShotData.scene.directory;
+    const shotRef = currentShotData.shot.name || currentShotData.shot.number?.toString() || 'unknown_shot';
+    const takeNumber = currentShotData.shot.take || 1; // Default to take 1 if not specified
+
+    const payload = {
+      recordingType: 'camera',
+      sceneRef: sceneRef,
+      shotRef: shotRef,
+      take: takeNumber,
+      useFfmpeg: useFfmpeg,
+      resolution: resolution
+    };
+
+    logToConsole('[CLIENT ACTION] Calling /action (server-side recording) with payload:', 'debug', payload);
+
     fetch("/action", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recordingType: 'camera' })
+      body: JSON.stringify(payload)
     })
       .then(res => res.ok ? res.json() : res.text().then(text => Promise.reject(text || res.statusText)))
       .then(info => {

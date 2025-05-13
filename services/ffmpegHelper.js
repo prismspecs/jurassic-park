@@ -64,7 +64,7 @@ module.exports = {
                     '-f', 'avfoundation',
                     '-framerate', '30',
                     ...(resolution && resolution.width && resolution.height ? ['-video_size', `${resolution.width}x${resolution.height}`] : []),
-                    '-i', '0', // Video device 0 only
+                    '-i', devicePath ? devicePath.toString() : '0', // Use provided devicePath or default to '0'
                     '-t', durationSec.toString(),
                     '-c:v', 'libx264',
                     '-preset', 'ultrafast',

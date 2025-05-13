@@ -57,15 +57,7 @@
                         "description": "Rear camera",
                         "position": "B",
                         "direction": "back",
-                        "movements": [
-                            {
-                                "pan": 0,
-                                "tilt": 0,
-                                "zoom": 0,
-                                "height": 1.4,
-                                "time": 0
-                            }
-                        ]
+                        "movements": []
                     }
                 ],
                 "characters": {
@@ -101,14 +93,7 @@
                         "description": "Front-facing main camera",
                         "position": "F",
                         "direction": "front",
-                        "movements": [
-                            {
-                                "pan": 0,
-                                "tilt": 0,
-                                "zoom": 0,
-                                "time": 0
-                            }
-                        ]
+                        "movements": []
                     }
                 ],
                 "characters": {
@@ -156,30 +141,14 @@
                         "description": "Front-facing main camera",
                         "position": "F",
                         "direction": "front",
-                        "movements": [
-                            {
-                                "pan": 0,
-                                "tilt": 0,
-                                "zoom": 0,
-                                "height": 1.4,
-                                "time": 0
-                            }
-                        ]
+                        "movements": []
                     },
                     {
                         "name": "Camera_2",
                         "description": "Rear camera",
                         "position": "B",
                         "direction": "back",
-                        "movements": [
-                            {
-                                "pan": 0,
-                                "tilt": 0,
-                                "zoom": 0,
-                                "height": 1.4,
-                                "time": 0
-                            }
-                        ]
+                        "movements": []
                     }
                 ],
                 "characters": {
@@ -202,6 +171,10 @@
                     "donald": {
                         "full-name": "Donald the Lawyer",
                         "props": "donald"
+                    },
+                    "driver": {
+                        "full-name": "driver",
+                        "props": "driver"
                     }
                 }
             },
@@ -219,14 +192,7 @@
                         "description": "Front-facing main camera",
                         "position": "F",
                         "direction": "front",
-                        "movements": [
-                            {
-                                "pan": 0,
-                                "tilt": 0,
-                                "zoom": 0,
-                                "time": 0
-                            }
-                        ]
+                        "movements": []
                     }
                 ],
                 "characters": {
@@ -249,14 +215,7 @@
                         "description": "Front-facing main camera",
                         "position": "F",
                         "direction": "front",
-                        "movements": [
-                            {
-                                "pan": 0,
-                                "tilt": 0,
-                                "zoom": 0,
-                                "time": 0
-                            }
-                        ]
+                        "movements": []
                     }
                 ],
                 "characters": {
