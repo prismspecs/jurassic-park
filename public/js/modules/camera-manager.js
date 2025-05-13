@@ -474,10 +474,21 @@ export class CameraManager {
     // await this.updatePreviewDevice(cameraName, browserDeviceId || ""); // Server-side update & starts preview
 
     // 3. Update PTZ Device
-    const ptzDeviceDetail = selectedServerDeviceId ? this.ptzDevices.find(pd => (pd.id !== undefined ? pd.id : pd.path) === selectedServerDeviceId) : null;
-    const ptzIdToUse = ptzDeviceDetail ? (ptzDeviceDetail.id !== undefined ? ptzDeviceDetail.id : ptzDeviceDetail.path) : "";
-    // camera.ptzDevice = ptzIdToUse; // Client-side state
-    // await this.updatePTZDevice(cameraName, ptzIdToUse); // Server-side update
+    logToConsole(`PTZ Check for ${cameraName}: selectedServerDeviceId is '${selectedServerDeviceId}'`, "debug");
+    logToConsole(`PTZ Check for ${cameraName}: this.ptzDevices list:`, "debug", JSON.parse(JSON.stringify(this.ptzDevices)));
+
+    const ptzDeviceDetail = selectedServerDeviceId ? this.ptzDevices.find(pd => {
+      const idMatch = pd.id !== undefined && String(pd.id) === String(selectedServerDeviceId);
+      const pathMatch = pd.path !== undefined && String(pd.path) === String(selectedServerDeviceId);
+      // Log individual comparisons for clarity
+      // logToConsole(`PTZ Find: comparing pd.id '${pd.id}' (str: '${String(pd.id)}') or pd.path '${pd.path}' (str: '${String(pd.path)}') with '${String(selectedServerDeviceId)}'`, "debug");
+      return idMatch || pathMatch;
+    }) : null;
+
+    logToConsole(`PTZ Check for ${cameraName}: ptzDeviceDetail found:`, "debug", ptzDeviceDetail ? JSON.parse(JSON.stringify(ptzDeviceDetail)) : null);
+
+    const ptzIdToUse = ptzDeviceDetail ? (ptzDeviceDetail.id !== undefined ? String(ptzDeviceDetail.id) : String(ptzDeviceDetail.path)) : "";
+    logToConsole(`PTZ Check for ${cameraName}: ptzIdToUse determined as: '${ptzIdToUse}'`, "debug");
 
     // It's better to call the individual update functions, as they handle their specific logic
     // and server updates. They also update the camera object's respective fields.
@@ -624,6 +635,9 @@ export class CameraManager {
 
   async updatePTZDevice(cameraName, serverDeviceId) {
     logToConsole(`Updating PTZ device for ${cameraName} to server ID/path: ${serverDeviceId}`, "info");
+    // Added log to confirm received serverDeviceId
+    logToConsole(`updatePTZDevice ENTRY for ${cameraName} with serverDeviceId: '${serverDeviceId}'`, "info");
+
     this._updateCameraConfig(cameraName, { ptzDevice: serverDeviceId });
 
     // Find the specific PTZ container for this camera
