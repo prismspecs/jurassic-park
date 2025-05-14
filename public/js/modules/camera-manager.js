@@ -96,21 +96,30 @@ export class CameraManager {
   _mapServerToBrowserDevices() {
     logToConsole("Attempting to map server devices to browser devices...", "info");
     this.serverToBrowserDeviceMap.clear();
-    const browserVideoDevices = this.availableDevices;
+    const browserVideoDevices = [...this.availableDevices]; // Create a copy to allow safe removal/marking
+    const usedBrowserDeviceIds = new Set();
 
     this.serverDevices.forEach(serverDevice => {
       const serverDeviceNamePart = serverDevice.name?.split(' (')[0];
       let matchedBrowserDevice = null;
+
       if (serverDeviceNamePart && browserVideoDevices.length > 0) {
-        matchedBrowserDevice = browserVideoDevices.find(bd =>
-          bd.label && bd.label.startsWith(serverDeviceNamePart)
-        );
+        // Find the first available (unused) browser device that matches the name part
+        for (let i = 0; i < browserVideoDevices.length; i++) {
+          const bd = browserVideoDevices[i];
+          if (!usedBrowserDeviceIds.has(bd.deviceId) && bd.label && bd.label.startsWith(serverDeviceNamePart)) {
+            matchedBrowserDevice = bd;
+            usedBrowserDeviceIds.add(bd.deviceId); // Mark as used
+            break; // Found a match for this serverDevice
+          }
+        }
       }
+
       if (matchedBrowserDevice) {
         this.serverToBrowserDeviceMap.set(String(serverDevice.id), matchedBrowserDevice.deviceId);
         logToConsole(`Mapped server ${serverDevice.id} (${serverDevice.name}) to browser ${matchedBrowserDevice.deviceId} (${matchedBrowserDevice.label})`, "success");
       } else {
-        logToConsole(`Could not map server device ${serverDevice.id} (${serverDevice.name || 'No Name'}).`, "warn");
+        logToConsole(`Could not map server device ${serverDevice.id} (${serverDevice.name || 'No Name'}). Ensure a unique browser device is available.`, "warn");
         this.serverToBrowserDeviceMap.set(String(serverDevice.id), null);
       }
     });
@@ -335,41 +344,43 @@ export class CameraManager {
     const controlsDiv = document.createElement("div");
     controlsDiv.className = "camera-controls-grid"; // Main div for all selectors and toggles
 
-    // --- Unified Device Selector (Replaces individual selectors) ---
-    const unifiedDeviceOptions = [{ value: "", text: "Select Device (P/R/Z)" }];
-    this.serverDevices.forEach(serverDevice => {
-      const hasPreview = this.serverToBrowserDeviceMap.has(serverDevice.id);
-      const hasPtz = this.ptzDevices.some(pd => (pd.id !== undefined ? pd.id : pd.path) === serverDevice.id);
-      let capabilities = " (R"; // All server devices are assumed recordable
-      if (hasPreview) capabilities += ", P";
-      if (hasPtz) capabilities += ", Z";
-      capabilities += ")";
-      unifiedDeviceOptions.push({
-        value: serverDevice.id,
-        text: `${serverDevice.name || serverDevice.id}${capabilities}`
-      });
+    // --- Preview Device Selector ---
+    const previewDeviceOptions = [];
+    const labelCounts = {};
+    this.availableDevices.forEach(d => {
+      // Ensure d.label is treated as a string, even if it's null or undefined, to avoid errors with object keys.
+      const labelKey = String(d.label);
+      labelCounts[labelKey] = (labelCounts[labelKey] || 0) + 1;
     });
 
-    // Use camera.recordingDevice as the default unified choice if available, otherwise empty.
-    // This assumes camera.recordingDevice stores the server device ID.
-    const initialUnifiedDeviceId = camera.recordingDevice || "";
+    this.availableDevices.forEach(d => {
+      let displayText = d.label || d.deviceId;
+      // Ensure d.label is treated as a string for the lookup.
+      if (labelCounts[String(d.label)] > 1) {
+        // If there's more than one camera with the same label, append part of the deviceId for uniqueness
+        displayText = `${d.label || 'Unknown Camera'} (ID: ...${d.deviceId.slice(-6)})`;
+      }
+      previewDeviceOptions.push({ value: d.deviceId, text: displayText });
+    });
 
-    const unifiedSelectGroup = this._createSelectGroup(
-      'Device (Preview/Rec/PTZ):',
-      `unified-device-selector-${camera.name}`,
-      unifiedDeviceOptions,
-      initialUnifiedDeviceId,
-      async (e) => await this.updateUnifiedDevice(camera.name, e.target.value)
+    const initialBrowserPreviewDeviceId = this.serverToBrowserDeviceMap.get(camera.previewDevice) || ""; // Get initial mapped device ID
+
+    const previewSelectGroup = this._createSelectGroup(
+      'Preview Device:',
+      `preview-device-selector-${camera.name}`,
+      previewDeviceOptions,
+      initialBrowserPreviewDeviceId,
+      async (e) => await this.updatePreviewDevice(camera.name, e.target.value)
     );
-    controlsDiv.appendChild(unifiedSelectGroup);
+    controlsDiv.appendChild(previewSelectGroup);
 
     // Auto-start preview and set devices if a valid initial device is set
-    if (initialUnifiedDeviceId) {
-      logToConsole(`Camera ${camera.name} has initial unified device ID: ${initialUnifiedDeviceId}. Attempting immediate auto-configuration.`, "info");
+    if (initialBrowserPreviewDeviceId) {
+      logToConsole(`Camera ${camera.name} has initial preview device ID: ${initialBrowserPreviewDeviceId}. Attempting immediate auto-configuration.`, "info");
       // Call directly, ensuring the select element's value is indeed what we expect.
-      // The select element is part of unifiedSelectGroup which was just appended to controlsDiv.
+      // The select element is part of previewSelectGroup which was just appended to controlsDiv.
       // Its value should be correctly set by _createSelectGroup.
-      this.updateUnifiedDevice(camera.name, initialUnifiedDeviceId).catch(err => {
+      this.updatePreviewDevice(camera.name, initialBrowserPreviewDeviceId).catch(err => {
         logToConsole(`Error during immediate auto-configuration for ${camera.name}: ${err.message}`, "error");
       });
     }
