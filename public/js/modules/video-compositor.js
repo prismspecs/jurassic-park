@@ -428,19 +428,33 @@ export class VideoCompositor {
                 posesToDraw = [];
             }
 
-            // Prepare body segment mask data if needed by standard body mask effect
-            // This is NOT used for the Difference Mask, which expects a pre-processed currentFrameSource
-            let bodySegmentShapeRenderedForStandardMask = false;
-            if (this.drawBodySegmentMask && !this.drawDifferenceMask && posesToDraw && posesToDraw.length > 0 && !forceClearEffects && this.segmentMaskCtx) {
+            // --- Logic to prepare segmentMaskCanvas ---
+            let bodySegmentShapeRenderedForStandardMask = false; // Flag for standard path
+            const shouldRenderForDiffMask = this.drawDifferenceMask && posesToDraw && posesToDraw.length > 0 && this.segmentMaskCtx;
+            const shouldRenderForStdMask = this.drawBodySegmentMask && !this.drawDifferenceMask && posesToDraw && posesToDraw.length > 0 && !forceClearEffects && this.segmentMaskCtx;
+
+            if (shouldRenderForDiffMask || shouldRenderForStdMask) {
+                // Ensure segmentMaskCanvas is sized correctly (e.g., to match the main canvas)
                 if (this.segmentMaskCanvas.width !== this.canvas.width) {
                     this.segmentMaskCanvas.width = this.canvas.width;
                 }
                 if (this.segmentMaskCanvas.height !== this.canvas.height) {
                     this.segmentMaskCanvas.height = this.canvas.height;
                 }
-                this._renderBodySegmentShapeOnMaskCanvas(posesToDraw); // Populates this.segmentMaskCanvas
-                bodySegmentShapeRenderedForStandardMask = true;
+                this._renderBodySegmentShapeOnMaskCanvas(posesToDraw);
+
+                if (shouldRenderForStdMask) { // Set flag if rendered specifically for standard mask conditions
+                    bodySegmentShapeRenderedForStandardMask = true;
+                }
+            } else if (this.segmentMaskCtx &&
+                (this.drawDifferenceMask || (this.drawBodySegmentMask && !forceClearEffects))) {
+                // If segmentMaskCanvas would have been used, but no poses or other conditions failed for rendering,
+                // ensure it's cleared to prevent using stale data.
+                if (this.segmentMaskCanvas.width > 0 && this.segmentMaskCanvas.height > 0) {
+                    this.segmentMaskCtx.clearRect(0, 0, this.segmentMaskCanvas.width, this.segmentMaskCanvas.height);
+                }
             }
+            // --- End logic to prepare segmentMaskCanvas ---
 
             // MAIN DRAWING LOGIC BRANCH
             // Difference Mask takes precedence if active and its specific inputs are ready
@@ -1151,38 +1165,24 @@ export class VideoCompositor {
             return;
         }
 
-        // 1. Prepare Low-Resolution Person Shape Data (pre-processed with alpha)
+        // 1. Prepare Low-Resolution Person Shape Data (from segmentMaskCanvas)
         if (this.lowResPersonCanvas.width !== lowResWidth) this.lowResPersonCanvas.width = lowResWidth;
         if (this.lowResPersonCanvas.height !== lowResHeight) this.lowResPersonCanvas.height = lowResHeight;
         this.lowResPersonCtx.clearRect(0, 0, lowResWidth, lowResHeight);
-        this.lowResPersonCtx.drawImage(this.currentFrameSource, 0, 0, lowResWidth, lowResHeight); // Scale source to low-res canvas
 
-        const personShapeImageData = this.lowResPersonCtx.getImageData(0, 0, lowResWidth, lowResHeight);
-        const personData = personShapeImageData.data;
+        let personData; // This will hold the image data for the person shape
 
-        // Process person data to set binary alpha based on luminance
-        // This helps with the comparison by focusing on the actual shape
-        for (let i = 0; i < personData.length; i += 4) {
-            // Calculate luminance from RGB
-            const r = personData[i];
-            const g = personData[i + 1];
-            const b = personData[i + 2];
-            // Typical luminance formula: 0.299*R + 0.587*G + 0.114*B
-            const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-
-            // Clear out any background color (like magenta) that might interfere
-            const isMagenta = r > 200 && g < 50 && b > 200; // Detect magenta-ish pixels
-
-            if (isMagenta) {
-                // Make magenta pixels transparent in the comparison
-                personData[i + 3] = 0;
-            } else {
-                // For regular pixels, use a threshold on luminance to determine if it's "person" or not
-                personData[i + 3] = luma > 30 ? 255 : 0; // Binary alpha based on threshold
-            }
+        // Ensure segmentMaskCanvas is valid and draw it to the low-resolution person canvas
+        if (this.segmentMaskCanvas && this.segmentMaskCanvas.width > 0 && this.segmentMaskCanvas.height > 0) {
+            this.lowResPersonCtx.drawImage(this.segmentMaskCanvas, 0, 0, lowResWidth, lowResHeight);
+            const segMaskLowResImageData = this.lowResPersonCtx.getImageData(0, 0, lowResWidth, lowResHeight);
+            personData = segMaskLowResImageData.data;
+        } else {
+            logToConsole('Difference Mask: segmentMaskCanvas not ready or empty. Person shape will be empty.', 'warn');
+            // Create dummy transparent image data if segment mask is not available
+            const emptyImageData = this.lowResPersonCtx.createImageData(lowResWidth, lowResHeight);
+            personData = emptyImageData.data; // All pixels will have alpha 0, so isPerson will be false.
         }
-        // Put processed person data back
-        this.lowResPersonCtx.putImageData(personShapeImageData, 0, 0);
 
         // 2. Prepare Low-Resolution Dinosaur Shape Data
         const dinoVideo = this.dinosaurVideoMask;
@@ -1223,8 +1223,8 @@ export class VideoCompositor {
         let dinoPixelCount = 0;
 
         for (let i = 0; i < outputData.length; i += 4) {
-            const personAlpha = personData[i + 3];
-            const isPerson = personAlpha > 128;
+            const personAlpha = personData[i + 3]; // Alpha from segmentMaskCanvas (or 0 if not ready)
+            const isPerson = personAlpha > 128; // Check alpha channel from segment mask
             const isDino = dinoData[i + 3] > 128;
 
             if (isDino) {
