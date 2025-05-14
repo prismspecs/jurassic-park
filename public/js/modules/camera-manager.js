@@ -344,48 +344,54 @@ export class CameraManager {
     const controlsDiv = document.createElement("div");
     controlsDiv.className = "camera-controls-grid"; // Main div for all selectors and toggles
 
-    // --- Preview Device Selector ---
-    const previewDeviceOptions = [];
-    const labelCounts = {};
-    this.availableDevices.forEach(d => {
-      // Ensure d.label is treated as a string, even if it's null or undefined, to avoid errors with object keys.
-      const labelKey = String(d.label);
-      labelCounts[labelKey] = (labelCounts[labelKey] || 0) + 1;
+    // --- Unified Device Selector (Replaces individual selectors) ---
+    const unifiedDeviceOptions = [{ value: "", text: "Select Device (P/R/Z)" }];
+    this.serverDevices.forEach(serverDevice => {
+      // Check Preview capability: a server device can preview if it's in the serverToBrowserDeviceMap AND has a non-null browserDeviceID mapped.
+      const browserDeviceId = this.serverToBrowserDeviceMap.get(String(serverDevice.id));
+      const hasPreview = !!browserDeviceId;
+
+      // Check PTZ capability: a server device has PTZ if its ID or path matches an entry in ptzDevices.
+      // ServerDevice.id is typically a number from the backend list, but ptzDevice.id could be string.
+      const serverDeviceIdStr = String(serverDevice.id);
+      const hasPtz = this.ptzDevices.some(pd =>
+        (pd.id !== undefined && String(pd.id) === serverDeviceIdStr) ||
+        (pd.path !== undefined && String(pd.path) === serverDeviceIdStr) // In case serverDevice.id could be a path
+      );
+
+      let capabilities = " (R"; // All server devices are assumed recordable by default by the backend
+      if (hasPreview) capabilities += ", P";
+      if (hasPtz) capabilities += ", Z";
+      capabilities += ")";
+      unifiedDeviceOptions.push({
+        value: String(serverDevice.id), // Ensure value is string for consistency
+        text: `${serverDevice.name || serverDevice.id}${capabilities}`
+      });
     });
 
-    this.availableDevices.forEach(d => {
-      let displayText = d.label || d.deviceId;
-      // Ensure d.label is treated as a string for the lookup.
-      if (labelCounts[String(d.label)] > 1) {
-        // If there's more than one camera with the same label, append part of the deviceId for uniqueness
-        displayText = `${d.label || 'Unknown Camera'} (ID: ...${d.deviceId.slice(-6)})`;
-      }
-      previewDeviceOptions.push({ value: d.deviceId, text: displayText });
-    });
+    // Use camera.previewDevice (which should store the server ID selected for preview, compatible with unified concept)
+    // as the default unified choice if available, otherwise empty.
+    const initialUnifiedDeviceId = camera.previewDevice || "";
 
-    const initialBrowserPreviewDeviceId = this.serverToBrowserDeviceMap.get(camera.previewDevice) || ""; // Get initial mapped device ID
-
-    const previewSelectGroup = this._createSelectGroup(
-      'Preview Device:',
-      `preview-device-selector-${camera.name}`,
-      previewDeviceOptions,
-      initialBrowserPreviewDeviceId,
-      async (e) => await this.updatePreviewDevice(camera.name, e.target.value)
+    const unifiedSelectGroup = this._createSelectGroup(
+      'Device (Preview/Record/PTZ):',
+      `unified-device-selector-${camera.name}`,
+      unifiedDeviceOptions,
+      initialUnifiedDeviceId, // This will be a server ID string or empty
+      async (e) => await this.updateUnifiedDevice(camera.name, e.target.value) // e.target.value will be server ID string
     );
-    controlsDiv.appendChild(previewSelectGroup);
+    controlsDiv.appendChild(unifiedSelectGroup);
 
-    // Auto-start preview and set devices if a valid initial device is set
-    if (initialBrowserPreviewDeviceId) {
-      logToConsole(`Camera ${camera.name} has initial preview device ID: ${initialBrowserPreviewDeviceId}. Attempting immediate auto-configuration.`, "info");
-      // Call directly, ensuring the select element's value is indeed what we expect.
-      // The select element is part of previewSelectGroup which was just appended to controlsDiv.
-      // Its value should be correctly set by _createSelectGroup.
-      this.updatePreviewDevice(camera.name, initialBrowserPreviewDeviceId).catch(err => {
-        logToConsole(`Error during immediate auto-configuration for ${camera.name}: ${err.message}`, "error");
+    // Auto-configure if a valid initial device is set (this will call updateUnifiedDevice)
+    if (initialUnifiedDeviceId) {
+      logToConsole(`Camera ${camera.name} has initial unified server device ID: ${initialUnifiedDeviceId}. Attempting immediate auto-configuration via updateUnifiedDevice.`, "info");
+      // updateUnifiedDevice will handle preview, recording, and PTZ setup including rendering PTZ controls.
+      this.updateUnifiedDevice(camera.name, initialUnifiedDeviceId).catch(err => {
+        logToConsole(`Error during immediate auto-configuration for ${camera.name} with device ${initialUnifiedDeviceId}: ${err.message}`, "error");
       });
     }
 
-    // --- PTZ Controls Container (still needed, populated by updateUnifiedDevice/renderPTZControlsForCamera) ---
+    // --- PTZ Controls Container (populated by updateUnifiedDevice via updatePTZDevice -> renderPTZControlsForCamera) ---
     const ptzControlsContainerOriginal = document.createElement('div');
     ptzControlsContainerOriginal.id = `ptz-controls-${camera.name}`;
     ptzControlsContainerOriginal.className = 'ptz-controls-container';
@@ -804,6 +810,33 @@ export class CameraManager {
       return;
     }
 
+    // --- UVC Index Input Field ---
+    const uvcIndexGroup = document.createElement('div');
+    uvcIndexGroup.className = 'form-group mb-2';
+    const uvcIndexLabel = document.createElement('label');
+    uvcIndexLabel.htmlFor = `uvc-index-input-${cameraName}`;
+    uvcIndexLabel.className = 'form-label form-label-sm';
+    uvcIndexLabel.textContent = 'UVC Index for PTZ:';
+    const uvcIndexInput = document.createElement('input');
+    uvcIndexInput.type = 'number';
+    uvcIndexInput.id = `uvc-index-input-${cameraName}`;
+    uvcIndexInput.className = 'form-control form-control-sm d-inline-block';
+    uvcIndexInput.style.width = '70px';
+    uvcIndexInput.min = '0';
+    // You might want to pre-fill this based on cameraName or a stored preference later
+    // For now, let's try to guess a default. This is a rough guess.
+    if (cameraName.endsWith('_1')) { // e.g., Camera_1
+      uvcIndexInput.value = '0';
+    } else if (cameraName.endsWith('_2')) { // e.g., Camera_2
+      uvcIndexInput.value = '1';
+    } else {
+      uvcIndexInput.value = '0'; // Default for others
+    }
+    uvcIndexGroup.appendChild(uvcIndexLabel);
+    uvcIndexGroup.appendChild(uvcIndexInput);
+    ptzContainer.appendChild(uvcIndexGroup);
+    // --- End UVC Index Input Field ---
+
     const controls = [
       { name: 'pan', min: -468000, max: 468000, step: 3600, unit: '°', scale: 3600 },
       { name: 'tilt', min: -324000, max: 324000, step: 3600, unit: '°', scale: 3600 },
@@ -838,22 +871,51 @@ export class CameraManager {
     const displaySpan = document.getElementById(valueSpanId);
     if (displaySpan) displaySpan.textContent = displayValue;
 
+    // Get the manually entered UVC Index
+    const uvcIndexInput = document.getElementById(`uvc-index-input-${cameraName}`);
+    const manualUvcIndex = uvcIndexInput ? parseInt(uvcIndexInput.value, 10) : null;
+
+    if (manualUvcIndex === null || isNaN(manualUvcIndex) || manualUvcIndex < 0) {
+      logToConsole(`Invalid or missing UVC Index for ${cameraName}. PTZ command not sent.`, 'error');
+      // Optionally, show an error in the UI next to the input
+      const statusElement = document.getElementById(`status-${cameraName}`); // Assuming you have a status area
+      if (statusElement) statusElement.textContent = 'Error: Invalid UVC Index for PTZ.';
+      return;
+    }
+
     clearTimeout(this.ptzUpdateTimeout);
-    this.ptzUpdateTimeout = setTimeout(() => this.updatePTZ(cameraName, control, rawValue), 150);
+    this.ptzUpdateTimeout = setTimeout(() => this.updatePTZ(cameraName, control, rawValue, manualUvcIndex), 150);
   }
 
-  async updatePTZ(cameraName, control, value) {
+  async updatePTZ(cameraName, control, value, manualUvcIndex) {
     const camera = this.cameras.find(c => c.name === cameraName);
-    if (!camera?.ptzDevice) return;
-    logToConsole(`Sending PTZ command: ${cameraName} ${control}=${value}`, "info");
+    // camera.ptzDevice is still relevant to know *if* a PTZ device is configured,
+    // but manualUvcIndex will override the uvc-util index choice.
+    if (!camera?.ptzDevice) {
+      logToConsole(`PTZ command not sent: No PTZ device configured for ${cameraName} in the dropdown.`, 'warn');
+      return;
+    }
+
+    if (manualUvcIndex === null || isNaN(manualUvcIndex) || manualUvcIndex < 0) {
+      logToConsole(`PTZ command not sent: Invalid manualUvcIndex (${manualUvcIndex}) for ${cameraName}.`, 'error');
+      return;
+    }
+
+    logToConsole(`Sending PTZ command: ${cameraName} ${control}=${value} using UVC Index: ${manualUvcIndex}`, "info");
     try {
       const response = await fetch("/camera/ptz", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cameraName, [control]: value })
+        body: JSON.stringify({ cameraName, [control]: value, uvcIndex: manualUvcIndex }) // Send manualUvcIndex
       });
-      if (!response.ok) logToConsole(`PTZ update failed: ${response.statusText}`, 'warn');
+      if (!response.ok) {
+        const errorText = await response.text();
+        logToConsole(`PTZ update failed for ${cameraName}: ${response.status} - ${errorText}`, 'warn');
+      } else {
+        const result = await response.json();
+        logToConsole(`PTZ update for ${cameraName} successful: ${result.message}`, 'info');
+      }
     } catch (err) {
-      logToConsole(`Error sending PTZ command: ${err.message}`, "error");
+      logToConsole(`Error sending PTZ command for ${cameraName}: ${err.message}`, "error");
     }
   }
 

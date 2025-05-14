@@ -273,146 +273,138 @@ class CameraControl {
         }));
     }
 
-    async setPTZ(cameraName, { pan = null, tilt = null, zoom = null }) {
+    // The options object will include { pan, tilt, zoom, uvcIndex (from frontend) }
+    async setPTZ(cameraName, { pan = null, tilt = null, zoom = null, uvcIndex: manualUvcIndex = null }) {
         const camera = this.getCamera(cameraName);
         if (!camera) {
-            console.log('No camera found with name:', cameraName);
-            return;
+            console.error(`[CameraControl SET_PTZ] Camera ${cameraName} not found`);
+            return { success: false, message: `Camera ${cameraName} not found` };
         }
 
-        const device = camera.getPTZDevice();
-        if (!device) {
-            console.log('No PTZ device configured for camera:', cameraName);
-            return;
+        // camera.ptzDevice is the device ID selected in the UI (e.g., '0', '1', '2', '3' from system_profiler)
+        // It's mainly used here to check IF a PTZ device is supposed to be active for this camera card.
+        const configuredPtzServerId = camera.ptzDevice;
+        if (configuredPtzServerId === null || configuredPtzServerId === undefined || configuredPtzServerId === "") {
+            console.warn(`[CameraControl SET_PTZ] No PTZ device selected in UI for camera ${cameraName}. Command not sent.`);
+            // Return success:false if we strictly require a PTZ device to be selected in the dropdown, 
+            // even if a manual uvcIndex is provided. For now, let's allow proceeding if manualUvcIndex is valid.
+            // return { success: false, message: `No PTZ device selected in UI for ${cameraName}` };
         }
 
-        console.log('Setting PTZ for device:', device);
+        let uvcIndexToUse; // This will be the final index for the uvc-util -I flag
 
-        try {
-            if (this.platform === 'linux') {
-                // Use more robust error handling for v4l2-ctl commands
-                const setPTZControl = async (control, value) => {
-                    try {
-                        return new Promise((resolve) => {
-                            const cmd = `v4l2-ctl --device ${device} --set-ctrl ${control}=${value}`;
-                            console.log(`Executing: ${cmd}`);
-                            exec(cmd, (error, stdout, stderr) => {
-                                if (error) {
-                                    console.error(`Error setting ${control}: `, error.message);
-                                }
-                                resolve(true);
-                            });
-                        });
-                    } catch (err) {
-                        console.error(`Error executing PTZ command for ${control}: `, err);
-                        return false;
-                    }
-                };
-
-                // Execute each control separately with error handling
-                if (pan !== null) {
-                    const panValue = pan === 0 ? 3600 : pan;
-                    await setPTZControl('pan_absolute', panValue);
-                }
-
-                if (tilt !== null) {
-                    const tiltValue = tilt === 0 ? 3600 : tilt;
-                    await setPTZControl('tilt_absolute', tiltValue);
-                }
-
-                if (zoom !== null) {
-                    await setPTZControl('zoom_absolute', zoom);
-                }
-            } else if (this.platform === 'darwin') {
-                // Use uvc-util for macOS
-
-                const executeUVCCommand = (command) => {
-                    console.log(`[macOS PTZ] Executing: ${command}`);
-                    return new Promise((resolve, reject) => {
-                        exec(command, (error, stdout, stderr) => {
-                            if (error) {
-                                console.error(`[macOS PTZ Error] Command failed: ${command}`, error);
-                                console.error(`[macOS PTZ Error] stderr: ${stderr}`);
-                                reject(error);
-                            } else {
-                                console.log(`[macOS PTZ Success] stdout: ${stdout}`);
-                                resolve(stdout);
-                            }
-                        });
-                    });
-                };
-
-                // VV NEW LOGIC TO DETERMINE THE CORRECT uvc-util DEVICE INDEX VV
-                let uvcDeviceIndexToUse;
-                const systemProfilerDeviceId = typeof device === 'string' ? parseInt(device, 10) : device; // Ensure it's a number
-
-                const allDetectedDevices = await this.detectVideoDevices(); // Always get fresh list
-                const selectedDeviceForPtz = allDetectedDevices.find(d => d.id === systemProfilerDeviceId);
-
-                if (selectedDeviceForPtz) {
-                    // uvcDeviceIndexToUse = 0; // Always use uvc-util index 0 for macOS PTZ operations
-                    uvcDeviceIndexToUse = systemProfilerDeviceId; // Use the ID from system_profiler directly
-                    console.log(`[macOS PTZ] User selected device '${selectedDeviceForPtz.name}' (System Profiler ID: ${systemProfilerDeviceId}).`);
-                    console.log(`[macOS PTZ] Attempting to use this ID directly as uvc-util device index: -I ${uvcDeviceIndexToUse}`);
-                    // The ACTUAL_PTZ_CAMERA_NAME_PATTERN check is less critical if names are identical or if uvc-util only sees one PTZ cam at index 0.
-                    // It can be retained for specific logging if desired, but the core logic is to use uvcDeviceIndexToUse = 0.
-                    // if (String(ACTUAL_PTZ_CAMERA_NAME_PATTERN) !== String(/PLEASE_UPDATE_THIS_PATTERN/i) && !ACTUAL_PTZ_CAMERA_NAME_PATTERN.test(selectedDeviceForPtz.name)) {
-                    //      console.warn(`[macOS PTZ] Note: The selected device '${selectedDeviceForPtz.name}' does not match the configured ACTUAL_PTZ_CAMERA_NAME_PATTERN. PTZ commands will still target uvc-util index 0.`);
-                    // }
-                } else {
-                    console.error(`[macOS PTZ Error] Could not find details for the UI-selected PTZ device (System Profiler ID: ${systemProfilerDeviceId}) in the list of currently detected video devices.`);
-                    console.error(`[macOS PTZ Error] This means no PTZ command will be sent.`);
-                    console.error(`[macOS PTZ Debug] System Profiler ID used for lookup: ${systemProfilerDeviceId} (type: ${typeof systemProfilerDeviceId})`);
-                    console.error(`[macOS PTZ Debug] List of devices detected by system_profiler at this moment:`, JSON.stringify(allDetectedDevices, null, 2));
-                    return; // Cannot proceed
-                }
-                // ^^ END OF NEW LOGIC ^^
-
-                const cameraInstance = this.getCamera(cameraName); // Get the specific camera instance
-
-                if (!cameraInstance) {
-                    console.error(`[macOS PTZ Error] Could not find camera instance for ${cameraName} to get/set cached state.`);
-                    return; // Cannot proceed without the instance
-                }
-
-                // Determine values to send, using cache as fallback
-                const currentPan = cameraInstance.getCurrentPan();
-                const currentTilt = cameraInstance.getCurrentTilt();
-
-                const panToSend = pan !== null ? pan : currentPan;
-                const tiltToSend = tilt !== null ? tilt : currentTilt;
-
-                // Pan/Tilt command - always send both components
-                if (pan !== null || tilt !== null) { // Only send if at least one changed
-                    // Use -s and add quotes around the value, matching user's working CLI command
-                    const cmd = `${this.uvcUtilPath} -I ${uvcDeviceIndexToUse} -s pan-tilt-abs="{${panToSend},${tiltToSend}}"`;
-                    try {
-                        await executeUVCCommand(cmd);
-                        // Update cache on success
-                        if (pan !== null) cameraInstance.setCurrentPan(panToSend);
-                        if (tilt !== null) cameraInstance.setCurrentTilt(tiltToSend);
-                    } catch (ptError) {
-                        console.error(`[macOS PTZ Error] Failed to set pan/tilt. Error: ${ptError.message}`);
-                        // Avoid updating cache if command failed
-                    }
-                }
-
-                // Separate Zoom command (assuming control name 'zoom-abs')
-                if (zoom !== null) {
-                    // Also use -s and add quotes for zoom value
-                    const cmd = `${this.uvcUtilPath} -I ${uvcDeviceIndexToUse} -s zoom-abs="${zoom}"`; // Guessed control name
-                    try {
-                        await executeUVCCommand(cmd);
-                        // Note: Zoom caching not implemented yet
-                    } catch (zoomError) {
-                        console.error(`[macOS PTZ Error] Failed to set zoom. Error: ${zoomError.message}`);
-                    }
-                }
-
+        if (this.platform === 'darwin') {
+            if (manualUvcIndex !== null && !isNaN(manualUvcIndex) && manualUvcIndex >= 0) {
+                uvcIndexToUse = parseInt(manualUvcIndex, 10);
+                console.log(`[CameraControl SET_PTZ] Using manually provided UVC Index: ${uvcIndexToUse} for camera ${cameraName} on macOS.`);
+            } else {
+                console.error(`[CameraControl SET_PTZ] Manual UVC Index from frontend is invalid or not provided for ${cameraName} on macOS. Expected a non-negative number. Received: '${manualUvcIndex}'. PTZ command aborted.`);
+                return { success: false, message: `A valid UVC Index (0 or 1) must be manually entered for PTZ operations on macOS.` };
             }
-        } catch (err) {
-            console.error('Error setting PTZ:', err);
+        } else { // For other platforms like Linux
+            if (manualUvcIndex !== null && !isNaN(manualUvcIndex) && manualUvcIndex >= 0) {
+                uvcIndexToUse = parseInt(manualUvcIndex, 10);
+                console.log(`[CameraControl SET_PTZ] Using manually provided UVC Index: ${uvcIndexToUse} for camera ${cameraName} on ${this.platform}.`);
+            } else {
+                // Fallback to configuredPtzServerId if manual index isn't provided/valid for non-macOS
+                // This might be a path like /dev/video0 for Linux.
+                if (configuredPtzServerId === null || configuredPtzServerId === undefined || configuredPtzServerId === "") {
+                    console.error(`[CameraControl SET_PTZ] No PTZ device selected in UI and no manual UVC index for ${cameraName} on ${this.platform}. PTZ command aborted.`);
+                    return { success: false, message: `No PTZ device selected in UI and no manual UVC index for ${cameraName}` };
+                }
+                uvcIndexToUse = configuredPtzServerId;
+                console.log(`[CameraControl SET_PTZ] Using configured server PTZ ID '${uvcIndexToUse}' as UVC identifier for ${cameraName} on ${this.platform} (manual index not provided/invalid).`);
+            }
         }
+
+        // If, after all logic, uvcIndexToUse is still not a valid number for macOS (where we expect 0 or 1)
+        // or is undefined for other platforms, we should not proceed.
+        if (uvcIndexToUse === undefined || (this.platform === 'darwin' && (isNaN(parseInt(uvcIndexToUse, 10)) || parseInt(uvcIndexToUse, 10) < 0))) {
+            console.error(`[CameraControl SET_PTZ] Derived uvcIndexToUse '${uvcIndexToUse}' is invalid. PTZ command aborted for ${cameraName}.`);
+            return { success: false, message: `Derived UVC index '${uvcIndexToUse}' is invalid.` };
+        }
+
+        let command = "";
+        let operation = "";
+        let valueStr = "";
+
+        const uvcPath = this.uvcUtilPath; // Corrected to use this.uvcUtilPath
+
+        const setPTZControl = async (control, val) => {
+            let controlArg = "";
+            let valueArg = "";
+
+            switch (control) {
+                case 'pan':
+                case 'tilt':
+                    controlArg = 'pan-tilt-abs';
+                    // Pan and tilt are often sent together, ensure we get current values if one is missing
+                    const currentPan = camera.currentPan !== undefined ? camera.currentPan : 0;
+                    const currentTilt = camera.currentTilt !== undefined ? camera.currentTilt : 0;
+                    const targetPan = pan !== null ? pan : currentPan;
+                    const targetTilt = tilt !== null ? tilt : currentTilt;
+                    valueArg = `"{${targetPan},${targetTilt}}"`; // Note: escaped quotes for exec
+                    operation = `pan/tilt to ${targetPan},${targetTilt}`;
+                    break;
+                case 'zoom':
+                    controlArg = 'zoom-abs';
+                    valueArg = String(val);
+                    operation = `zoom to ${val}`;
+                    break;
+                default:
+                    console.error(`[CameraControl SET_PTZ] Unknown PTZ control: ${control}`);
+                    return { success: false, message: `Unknown PTZ control: ${control}` };
+            }
+
+            // Use the mapped uvcIndex here
+            command = `${uvcPath} -I ${uvcIndexToUse} -s ${controlArg}=${valueArg}`;
+            console.log(`[CameraControl SET_PTZ] Executing for ${cameraName} (uvcIndex ${uvcIndexToUse}): ${command}`);
+
+            try {
+                const { stdout, stderr } = await this.executeUVCCommand(command); // Changed from global executeUVCCommand
+                if (stderr) {
+                    // uvc-util often prints status to stderr on success, so only treat as error if stdout is empty
+                    // or if stderr contains specific error keywords.
+                    if (stdout || !/error/i.test(stderr)) {
+                        console.log(`[CameraControl SET_PTZ] uvc-util stderr for ${cameraName}: ${stderr}`);
+                    } else {
+                        console.error(`[CameraControl SET_PTZ Error] uvc-util stderr for ${cameraName}: ${stderr}`);
+                        return { success: false, message: `PTZ command failed: ${stderr}` };
+                    }
+                }
+                console.log(`[CameraControl SET_PTZ] ${cameraName} ${operation} successful. stdout: ${stdout || '(empty)'}`);
+                // Update camera state
+                if (pan !== null) camera.currentPan = pan;
+                if (tilt !== null) camera.currentTilt = tilt;
+                if (zoom !== null) camera.currentZoom = zoom; // Assuming you have currentZoom
+
+                return { success: true, message: `${operation} successful` };
+            } catch (error) {
+                console.error(`[CameraControl SET_PTZ Error] Failed to set ${operation} for ${cameraName} (uvcIndex ${uvcIndexToUse}). Error: ${error.message}`);
+                return { success: false, message: `Failed to set ${operation}: ${error.message}` };
+            }
+        };
+
+        // Call setPTZControl only for the relevant operation
+        if (pan !== null) {
+            const result = await setPTZControl('pan', pan);
+            if (!result.success) return result;
+        }
+        // If only tilt changed, the 'tilt' case in setPTZControl correctly uses currentPan.
+        // If both pan and tilt changed, 'pan' case handles pan-tilt-abs, 
+        // then 'tilt' case also calls pan-tilt-abs. This is slightly redundant but often harmless.
+        // A more optimized way would be to detect if pan OR tilt changed, then make one pan-tilt-abs call.
+        // For now, this simpler conditional logic for each control is fine.
+        if (tilt !== null) {
+            const result = await setPTZControl('tilt', tilt);
+            if (!result.success) return result;
+        }
+        if (zoom !== null) {
+            const result = await setPTZControl('zoom', zoom);
+            if (!result.success) return result;
+        }
+
+        return { success: true, message: 'PTZ operations processed' };
     }
 
     setPreviewDevice(cameraName, deviceId) {
@@ -477,47 +469,69 @@ class CameraControl {
             console.error(`[CameraControl] resetPTZHome: Camera ${cameraName} not found.`);
             throw new Error(`Camera ${cameraName} not found for PTZ reset.`);
         }
-        const ptzDeviceID = camera.getPTZDevice(); // This gets the LATEST device ID
+        const configuredPtzServerId = camera.getPTZDevice(); // This is system_profiler ID like '0', '2', '3'
 
-        if (ptzDeviceID === null || ptzDeviceID === undefined || ptzDeviceID === "") {
+        if (configuredPtzServerId === null || configuredPtzServerId === undefined || configuredPtzServerId === "") {
             console.log(`[CameraControl] resetPTZHome: No PTZ device configured for ${cameraName}. Skipping reset.`);
-            return; // Don't throw, just skip if no PTZ device
+            return;
         }
 
-        console.log(`[CameraControl] Resetting PTZ to home for ${cameraName} using device ID '${ptzDeviceID}'`);
+        let uvcIndexToUseForReset = -1;
 
-        // Assuming setPTZ correctly uses the device ID from camera.getPTZDevice() implicitly
-        // or we pass ptzDeviceID to a lower-level command execution function.
-        // For uvc-util, typically "home" means setting pan and tilt to 0.
-        // Some cameras might have specific "reset" commands.
+        if (this.platform === 'darwin') {
+            if (configuredPtzServerId === '0') { // system_profiler ID '0' (first OBSBOT)
+                uvcIndexToUseForReset = 0; // Maps to uvc-util index 0
+            } else if (configuredPtzServerId === '3') { // system_profiler ID '3' (second OBSBOT)
+                uvcIndexToUseForReset = 1; // Maps to uvc-util index 1
+            } else {
+                console.warn(`[CameraControl] resetPTZHome: Configured PTZ ID '${configuredPtzServerId}' for ${cameraName} is not a recognized OBSBOT for direct uvc-util reset. Reset command will not be sent.`);
+                return; // Do not attempt reset for non-mapped devices
+            }
+            console.log(`[CameraControl] resetPTZHome: Mapped system_profiler ID '${configuredPtzServerId}' to uvc-util index '${uvcIndexToUseForReset}' for reset.`);
+        } else {
+            // For non-macOS, assume configuredPtzServerId (e.g. /dev/video0) can be used directly or adapt as needed.
+            uvcIndexToUseForReset = configuredPtzServerId;
+            console.log(`[CameraControl] resetPTZHome: Using PTZ device ID '${uvcIndexToUseForReset}' directly for reset on ${this.platform}.`);
+        }
 
-        const executeUVCReset = async (control) => {
+        if (uvcIndexToUseForReset === -1 && this.platform === 'darwin') { // Should be caught by the else block above for darwin
+            console.error(`[CameraControl] resetPTZHome: Internal error, uvcIndexToUseForReset not set for darwin platform with ID ${configuredPtzServerId}`);
+            return;
+        }
+
+        console.log(`[CameraControl] Resetting PTZ to home for ${cameraName} using uvc-util index/path '${uvcIndexToUseForReset}'`);
+
+        const executeUVCResetLocal = async (control) => {
             let command;
             if (this.platform === 'darwin') {
-                // For macOS, uvc-util expects an index for --select if that's how devices are identified.
-                // The ptzDeviceID stored should be this index.
-                // Ensure ptzDeviceID is the correct identifier for uvc-util's --select on macOS.
-                command = `sudo ${this.uvcUtilPath} --select='${ptzDeviceID}' --set=${control}_reset=1`;
+                // For macOS, uvc-util -I <index> is used.
+                command = `${this.uvcUtilPath} -I ${uvcIndexToUseForReset} --set=${control}_reset=1`;
             } else if (this.platform === 'linux') {
-                // For Linux, ptzDeviceID is likely /dev/videoX
-                command = `${this.uvcUtilPath} -d '${ptzDeviceID}' --set-ctrl=${control}_reset=1`; // Example, syntax varies
+                // For Linux, ptzDeviceID is likely /dev/videoX, use -d
+                command = `${this.uvcUtilPath} -d '${uvcIndexToUseForReset}' --set-ctrl=${control}_reset=1`; // Example, syntax varies
             } else {
                 console.warn(`[CameraControl] resetPTZHome: PTZ reset not implemented for platform ${this.platform}`);
                 return;
             }
             try {
                 console.log(`[CameraControl] Executing PTZ reset for ${control}: ${command}`);
-                await this.executeUVCCommand(command); // Assuming executeUVCCommand handles exec promise
+                // Use the class method executeUVCCommand which returns {stdout, stderr, error}
+                const { stdout, stderr, error: execError } = await this.executeUVCCommand(command);
+                if (execError || (stderr && /error/i.test(stderr) && !stdout)) { // Check for exec error or significant stderr error
+                    console.error(`[CameraControl] Failed to reset ${control} for ${cameraName} (device ${uvcIndexToUseForReset}): ${execError ? execError.message : stderr}`);
+                } else {
+                    console.log(`[CameraControl] Reset for ${control} for ${cameraName} (device ${uvcIndexToUseForReset}) presumably successful. stdout: ${stdout}, stderr: ${stderr}`);
+                }
             } catch (error) {
-                console.error(`[CameraControl] Failed to reset ${control} for ${cameraName} (device ${ptzDeviceID}):`, error);
-                // Potentially throw or handle error
+                // This catch might be redundant if executeUVCCommand itself doesn't throw but resolves with an error object
+                console.error(`[CameraControl] Exception during reset of ${control} for ${cameraName} (device ${uvcIndexToUseForReset}):`, error);
             }
         };
 
-        await executeUVCReset('pan');
-        await executeUVCReset('tilt');
+        await executeUVCResetLocal('pan');
+        await executeUVCResetLocal('tilt');
         // Zoom reset is often to its widest setting, not necessarily '0'.
-        // await executeUVCReset('zoom'); // Add if applicable and uvc-util supports zoom_reset
+        // await executeUVCResetLocal('zoom'); // Add if applicable and uvc-util supports zoom_reset
 
         camera.setCurrentPan(0); // Update cached pan/tilt after reset
         camera.setCurrentTilt(0);
@@ -556,7 +570,19 @@ class CameraControl {
 
     // Ensure executeUVCCommand is robust
     executeUVCCommand(command) {
-        // Implementation of executeUVCCommand method
+        return new Promise((resolve, reject) => {
+            exec(command, (error, stdout, stderr) => {
+                if (error) {
+                    // Don't automatically reject on error, as uvc-util might put useful info in stderr
+                    // The caller (setPTZ) will inspect stderr.
+                    // However, we should still pass the error object itself if it exists.
+                    console.error(`[executeUVCCommand Error] Command: ${command}\nError: ${error.message}`);
+                    resolve({ stdout: stdout || '', stderr: stderr || '', error: error }); // Resolve with error too
+                    return;
+                }
+                resolve({ stdout: stdout || '', stderr: stderr || '' });
+            });
+        });
     }
 }
 

@@ -188,18 +188,29 @@ router.post('/ptz-device', (req, res) => {
 });
 
 // Set PTZ for a specific camera
-router.post('/ptz', (req, res) => {
-    const { cameraName, pan, tilt, zoom } = req.body;
+router.post('/ptz', async (req, res) => {
+    // Destructure all expected properties, including uvcIndex
+    const { cameraName, pan, tilt, zoom, uvcIndex } = req.body;
     if (!cameraName) {
         return res.status(400).json({ success: false, message: 'Camera name is required' });
     }
 
+    // Log the received body for debugging, especially uvcIndex
+    console.log(`[Route /camera/ptz] Received body for ${cameraName}:`, req.body);
+
     try {
-        cameraControl.setPTZ(cameraName, { pan, tilt, zoom });
-        res.json({ success: true, message: 'PTZ command sent' });
+        const cameraControl = CameraControl.getInstance(); // Ensure we have the instance
+        // Pass uvcIndex explicitly to the setPTZ method
+        const result = await cameraControl.setPTZ(cameraName, { pan, tilt, zoom, uvcIndex });
+
+        if (result.success) {
+            res.json({ success: true, message: result.message || 'PTZ command processed' });
+        } else {
+            res.status(400).json({ success: false, message: result.message || 'PTZ command failed' });
+        }
     } catch (err) {
-        console.error('PTZ error:', err);
-        res.status(500).json({ success: false, message: err.message });
+        console.error(`[Route /camera/ptz] Error for ${cameraName}:`, err);
+        res.status(500).json({ success: false, message: err.message || 'Internal server error during PTZ operation' });
     }
 });
 
