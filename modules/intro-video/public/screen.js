@@ -14,10 +14,11 @@ const faceCanvas = document.getElementById('faceCanvas');
 const faceApiModelsPath = '/weights';
 let faceDetectionInterval;
 let showFaceIntervals = [
-    { start: 1, end: 5 },
-    { start: 10, end: 15 }, // 1:25 to 1:30
-    { start: 128, end: 142 } // 2:08 to 2:22
+    { start: 3845, end: 6018 },   // 01:04:05 - 01:40:18
+    { start: 9319, end: 10722 },  // 02:35:19 - 02:55:22
+    { start: 14348, end: 15007 }  // 03:59:08 - 04:10:07
 ];
+
 let currentFaceInterval = null;
 let isControlPanelWebcamReady = false; // Flag to track if control panel webcam is ready
 let latestFrameDataUrl = null; // Store the latest frame data URL
