@@ -1,0 +1,66 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    overflow: hidden;
+}
+
+#character-name-header {
+    color: yellow;
+    text-align: center;
+    padding: 20px;
+    font-size: 36px;
+    /* Increased font size */
+    font-family: sans-serif;
+    position: fixed;
+    /* Keep it at the top */
+    top: 0;
+    left: 0;
+    width: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    /* Optional: slight background for readability */
+    z-index: 10;
+    /* Ensure it's above other content if necessary */
+    transition: font-size 0.3s ease, padding 0.3s ease;
+    /* Smooth transition */
+}
+
+#character-name-header.character-name-header-minimized {
+    font-size: 14px;
+    padding: 2px;
+}
+
+#video-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+}
+
+#video-container video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.status-message-active {
+    color: white;
+    text-align: center;
+    padding-top: 116px;
+    /* 76px for header + 40px original top padding */
+    padding-left: 20px;
+    padding-right: 20px;
+    padding-bottom: 40px;
+    /* Keep original bottom padding */
+    font-size: 32px;
+    /* Increased font size */
+    font-family: sans-serif;
+    display: block;
+    /* Ensure it's visible when class is applied */
+}

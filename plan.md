@@ -135,6 +135,8 @@ The application is built with **Node.js**, acting as the core event controller:
 │           └── audio-manager.js        # Handles audio device selection, gain, and channel UI controls
 │           └── ui-initializer.js       # Initializes UI components (collapsibles, fullscreen, secret panel)
 │           └── scene-assembly.js       # Handles scene assembly UI and logic
+│   └── /css            # CSS Stylesheets for public assets
+│       └── character-teleprompter.css # Styles for the character teleprompter page
 ├── /recordings         # Stored video and audio files per session
 │   └── /<session_id>   # Directory for each session (e.g., 20231027_103000)
 │       └── /<camera_name> # Directory for each camera's recordings
@@ -161,7 +163,7 @@ The application is built with **Node.js**, acting as the core event controller:
 ├── /views              # Server-side templates and view logic
 │   ├── homeView.js       # Logic for the main/home view, fetches session data
 │   ├── teleprompterView.js # Logic for the teleprompter view
-│   ├── /styles         # CSS Stylesheets
+│   ├── /styles         # CSS Stylesheets (Note: character-teleprompter.css is in /public/css)
 │   │   └── home.css      # Styles for home.ejs
 │   └── /templates      # HTML/EJS templates
 │       └── home.ejs      # Main control panel UI (includes TFJS CDN scripts, session UI)

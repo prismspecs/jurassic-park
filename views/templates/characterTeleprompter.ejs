@@ -5,47 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Character Teleprompter</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background: #000;
-      overflow: hidden;
-    }
-
-    #character-name-header {
-      color: yellow;
-      text-align: center;
-      padding: 20px;
-      font-size: 36px;
-      /* Increased font size */
-      font-family: sans-serif;
-      position: fixed;
-      /* Keep it at the top */
-      top: 0;
-      left: 0;
-      width: 100%;
-      background-color: rgba(0, 0, 0, 0.5);
-      /* Optional: slight background for readability */
-      z-index: 10;
-      /* Ensure it's above other content if necessary */
-    }
-
-    #video-container {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: #000;
-    }
-
-    #video-container video {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }
-  </style>
+  <link rel="stylesheet" href="/css/character-teleprompter.css">
 </head>
 
 <body>
@@ -56,11 +16,13 @@
 
   <script>
     const videoElement = document.getElementById("character-video");
+    const characterNameHeader = document.getElementById("character-name-header"); // Get reference to header
     const characterName = window.location.pathname.split("/").pop();
-    document.getElementById("character-name-header").textContent = characterName.charAt(0).toUpperCase() + characterName.slice(1); // Capitalize first letter
+    characterNameHeader.textContent = characterName.charAt(0).toUpperCase() + characterName.slice(1); // Capitalize first letter
 
     // Function to display the waiting message
     function showWaitingMessage() {
+      characterNameHeader.classList.remove('character-name-header-minimized'); // Restore header style
       // Ensure video container exists (should from initial HTML)
       const videoContainer = document.getElementById("video-container");
       if (!videoContainer) {
@@ -74,23 +36,17 @@
       if (!statusDiv) {
         statusDiv = document.createElement("div");
         statusDiv.id = "status-message";
-        statusDiv.style.color = "white";
-        statusDiv.style.textAlign = "center";
-        statusDiv.style.paddingTop = "116px"; // 76px for header + 40px original top padding
-        statusDiv.style.paddingLeft = "20px";
-        statusDiv.style.paddingRight = "20px";
-        statusDiv.style.paddingBottom = "40px"; // Keep original bottom padding
-        statusDiv.style.fontSize = "32px"; /* Increased font size */
-        statusDiv.style.fontFamily = "sans-serif";
         // Append to body, *not* replacing content
         document.body.appendChild(statusDiv);
       }
+      statusDiv.className = 'status-message-active';
       statusDiv.textContent = "Wait for scene to begin";
-      statusDiv.style.display = "block"; // Ensure status is visible
+      // statusDiv.style.display = "block"; // Ensured by the class .status-message-active
     }
 
     // Function to set up and play the video
     function setupAndPlayVideo(sceneDir, shotIdentifier) {
+      characterNameHeader.classList.add('character-name-header-minimized'); // Minimize header style
       // Ensure video container exists
       const videoContainer = document.getElementById("video-container");
       if (!videoContainer) {
