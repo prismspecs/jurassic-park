@@ -1180,3 +1180,11 @@ body.color-scheme-inverted #console-output-display .log-entry.log-debug {
   /* Consider adding a min-width if 100% of a very narrow column is too small */
   /* min-width: 180px; */
 }
+
+/* Add this at the end of the file, or in a relevant section for card styling */
+.shot-card.active {
+  background-color: #e0e0e0;
+  /* A light grey, adjust as needed */
+  border: 2px solid #007bff;
+  /* A blue border, adjust as needed */
+}

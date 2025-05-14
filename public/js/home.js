@@ -276,6 +276,11 @@ document.addEventListener('DOMContentLoaded', () => {
     shotContainer.addEventListener('click', async (event) => {
       const shotCard = event.target.closest('.shot-card');
       if (shotCard && shotCard.dataset.sceneDir && shotCard.dataset.shotId) {
+        // Remove 'active' class from all other shot cards
+        const allShotCards = shotContainer.querySelectorAll('.shot-card');
+        allShotCards.forEach(card => card.classList.remove('active'));
+        // Add 'active' class to the clicked card
+        shotCard.classList.add('active');
         initShot(shotCard.dataset.sceneDir, shotCard.dataset.shotId);
       }
     });
