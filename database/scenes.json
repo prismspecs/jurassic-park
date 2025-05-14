@@ -172,7 +172,7 @@
                         "full-name": "Donald the Lawyer",
                         "props": "donald"
                     },
-                    "driver": {
+                    "driver 1 and 2": {
                         "full-name": "driver",
                         "props": "driver"
                     }
@@ -183,7 +183,7 @@
                 "type": "dinosaur",
                 "dinosaur": "longneck-2",
                 "number": 1,
-                "duration": "0:15",
+                "duration": "0:25",
                 "description": "Dinosaur from the first shot",
                 "setup": "Setup for dinosaur...",
                 "cameras": [
@@ -202,11 +202,11 @@
                 }
             },
             {
-                "name": "humpback",
+                "name": "Ankylosaurus",
                 "type": "dinosaur",
                 "dinosaur": "humpback-1",
                 "number": 1,
-                "duration": "0:15",
+                "duration": "0:25",
                 "description": "Hadrosaur for the background",
                 "setup": "Setup for dinosaur...",
                 "cameras": [
