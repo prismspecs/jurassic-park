@@ -157,6 +157,19 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('addCameraBtn')?.addEventListener('click', () => cameraManager?.addCamera());
   document.getElementById('addAudioDeviceBtn')?.addEventListener('click', () => audioManager?.addDeviceCard());
 
+  document.getElementById('playThemeBtn')?.addEventListener('click', () => {
+    const audio = new Audio('/jurassic_theme.mp3');
+    audio.play()
+      .then(() => {
+        logToConsole('Jurassic Park theme started playing.', 'info');
+      })
+      .catch(error => {
+        logToConsole(`Error playing Jurassic Park theme: ${error}`, 'error');
+        // Optionally, inform the user via an alert or a status message on the UI
+        alert('Could not play the theme music. Check the console for errors.');
+      });
+  });
+
   // Test Dinosaur Mask Button
   const testDinoMaskBtn = document.getElementById('test-dinosaur-mask-btn');
   let currentTestDinoVideoElement = null; // Keep a reference if we create it
