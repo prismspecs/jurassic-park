@@ -14,9 +14,9 @@ const faceCanvas = document.getElementById('faceCanvas');
 const faceApiModelsPath = '/weights';
 let faceDetectionInterval;
 let showFaceIntervals = [
-    { start: 3845, end: 6018 },   // 01:04:05 - 01:40:18
-    { start: 9319, end: 10722 },  // 02:35:19 - 02:55:22
-    { start: 14348, end: 15007 }  // 03:59:08 - 04:10:07
+    { start: 64, end: 100 },   // 01:04 - 01:40
+    { start: 155, end: 175 },  // 02:35 - 02:55
+    { start: 239, end: 250 }   // 03:59 - 04:10
 ];
 
 let currentFaceInterval = null;
@@ -188,6 +188,7 @@ function updateFaceDisplay() {
 
     // Only draw if we have a face box and frame data
     if (currentFaceBox && latestFrameDataUrl) {
+        console.log('[DEBUG] Drawing face overlay at', new Date().toISOString(), 'Box:', currentFaceBox);
         const img = new Image();
         img.onload = () => {
             // ... existing drawing logic ...
@@ -264,6 +265,9 @@ function updateFaceDisplay() {
         // Set the source to the latest frame
         img.src = latestFrameDataUrl;
     } else {
+        if (!currentFaceBox) {
+            console.log('[DEBUG] No face detected at', new Date().toISOString());
+        }
         // If no face box, clear the canvas (optional, but good practice)
         const faceCtx = faceCanvas.getContext('2d');
         faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
