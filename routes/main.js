@@ -770,7 +770,8 @@ router.get('/api/app-config', (req, res) => {
         // Extract only the necessary configuration for the client
         const clientConfig = {
             videoFormat: config.videoFormat || 'mp4', // Provide default if not set
-            videoBackground: config.videoBackground || [255, 0, 255, 255] // Default magenta
+            videoBackground: config.videoBackground || [255, 0, 255, 255], // Default magenta
+            videoBitsPerSecond: config.videoBitsPerSecond
         };
         res.json(clientConfig);
     } catch (error) {

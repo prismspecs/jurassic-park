@@ -8,6 +8,7 @@
     "videoOriginal": "original.mp4",
     "videoOverlay": "overlay.mp4",
     "videoFormat": "mp4",
+    "videoBitsPerSecond": 8388608,
     "videoBackground": [
         255,
         0,

@@ -60,8 +60,17 @@ export async function initializeCanvasRecorder(mainOutputCanvasElement, mainReco
                     logToConsole('No supported MIME type found for MediaRecorder.', 'error');
                     return;
                 }
+                logToConsole(`Selected MIME type for MediaRecorder: ${selectedMimeType}`, 'info');
+
+                // Attempt to get videoBitsPerSecond from config, default to 5 Mbps
+                const targetVideoBitsPerSecond = appConfig.videoBitsPerSecond || 5 * 1024 * 1024;
+                logToConsole(`Using videoBitsPerSecond: ${targetVideoBitsPerSecond / (1024 * 1024)} Mbps`, 'info');
+
                 try {
-                    mainMediaRecorder = new MediaRecorder(stream, { mimeType: selectedMimeType });
+                    mainMediaRecorder = new MediaRecorder(stream, {
+                        mimeType: selectedMimeType,
+                        videoBitsPerSecond: targetVideoBitsPerSecond
+                    });
                 } catch (e) {
                     alert(`Error starting recorder: ${e.message}`);
                     logToConsole(`MediaRecorder instantiation error: ${e.message}`, 'error', e);

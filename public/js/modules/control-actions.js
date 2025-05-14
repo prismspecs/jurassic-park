@@ -458,6 +458,14 @@ export async function action(cameraManager) {
         const options = { mimeType: MimeType };
         if (MimeType === '') delete options.mimeType;
 
+        // Add videoBitsPerSecond from appConfig if available
+        if (appConfig.videoBitsPerSecond) {
+          options.videoBitsPerSecond = appConfig.videoBitsPerSecond;
+          logToConsole(`Applying videoBitsPerSecond: ${appConfig.videoBitsPerSecond / (1024 * 1024)} Mbps to MediaRecorder for ${cameraName}`, 'info');
+        } else {
+          logToConsole(`videoBitsPerSecond not found in appConfig for ${cameraName}. MediaRecorder will use browser default.`, 'warn');
+        }
+
         const recorder = new MediaRecorder(stream, options);
 
         recorder.ondataavailable = (event) => {
