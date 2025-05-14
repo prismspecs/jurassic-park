@@ -204,6 +204,15 @@ export function initShot(sceneDirectory, shotIdentifier) {
   recordedCanvasBlobs = {};
   currentShotDurationSec = 0;
 
+  // Hide buttons initially on new shot selection
+  const draftActorsBtn = document.getElementById("draftActorsBtn");
+  const actorsReadyBtn = document.getElementById("actorsReadyBtn");
+  const actionBtn = document.getElementById("actionBtn");
+
+  if (draftActorsBtn) draftActorsBtn.style.display = "none";
+  if (actorsReadyBtn) actorsReadyBtn.style.display = "none";
+  if (actionBtn) actionBtn.style.display = "none";
+
   const apiUrl = `/initShot/${sceneDirectory}/${shotIdentifier}`;
 
   fetch(apiUrl)
@@ -213,15 +222,28 @@ export function initShot(sceneDirectory, shotIdentifier) {
       logToConsole(`Shot init request sent for Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}'.`, 'success');
       if (info.sceneData && info.sceneData.scene && info.sceneData.shot) {
         currentShotData = info.sceneData; // Store the whole sceneData object
+        currentShotData.encodedSceneDir = sceneDirectory; // Store encoded version
+        currentShotData.encodedShotId = shotIdentifier;   // Store encoded version
+
         logToConsole(`Stored currentShotData for Scene: '${currentShotData.scene.directory}', Shot: '${currentShotData.shot.name || shotIdDecoded}'. Cameras: ${currentShotData.shot.cameras ? currentShotData.shot.cameras.length : 0}`, 'info', currentShotData);
         const sceneDisplayName = currentShotData.scene.description || currentShotData.scene.directory || sceneDirDecoded;
         updateAssemblyUI(currentShotData, sceneDisplayName); // Pass the whole currentShotData
         updateDinosaurModeIndicator(currentShotData.shot);
+
+        // Show Draft Actors button, hide others
+        if (draftActorsBtn) draftActorsBtn.style.display = "inline-block";
+        if (actorsReadyBtn) actorsReadyBtn.style.display = "none";
+        if (actionBtn) actionBtn.style.display = "none";
+
       } else {
         updateAssemblyUI(null, sceneDirDecoded);
         logToConsole('No complete sceneData (with scene and shot) in initShot response to store.', 'warn');
         currentShotData = null; // Ensure it's null if data is incomplete
         updateDinosaurModeIndicator(null);
+        // Ensure all related buttons are hidden if shot init is not fully successful
+        if (draftActorsBtn) draftActorsBtn.style.display = "none";
+        if (actorsReadyBtn) actorsReadyBtn.style.display = "none";
+        if (actionBtn) actionBtn.style.display = "none";
       }
     })
     .catch(err => {
@@ -230,6 +252,10 @@ export function initShot(sceneDirectory, shotIdentifier) {
       logToConsole(`Error initializing Scene '${sceneDirDecoded}', Shot '${shotIdDecoded}': ${err}`, 'error');
       currentShotData = null; // Clear on error
       updateDinosaurModeIndicator(null);
+      // Ensure all related buttons are hidden on error
+      if (draftActorsBtn) draftActorsBtn.style.display = "none";
+      if (actorsReadyBtn) actorsReadyBtn.style.display = "none";
+      if (actionBtn) actionBtn.style.display = "none";
     });
 }
 
@@ -643,4 +669,43 @@ export function handleResolutionChange(resolution) {
     .catch(error => {
       logToConsole(`Error updating server resolution setting: ${error.message}`, 'error');
     });
+}
+
+export async function draftActorsAction() {
+  if (!currentShotData || !currentShotData.encodedSceneDir || !currentShotData.encodedShotId) {
+    logToConsole('Cannot draft actors: No current shot data or missing encoded scene/shot IDs.', 'error');
+    document.getElementById("status").innerText = "Error: No shot selected or shot data incomplete for drafting actors.";
+    return;
+  }
+
+  const encodedSceneDir = currentShotData.encodedSceneDir;
+  const encodedShotId = currentShotData.encodedShotId;
+
+  const apiUrl = `/api/shot/${encodedSceneDir}/${encodedShotId}/draft-actors`;
+  const statusElement = document.getElementById("status");
+  const draftButton = document.getElementById("draftActorsBtn");
+
+  statusElement.innerText = `Drafting actors for shot: ${decodeURIComponent(encodedShotId)}...`;
+  logToConsole(`Requesting actor draft for scene '${decodeURIComponent(encodedSceneDir)}', shot '${decodeURIComponent(encodedShotId)}'`, 'info');
+
+  try {
+    const response = await fetch(apiUrl, { method: "POST" });
+    const result = await response.json(); // Expecting JSON response, even for errors from API
+
+    if (!response.ok) {
+      // Throw an error with the message from the server's JSON response if possible
+      throw new Error(result.message || result.error || `HTTP error ${response.status}`);
+    }
+
+    statusElement.innerText = result.message || "Actors drafting process initiated.";
+    logToConsole(`Draft actors request successful for shot '${decodeURIComponent(encodedShotId)}'. Server: ${result.message}`, 'success');
+    if (draftButton) draftButton.style.display = "none"; // Hide button on success
+
+  } catch (err) {
+    console.error("Draft Actors Error:", err);
+    statusElement.innerText = "Error drafting actors: " + (err.message || err);
+    logToConsole(`Error drafting actors for shot '${decodeURIComponent(encodedShotId)}': ${err.message || err}`, 'error');
+    // Optionally, re-show the draft button or handle error state differently
+    // if (draftButton) draftButton.style.display = "inline-block"; // Example: re-show on failure
+  }
 } 

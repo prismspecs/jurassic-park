@@ -26,7 +26,8 @@ import {
   handlePipelineChange,
   handleResolutionChange,
   currentDinosaurName,
-  setMainCompositor
+  setMainCompositor,
+  draftActorsAction
 } from './modules/control-actions.js';
 import { AudioManager } from './modules/audio-manager.js';
 import { VideoCompositor } from './modules/video-compositor.js';
@@ -147,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('clearTeleprompterBtn')?.addEventListener('click', clearTeleprompter);
   document.getElementById('actionBtn')?.addEventListener('click', () => action(cameraManager));
   document.getElementById('actorsReadyBtn')?.addEventListener('click', actorsReady);
+  document.getElementById('draftActorsBtn')?.addEventListener('click', draftActorsAction);
   document.getElementById('recording-pipeline')?.addEventListener('change', (e) => handlePipelineChange(e.target.value));
   document.getElementById('recording-resolution')?.addEventListener('change', (e) => {
     handleResolutionChange(e.target.value);

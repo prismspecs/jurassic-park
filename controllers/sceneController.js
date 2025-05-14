@@ -39,27 +39,14 @@ function getCurrentScene() {
 async function initShot(sceneDirectory, shotIdentifier) {
     broadcastConsole(`Attempting to initialize Scene: '${sceneDirectory}', Shot: '${shotIdentifier}'`, 'info');
 
-    // --- Generate baseUrl using Server's Detected IP ---
     const serverIp = getLocalIpAddress();
     const port = config.port || 3000;
-    const baseUrl = `http://${serverIp}:${port}`; // Use http protocol
-    console.log(`[sceneController][initShot] Using server's detected IP for QR code baseUrl: ${baseUrl}`);
-    // --- End baseUrl generation ---
-
-    // Reset PTZ cameras to home position before starting the shot
-    /* // Commenting out PTZ reset on initShot
-    try {
-        await cameraControl.resetPTZHome();
-    } catch (error) {
-        broadcastConsole(`Error resetting PTZ cameras before shot: ${error.message}`, 'error');
-        // Consider if this error should prevent the shot from starting
-        // throw new Error(`Failed to reset PTZ cameras: ${error.message}`); // Option to halt
-    }
-    */
+    const baseUrl = `http://${serverIp}:${port}`;
+    console.log(`[sceneController][initShot] Using server's detected IP for QR code baseUrl (if needed by SHOT_INIT): ${baseUrl}`);
 
     currentStageState.scene = sceneDirectory;
     currentStageState.shotIdentifier = shotIdentifier;
-    currentStageState.shotIndex = -1; // Reset/Indicate invalid index until found
+    currentStageState.shotIndex = -1;
 
     const scene = scenes.find(s => s.directory === sceneDirectory);
     if (!scene) {
@@ -72,7 +59,6 @@ async function initShot(sceneDirectory, shotIdentifier) {
         throw new Error(`Scene '${sceneDirectory}' has no shots.`);
     }
 
-    // Find the shot by name or index
     const shotIndex = scene.shots.findIndex((shot, index) => {
         const identifier = shot.name || `shot_${index + 1}`;
         return identifier === shotIdentifier;
@@ -83,14 +69,13 @@ async function initShot(sceneDirectory, shotIdentifier) {
         throw new Error(`Shot '${shotIdentifier}' not found in scene '${sceneDirectory}'.`);
     }
 
-    currentStageState.shotIndex = shotIndex; // Update the index
+    currentStageState.shotIndex = shotIndex;
     const shotData = scene.shots[shotIndex];
 
     broadcastConsole(`Successfully initialized Scene: '${sceneDirectory}', Shot: '${shotIdentifier}' (Index: ${shotIndex})`, 'success');
     broadcastConsole(`Shot description: ${shotData.description || 'N/A'}`, 'info');
 
-    // --- Perform camera description logging and collect descriptions for UI ---
-    const shotCameraDescriptions = []; // Array to hold {name, description} for UI update
+    const shotCameraDescriptions = [];
     if (shotData.cameras && Array.isArray(shotData.cameras)) {
         broadcastConsole(`--- Checking Shot Camera Definitions ---`, 'info');
         const managedCameras = cameraControl.getCameras();
@@ -105,7 +90,6 @@ async function initShot(sceneDirectory, shotIdentifier) {
             broadcastConsole(`Result of cameraControl.getCamera('${cameraName}'): ${managedCamera ? 'FOUND' : 'NOT FOUND'}`, 'info');
             if (managedCamera) {
                 broadcastConsole(`-> MATCH FOUND: Logging description for '${cameraName}': ${cameraDescription}`, 'success');
-                // Add to list for UI update
                 shotCameraDescriptions.push({ name: cameraName, description: cameraDescription });
             } else {
                 broadcastConsole(`-> NO MATCH: Camera '${cameraName}' (from shot file) is not currently managed. Description: ${cameraDescription}`, 'warn');
@@ -115,152 +99,15 @@ async function initShot(sceneDirectory, shotIdentifier) {
     } else {
         broadcastConsole(`No 'cameras' array found in shot data for '${shotIdentifier}'.`, 'warn');
     }
-    // Broadcast the collected descriptions
     if (shotCameraDescriptions.length > 0) {
         broadcast({ type: 'SHOT_CAMERA_DESCRIPTIONS', descriptions: shotCameraDescriptions });
     }
-    // --- End camera description logic ---
 
-    // Broadcast SHOT_INIT message (or reuse SCENE_INIT?)
     broadcast({ type: 'SHOT_INIT', scene: scene, shot: shotData, shotIndex: shotIndex });
-
-    // TODO: Add any other logic needed when a shot starts, e.g.:
-    // - Resetting actor readiness?
-    // - Pre-loading character teleprompter videos?
-    // - Speaking shot setup description?
     aiVoice.speak(`Please prepare for scene ${scene.description}, shot ${shotIndex + 1}: ${shotData.description || shotIdentifier}`);
 
-    // Call actors for this specific shot?
-    // We need to decide if actors are called per-scene or per-shot.
-    // Assuming per-shot for now based on the refactor goal.
-    setTimeout(() => {
-        // Pass the generated baseUrl to callActorsForShot
-        callActorsForShot(scene, shotIndex, baseUrl);
-    }, config.waitTime / 2);
-
-    // Return the detailed scene and shotData objects for the route handler
     return { scene: scene, shot: shotData, shotIndex: shotIndex };
 }
-
-async function callActorsForShot(scene, shotIndex, baseUrl) {
-    if (!scene || !scene.shots || !scene.shots[shotIndex]) {
-        broadcastConsole(`Cannot call actors: Invalid scene or shot index ${shotIndex}`, 'error');
-        return;
-    }
-    const shot = scene.shots[shotIndex];
-    broadcastConsole(`Calling actors for scene '${scene.description}', shot '${shot.name || shotIndex + 1}'`);
-
-    // Get the characters object from the current shot
-    const characters = shot.characters;
-    if (!characters) {
-        broadcastConsole(`No 'characters' defined for shot ${shotIndex} in scene '${scene.directory}'. Cannot call actors.`, 'warn');
-        // Potentially broadcast ACTORS_CALLED anyway to allow proceeding?
-        broadcast({ type: 'ACTORS_CALLED', scene: scene, shot: shot }); // Still send signal?
-        return;
-    }
-
-    // Get the character names from the characters object
-    const characterNames = Object.keys(characters);
-
-    // find how many actors are needed for the scene
-    const actorsNeeded = characterNames.length;
-
-    broadcastConsole(`Actors needed: ${actorsNeeded} for characters: ${characterNames.join(', ')}`);
-
-    // Get actors from callsheet service
-    const actorsToCall = callsheetService.getActorsForScene(actorsNeeded);
-
-    // --- REMOVE baseUrl generation logic from here ---
-    // It is now passed as an argument
-    // console.log(`[sceneController][callActorsForShot] Using passed base URL for QR codes: ${baseUrl}`); // Optional log
-    // --- End REMOVAL ---
-
-    const actorCallData = []; // Array to hold data for the consolidated message
-
-    // Call the actors (generate data, but don't broadcast individually)
-    for (let index = 0; index < actorsToCall.length; index++) {
-        const actor = actorsToCall[index];
-        const characterName = characterNames[index];
-        const characterData = characters[characterName]; // Get data for this character from the shot
-        // const propName = characterData ? characterData.prop : null; // Get the prop name - OLD
-        const propsValue = characterData ? characterData.props : null; // Use "props" key
-
-        // Construct teleprompter URL
-        const characterUrl = `${baseUrl}/teleprompter/${encodeURIComponent(characterName)}`;
-        const headshotUrl = `/database/actors/${encodeURIComponent(actor.id)}/headshot.jpg`;
-
-        // Construct prop image URL(s) (assuming .png extension, adjust if needed)
-        // const propImageUrl = propName ? `/database/props/${encodeURIComponent(propName)}.png` : null; // OLD
-        let propImageUrls = []; // Initialize as an empty array
-        if (propsValue) {
-            if (Array.isArray(propsValue)) {
-                // Handle array of prop names
-                propImageUrls = propsValue.map(propName => `/database/props/${encodeURIComponent(propName)}.png`);
-            } else if (typeof propsValue === 'string' && propsValue.toLowerCase() !== 'none') {
-                // Handle single prop name string (ignore "none")
-                propImageUrls.push(`/database/props/${encodeURIComponent(propsValue)}.png`);
-            }
-        }
-
-        // *** ADDED LOG ***
-        // console.log(`[sceneController] Processing actor: ${actor.name}, Character: ${characterName}, Prop Name: ${propName}, Prop Image URL: ${propImageUrl}`); // OLD LOG
-        console.log(`[sceneController] Processing actor: ${actor.name}, Character: ${characterName}, Props Value: ${JSON.stringify(propsValue)}, Prop Image URLs: ${JSON.stringify(propImageUrls)}`);
-
-        try {
-            // Generate QR code as a Data URL
-            const qrCodeDataUrl = await QRCode.toDataURL(characterUrl);
-
-            // Add actor data to the array, including the prop image URL(s)
-            actorCallData.push({
-                name: actor.name,
-                id: actor.id, // Keep id if needed elsewhere, maybe for debugging
-                character: characterName,
-                headshotImage: headshotUrl,
-                qrCodeImage: qrCodeDataUrl,
-                // propImage: propImageUrl // OLD
-                propImages: propImageUrls // Use propImages array
-            });
-
-            // Speak the call (keep this individual)
-            aiVoice.speak(`Calling actor: ${actor.name} to play ${characterName}`);
-            callsheetService.updateActorSceneCount(actor.name); // Update count here
-
-        } catch (err) {
-            broadcastConsole(`Error generating QR code or preparing message for ${characterName}: ${err}`, 'error');
-            actorCallData.push({ // Add placeholder or error info
-                name: actor.name,
-                character: characterName,
-                // propImage: propImageUrl, // OLD
-                propImages: propImageUrls, // Include prop images even on QR error
-                error: `Failed to generate QR code`
-            });
-        }
-    }
-
-    // Log the data just before broadcasting
-    // console.log('\n>>> [sceneController] ACTOR_CALLS Data Payload:\n', JSON.stringify(actorCallData, null, 2), '\n<<<'); // Previous log
-    console.log('>>> [sceneController] Preparing ACTOR_CALLS data:', actorCallData);
-
-    // Broadcast the consolidated actor call data
-    if (actorCallData.length > 0) {
-        broadcast({
-            type: 'ACTOR_CALLS',
-            actors: actorCallData,
-            scene: scene.directory, // Include context
-            shot: shot.name || `shot_${shotIndex + 1}`
-        });
-        broadcastConsole(`Broadcasted ACTOR_CALLS for ${actorCallData.length} actor(s)`);
-    }
-
-    // Broadcast that actors are being called (Original ACTORS_CALLED - keep for other UI logic?)
-    // Now maybe include shot info?
-    broadcast({
-        type: 'ACTORS_CALLED',
-        scene: scene,
-        shot: shot
-    });
-}
-// --- END REFACTOR ---
 
 function actorsReady() {
     if (!currentStageState.scene || currentStageState.shotIdentifier === null) {
@@ -780,11 +627,120 @@ async function uploadCanvasVideo(req, res) {
     }
 }
 
+// Renamed from callActorsForShot and will be exported
+async function draftActorsForShot(sceneDirectory, shotIdentifier) {
+    broadcastConsole(`Drafting actors for Scene: '${sceneDirectory}', Shot: '${shotIdentifier}'`, 'info');
+
+    const serverIp = getLocalIpAddress();
+    const port = config.port || 3000;
+    const baseUrl = `http://${serverIp}:${port}`;
+    console.log(`[sceneController][draftActorsForShot] Using server's detected IP for QR code baseUrl: ${baseUrl}`);
+
+    const scene = scenes.find(s => s.directory === sceneDirectory);
+    if (!scene) {
+        broadcastConsole(`Error: Scene not found for directory: ${sceneDirectory} (drafting)`, 'error');
+        throw new Error(`Scene not found: ${sceneDirectory}`);
+    }
+
+    if (!scene.shots || scene.shots.length === 0) {
+        broadcastConsole(`Error: Scene '${sceneDirectory}' has no shots defined (drafting).`, 'error');
+        throw new Error(`Scene '${sceneDirectory}' has no shots.`);
+    }
+
+    const shotIndex = scene.shots.findIndex((shot, index) => {
+        const identifier = shot.name || `shot_${index + 1}`;
+        return identifier === shotIdentifier;
+    });
+
+    if (shotIndex === -1) {
+        broadcastConsole(`Error: Shot '${shotIdentifier}' not found in scene '${sceneDirectory}' (drafting).`, 'error');
+        throw new Error(`Shot '${shotIdentifier}' not found in scene '${sceneDirectory}'.`);
+    }
+
+    const shot = scene.shots[shotIndex]; // Use consistent 'shot' variable name
+    broadcastConsole(`Calling actors for scene '${scene.description}', shot '${shot.name || shotIndex + 1}'`);
+
+    const characters = shot.characters;
+    if (!characters) {
+        broadcastConsole(`No 'characters' defined for shot ${shotIdentifier} in scene '${scene.directory}'. Cannot call actors.`, 'warn');
+        broadcast({ type: 'ACTORS_CALLED', scene: scene, shot: shot }); // Still send signal to potentially show "Actors Ready"
+        return { message: "No characters defined for shot, but proceeding." }; // Return a message
+    }
+
+    const characterNames = Object.keys(characters);
+    const actorsNeeded = characterNames.length;
+    broadcastConsole(`Actors needed: ${actorsNeeded} for characters: ${characterNames.join(', ')}`);
+    const actorsToCall = callsheetService.getActorsForScene(actorsNeeded);
+
+    const actorCallData = [];
+
+    for (let index = 0; index < actorsToCall.length; index++) {
+        const actor = actorsToCall[index];
+        const characterName = characterNames[index];
+        const characterData = characters[characterName];
+        const propsValue = characterData ? characterData.props : null;
+
+        const characterUrl = `${baseUrl}/teleprompter/${encodeURIComponent(characterName)}`;
+        const headshotUrl = `/database/actors/${encodeURIComponent(actor.id)}/headshot.jpg`;
+
+        let propImageUrls = [];
+        if (propsValue) {
+            if (Array.isArray(propsValue)) {
+                propImageUrls = propsValue.map(propName => `/database/props/${encodeURIComponent(propName)}.png`);
+            } else if (typeof propsValue === 'string' && propsValue.toLowerCase() !== 'none') {
+                propImageUrls.push(`/database/props/${encodeURIComponent(propsValue)}.png`);
+            }
+        }
+        console.log(`[sceneController] Processing actor: ${actor.name}, Character: ${characterName}, Props Value: ${JSON.stringify(propsValue)}, Prop Image URLs: ${JSON.stringify(propImageUrls)}`);
+
+        try {
+            const qrCodeDataUrl = await QRCode.toDataURL(characterUrl);
+            actorCallData.push({
+                name: actor.name,
+                id: actor.id,
+                character: characterName,
+                headshotImage: headshotUrl,
+                qrCodeImage: qrCodeDataUrl,
+                propImages: propImageUrls
+            });
+            aiVoice.speak(`Calling actor: ${actor.name} to play ${characterName}`);
+            callsheetService.updateActorSceneCount(actor.name);
+
+        } catch (err) {
+            broadcastConsole(`Error generating QR code or preparing message for ${characterName}: ${err}`, 'error');
+            actorCallData.push({
+                name: actor.name,
+                character: characterName,
+                propImages: propImageUrls,
+                error: `Failed to generate QR code`
+            });
+        }
+    }
+
+    console.log('>>> [sceneController] Preparing ACTOR_CALLS data:', actorCallData);
+
+    if (actorCallData.length > 0) {
+        broadcast({
+            type: 'ACTOR_CALLS', // This message type includes actor details for teleprompter
+            actors: actorCallData,
+            scene: scene.directory,
+            shot: shot.name || `shot_${shotIndex + 1}`
+        });
+    }
+
+    // Also explicitly send ACTORS_CALLED so client UI (ActorsReady button) updates.
+    // This is what the client-side websocket handler expects to show actorsReadyBtn
+    broadcast({ type: 'ACTORS_CALLED', scene: scene, shot: shot });
+
+    return { message: "Actors called successfully for shot." };
+}
+
 module.exports = {
     initShot,
     actorsReady,
     action,
     getCurrentScene,
     assembleScene,
-    uploadCanvasVideo // Add new function to exports
+    uploadCanvasVideo,
+    draftActorsForShot,
 };

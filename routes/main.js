@@ -6,7 +6,7 @@ const multer = require('multer');
 const fs = require('fs');
 const config = require('../config.json');
 const { buildHomeHTML } = require('../views/homeView');
-const { actorsReady, action, initShot } = require('../controllers/sceneController');
+const { actorsReady, action, initShot, draftActorsForShot } = require('../controllers/sceneController');
 const { scenes } = require('../services/sceneService');
 const aiVoice = require('../services/aiVoice');
 const sessionService = require('../services/sessionService');
@@ -315,32 +315,48 @@ router.post('/setVoiceBypass', express.json(), (req, res) => {
 
 // --- NEW: Initialize a specific shot within a scene ---
 router.get('/initShot/:sceneDir/:shotName', async (req, res) => {
-    const sceneDir = decodeURIComponent(req.params.sceneDir);
-    const shotName = decodeURIComponent(req.params.shotName);
+    const { sceneDir, shotName } = req.params;
     try {
-        // Call the controller function
-        // It now returns { scene: sceneObject, shot: shotDataObject, shotIndex: index }
-        const result = await initShot(sceneDir, shotName);
-
-        // Send the detailed scene and shot data back to the client
+        // initShot now only prepares data and does not call actors
+        const result = await initShot(decodeURIComponent(sceneDir), decodeURIComponent(shotName));
         res.json({
             success: true,
-            message: `Shot '${result.shot.name || shotName}' in scene '${result.scene.description || sceneDir}' initialized.`,
-            // Nest the data under sceneData to match client expectation
-            sceneData: {
-                scene: result.scene,
-                shot: result.shot,
-                shotIndex: result.shotIndex
-            }
+            message: `Shot '${decodeURIComponent(shotName)}' in scene '${decodeURIComponent(sceneDir)}' initialized successfully.`,
+            sceneData: result // Contains scene, shot, shotIndex
         });
     } catch (error) {
         console.error(`Error initializing shot ${shotName} in scene ${sceneDir}:`, error);
-        res.status(400).json({ // Use 400 for bad request (e.g., shot not found)
+        res.status(500).json({ success: false, error: error.message || "Failed to initialize shot" });
+    }
+});
+
+// New route for drafting actors
+router.post('/api/shot/:sceneDir/:shotName/draft-actors', async (req, res) => {
+    const { sceneDir: encodedSceneDir, shotName: encodedShotName } = req.params;
+    let decodedSceneDir, decodedShotName;
+
+    try {
+        decodedSceneDir = decodeURIComponent(encodedSceneDir);
+        decodedShotName = decodeURIComponent(encodedShotName);
+
+        const result = await draftActorsForShot(decodedSceneDir, decodedShotName);
+        res.json({
+            success: true,
+            message: result.message || `Actors drafted for shot '${decodedShotName}'.`,
+        });
+    } catch (error) {
+        // Attempt to use decoded names for logging if available, otherwise use encoded
+        const logScene = decodedSceneDir || encodedSceneDir;
+        const logShot = decodedShotName || encodedShotName;
+        console.error(`Error drafting actors for shot ${logShot} in scene ${logScene}:`, error);
+        res.status(500).json({
             success: false,
-            message: `Error initializing shot: ${error.message}`
+            error: error.message || "Failed to draft actors for shot due to an internal server error.",
+            details: error.toString() // Add more details if helpful
         });
     }
 });
+
 // --- END NEW ---
 
 // Handle loading new actors
