@@ -10,7 +10,6 @@ import { initializeWebSocket, sendWebSocketMessage } from './modules/websocket-h
 import { initializeTeleprompterStreaming, updateTeleprompterMirrorState, openAndStreamToTeleprompter } from './modules/teleprompter-handler.js';
 import { initializeActorLoader } from './modules/actor-loader.js';
 import { initializeSourceSelector, populateAllSourceSelectors } from './modules/source-selector.js';
-import { initializeCanvasRecorder } from './modules/canvas-recorder.js';
 import {
   toggleVoiceBypass,
   openCharacterTeleprompter,
@@ -355,8 +354,8 @@ document.addEventListener('DOMContentLoaded', () => {
   audioManager.initialize().catch(err => logToConsole(`AudioManager initialization failed: ${err}`, 'error'));
 
   // --- Main Canvas Recording Logic (for 'main-output-canvas') ---
-  const mainOutputCanvasForRecording = document.getElementById('main-output-canvas');
-  initializeCanvasRecorder(mainOutputCanvasForRecording, mainRecordingCompositor);
+  // const mainOutputCanvasForRecording = document.getElementById('main-output-canvas'); // No longer needed for this call
+  // initializeCanvasRecorder(mainOutputCanvasForRecording, mainRecordingCompositor); // Call removed
 
   // --- Stream Main Output to Teleprompter Logic (Reverted to use /teleprompter and setupTeleprompterStream) ---
   initializeTeleprompterStreaming(mainOutputCanvasElement, mainRecordingCompositor);

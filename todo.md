@@ -2,6 +2,12 @@
 
 ### Interface
 
++ Get rid of Record Output Canvas button. Remove the code for it as well, but make sure not to delete anything required for other canvas recording stuff.
+
++ Create a "shuffle" effect where it draws every participant's photo on the canvas. It should show each one individually for .5 seconds, then show them all together in a grid. These photos come from the actors/ dir in the database. 
+
++ Make the props bigger on the actor cards
+
 + FX chains. Introduce "effects" to each shot in scenes.json which include the default camera setup, etc. for that shot.
 
 ### Functional
@@ -16,13 +22,6 @@
 
 - remove unncessary things
 
-- sometimes I get the FF message that the tab is causing my computer to slow down with the STOP button
-
-- "live" view from AI Brain including skeletal tracking
-
-- right now I can run this command to combine the audio and video
-  ffmpeg -i Camera*1/*.mp4 -i Audio*1/*.wav -c:v copy -map 0:v:0 -map 1:a:0 -shortest combined.mp4
-
 ## Editor
 
 The editor should intake the video and audio from the Scene Recording. It should then use the scenes.json data ins and outs to cut the footage.
@@ -32,13 +31,6 @@ The editor should intake the video and audio from the Scene Recording. It should
 Simple video player functionality to play the intro video, etc.
 
 This should also have the ability to use a camera source with facial recognition of the audience. The faces of the audience will be randomly inserted on top of the video at selected moments.
-
-## Onboarding App
-
-Add the response stuff
-https://docs.google.com/document/d/1Kx4YZ3arvCnaE2Umt2WNsGctx1xCvtSGD1VTiV_tzBQ/edit?tab=t.0
-
-Personality test...?
 
 ## Post-onboarding
 
