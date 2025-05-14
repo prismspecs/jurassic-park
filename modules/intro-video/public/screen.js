@@ -30,6 +30,7 @@ const FACE_SWITCH_INTERVAL = 1000; // Switch faces every 1000ms (1 second)
 let allDetectedFaces = []; // Store all detected faces
 const FACE_TRACKING_THRESHOLD_PERCENT = 0.3; // Max distance (as % of video width) to consider a face the "same"
 let facePaddingPercent = 5; // Default padding percentage
+let isDetecting = false; // Add a flag to prevent overlapping detections
 
 // --- Helper Functions ---
 function getBoxCenter(box) {
@@ -84,17 +85,18 @@ async function startFaceDetection() {
     console.log("Starting face detection interval.");
 
     faceDetectionInterval = setInterval(async () => {
+        if (isDetecting) return; // Skip if detection is still running
         // Only run detection if we are supposed to be showing a face
         if (currentFaceInterval) {
-            detectFaces(); // Update face position
+            isDetecting = true;
+            await detectFaces(); // Update face position
+            isDetecting = false;
         } else {
-            // Explicitly hide overlay if not in an interval
             if (faceOverlay.style.display !== 'none') {
-                // console.log('Hiding face overlay (detection interval)'); // Optional: for debugging
                 faceOverlay.style.display = 'none';
             }
         }
-    }, 100); // Check ~10 times per second
+    }, 200); // Run every 200ms instead of 100ms
 }
 
 // Separate function for the actual face detection to allow manual triggering
