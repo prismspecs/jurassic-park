@@ -12,7 +12,7 @@ function setupTeleprompterStream(win, streamToPlay) {
     logToConsole(`Teleprompter window details: URL='${win.location.href}', readyState='${win.document.readyState}'`, 'debug');
     try {
         const bodySnippet = win.document.body ? win.document.body.innerHTML.substring(0, 500) : "document.body is null";
-        logToConsole(`Teleprompter window body (snippet): ${bodySnippet}`, 'debug');
+        // logToConsole(`Teleprompter window body (snippet): ${bodySnippet}`, 'debug');
 
         const liveFeedEl = win.document.getElementById('teleprompterLiveFeed');
         if (liveFeedEl) {
