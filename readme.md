@@ -2,7 +2,7 @@
 
 Shrink directions.mp4 files
 ```
-ffmpeg -i directions.mp4 -an -vf "fps=30,scale=640:-2" -c:v libx264 -preset fast -crf 28 directions_small.mp4
+ffmpeg -i directions.mp4 -an -vf "fps=30,scale=640:-2" -c:v h264_videotoolbox -b:v 2000k directions_small.mp4
 ```
 
 ## Dependencies

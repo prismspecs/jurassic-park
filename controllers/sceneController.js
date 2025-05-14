@@ -693,28 +693,33 @@ async function draftActorsForShot(sceneDirectory, shotIdentifier) {
         }
         console.log(`[sceneController] Processing actor: ${actor.name}, Character: ${characterName}, Props Value: ${JSON.stringify(propsValue)}, Prop Image URLs: ${JSON.stringify(propImageUrls)}`);
 
-        try {
-            const qrCodeDataUrl = await QRCode.toDataURL(characterUrl);
-            actorCallData.push({
-                name: actor.name,
-                id: actor.id,
-                character: characterName,
-                headshotImage: headshotUrl,
-                qrCodeImage: qrCodeDataUrl,
-                propImages: propImageUrls
-            });
-            aiVoice.speak(`Calling actor: ${actor.name} to play ${characterName}`);
-            callsheetService.updateActorSceneCount(actor.name);
+        let qrCodeDataUrl = null; // Initialize qrCodeDataUrl to null
 
-        } catch (err) {
-            broadcastConsole(`Error generating QR code or preparing message for ${characterName}: ${err}`, 'error');
-            actorCallData.push({
-                name: actor.name,
-                character: characterName,
-                propImages: propImageUrls,
-                error: `Failed to generate QR code`
-            });
+        // Only generate QR code if the shot type is 'normal'
+        if (shot.type === 'normal') {
+            try {
+                qrCodeDataUrl = await QRCode.toDataURL(characterUrl);
+            } catch (err) {
+                broadcastConsole(`Error generating QR code for ${characterName} in normal shot: ${err}`, 'error');
+                // actorCallData entry below will use null for qrCodeImage
+            }
         }
+
+        // Always push actor data, qrCodeImage will be null if not a normal shot or if QR generation failed
+        actorCallData.push({
+            name: actor.name,
+            id: actor.id,
+            character: characterName,
+            headshotImage: headshotUrl,
+            qrCodeImage: qrCodeDataUrl, // This will be null for non-normal shots or if QR generation failed
+            propImages: propImageUrls,
+            // Include an error field ONLY if QR generation failed AND it was a normal shot
+            error: (shot.type === 'normal' && !qrCodeDataUrl) ? `Failed to generate QR code` : undefined
+        });
+
+        // Speak and update count regardless of QR code generation for the character.
+        aiVoice.speak(`Calling actor: ${actor.name} to play ${characterName}`);
+        callsheetService.updateActorSceneCount(actor.name);
     }
 
     console.log('>>> [sceneController] Preparing ACTOR_CALLS data:', actorCallData);
