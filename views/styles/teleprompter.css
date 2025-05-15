@@ -171,8 +171,8 @@ body {
     /* Center items horizontally */
     text-align: center;
     padding: 15px;
-    background: rgba(0, 0, 0, 0.2);
-    /* Darker background for cards */
+    background: #333333;
+    /* Dark grey background for cards */
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
@@ -199,11 +199,19 @@ body {
 .actor-card .message-image.prop-image {
     max-width: 135px;
     max-height: 135px;
-    margin-top: 5px;
-    /* Add some space above */
     object-fit: contain;
     /* Ensure the whole prop is visible */
     /* No border needed unless desired */
+}
+
+/* Create a container for prop images and QR code to be on the same line */
+.actor-card-props-qr-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 10px;
 }
 
 .actor-card-text {

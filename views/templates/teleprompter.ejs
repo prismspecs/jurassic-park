@@ -175,6 +175,11 @@
         textInfo.innerHTML = `<strong>${actor.name || "Unknown Actor"}</strong> as ${displayName}`;
         actorCard.appendChild(textInfo);
 
+        // Create a container for props and QR code
+        const propsQrContainer = document.createElement('div');
+        propsQrContainer.className = 'actor-card-props-qr-container';
+        actorCard.appendChild(propsQrContainer);
+
         if (actor.propImages && Array.isArray(actor.propImages) && actor.propImages.length > 0) {
           const propsContainer = document.createElement('div');
           propsContainer.className = 'actor-card-props-container';
@@ -186,7 +191,7 @@
             propImg.alt = `${actor.character} prop: ${propName}`;
             propsContainer.appendChild(propImg);
           });
-          actorCard.appendChild(propsContainer);
+          propsQrContainer.appendChild(propsContainer);
         }
 
         if (actor.qrCodeImage) {
@@ -194,7 +199,7 @@
           qrImg.className = "message-image qrcode";
           qrImg.src = actor.qrCodeImage;
           qrImg.alt = `${actor.character} QR Code`;
-          actorCard.appendChild(qrImg);
+          propsQrContainer.appendChild(qrImg);
         } else if (actor.error) {
           const errorText = document.createElement("p");
           errorText.className = "actor-card-error";
