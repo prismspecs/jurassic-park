@@ -26,6 +26,8 @@
     // const videoContainer = document.getElementById("video-container"); // Already commented
     const liveFeedVideoElement = document.getElementById("teleprompterLiveFeed"); // This is the important one
     let isFaded = false; // This is unused as toggleFade is commented
+    let isShuffleInProgress = false;
+    let pendingActorCallsData = null;
 
     /* // Comment out addMessage function
     function addMessage(text, style, headshotImage, qrCodeImage) {
@@ -112,6 +114,15 @@
 
     // New function to display actor calls in a grid
     function addActorCallsMessage(actors, revealSequentially) { // Added revealSequentially parameter
+      if (isShuffleInProgress) {
+        console.log("Shuffle in progress, queuing ACTOR_CALLS display.");
+        pendingActorCallsData = { actors, revealSequentially };
+        return;
+      }
+      console.log("Displaying actor calls. Sequentially:", revealSequentially);
+      // Clear any pending data as we are now processing
+      pendingActorCallsData = null;
+
       const messageContainer = document.createElement("div");
       messageContainer.className = "message actor-calls-container";
 
@@ -224,13 +235,81 @@
       }
     }
 
+    // --- New Shuffle Effect Logic ---
+    function startShuffleEffect(headshotUrls) {
+      if (!headshotUrls || headshotUrls.length === 0) {
+        console.log("No headshots for shuffle effect.");
+        // If ACTOR_CALLS was pending, display it now
+        if (pendingActorCallsData) {
+          addActorCallsMessage(pendingActorCallsData.actors, pendingActorCallsData.revealSequentially);
+        }
+        return;
+      }
+
+      isShuffleInProgress = true;
+      teleprompter.innerHTML = ''; // Clear current teleprompter content
+
+      const shuffleContainer = document.createElement('div');
+      shuffleContainer.className = 'shuffle-effect-container';
+      teleprompter.appendChild(shuffleContainer);
+
+      let currentIndex = 0;
+      const individualDisplayTime = 500; // 0.5 seconds
+      const gridDisplayTime = 2000; // 2 seconds
+
+      function displayNextSingleImage() {
+        if (currentIndex < headshotUrls.length) {
+          const imageUrl = headshotUrls[currentIndex];
+          shuffleContainer.innerHTML = `<img src=\"${imageUrl}\" class=\"shuffle-image-single\" alt=\"Actor Shuffle\" />`;
+          currentIndex++;
+          setTimeout(displayNextSingleImage, individualDisplayTime);
+        } else {
+          displayGridOfAllImages();
+        }
+      }
+
+      function displayGridOfAllImages() {
+        shuffleContainer.innerHTML = ''; // Clear single image
+        const grid = document.createElement('div');
+        grid.className = 'shuffle-grid'; // Can reuse 'actor-grid' styles or make specific
+
+        headshotUrls.forEach(url => {
+          const img = document.createElement('img');
+          img.src = url;
+          img.className = 'shuffle-image-grid-item';
+          img.alt = 'Actor Headshot';
+          grid.appendChild(img);
+        });
+        shuffleContainer.appendChild(grid);
+        setTimeout(finishShuffleEffect, gridDisplayTime);
+      }
+
+      function finishShuffleEffect() {
+        shuffleContainer.innerHTML = ''; // Clear the grid
+        isShuffleInProgress = false;
+        console.log("Shuffle effect finished.");
+        // If ACTOR_CALLS arrived during shuffle, display it now
+        if (pendingActorCallsData) {
+          addActorCallsMessage(pendingActorCallsData.actors, pendingActorCallsData.revealSequentially);
+        }
+      }
+
+      displayNextSingleImage(); // Start the sequence
+    }
+    // --- End Shuffle Effect Logic ---
+
     function handleWebSocketMessage(event) {
       const data = JSON.parse(event.data);
       console.log("Teleprompter received via WebSocket:", data);
 
-      if (data.type === "ACTOR_CALLS") {
+      if (data.type === "INITIATE_ACTOR_SHUFFLE") {
+        console.log("Starting actor shuffle effect with headshots:", data.headshots);
+        startShuffleEffect(data.headshots);
+      }
+      else if (data.type === "ACTOR_CALLS") {
         console.log("Adding actor calls message:", data.actors, "Reveal sequentially:", data.revealSequentially);
-        addActorCallsMessage(data.actors, data.revealSequentially); // Pass the flag
+        // addActorCallsMessage will handle queuing if shuffle is in progress
+        addActorCallsMessage(data.actors, data.revealSequentially);
       }
       else if (data.type === "CLEAR_TELEPROMPTER") {
         clearText();

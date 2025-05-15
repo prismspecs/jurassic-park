@@ -224,3 +224,54 @@ body {
     /* Reddish color for errors */
     margin-top: 10px;
 }
+
+/* --- New Shuffle Effect Styles --- */
+.shuffle-effect-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    /* Prevent scrollbars if image is too big briefly */
+}
+
+.shuffle-image-single {
+    width: 100vw;
+    /* Fill viewport width */
+    height: 100vh;
+    /* Fill viewport height */
+    max-width: 100%;
+    /* Ensure it doesn't exceed container if somehow smaller */
+    max-height: 100%;
+    /* Ensure it doesn't exceed container if somehow smaller */
+    object-fit: contain;
+    /* Show entire image, scaled down if needed */
+    /* Removed border-radius and box-shadow for full screen, no border look */
+}
+
+.shuffle-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    /* Adjust minmax for desired size */
+    gap: 10px;
+    padding: 20px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+}
+
+.shuffle-image-grid-item {
+    width: 100%;
+    height: auto;
+    /* Maintain aspect ratio */
+    max-height: 150px;
+    /* Limit height in grid */
+    object-fit: cover;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* --- End Shuffle Effect Styles --- */

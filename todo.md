@@ -2,11 +2,7 @@
 
 ### Interface
 
-+ Get rid of Record Output Canvas button. Remove the code for it as well, but make sure not to delete anything required for other canvas recording stuff.
-
-+ Create a "shuffle" effect where it draws every participant's photo on the canvas. It should show each one individually for .5 seconds, then show them all together in a grid. These photos come from the actors/ dir in the database. 
-
-+ Make the props bigger on the actor cards
++ Create a "shuffle" effect where it draws every participant's photo on the canvas. It should show each one individually for .5 seconds, then show them all together in a grid. These photos come from the actors/ dir in the database. This should occur when the user clicks Draft Actors. After showing all of them in a grid for 2 seconds, it should move on to showing the actor cards like it does now.
 
 + FX chains. Introduce "effects" to each shot in scenes.json which include the default camera setup, etc. for that shot.
 

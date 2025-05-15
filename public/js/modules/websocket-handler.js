@@ -47,7 +47,8 @@ export function initializeWebSocket(cameraManagerInstance, onOpenCallback) {
                 'TELEPROMPTER',
                 'ACTOR_CALLS',
                 'CLEAR_TELEPROMPTER',
-                'PLAY_VIDEO'
+                'PLAY_VIDEO',
+                'INITIATE_ACTOR_SHUFFLE'
             ];
             const characterTeleprompterMessageTypes = [
                 'SHOT_START',

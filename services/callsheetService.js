@@ -106,11 +106,43 @@ function getCallsheet() {
     return callsheet;
 }
 
+// New function to get all actor headshot paths
+function getAllActorHeadshotPaths() {
+    const actorsDirPath = path.join(__dirname, '..', config.actorsDir);
+    try {
+        if (!fs.existsSync(actorsDirPath)) {
+            console.warn(`Actors directory not found: ${actorsDirPath}`);
+            broadcastConsole(`Actors directory not found: ${actorsDirPath}`, 'warn');
+            return [];
+        }
+
+        const actorDirs = fs.readdirSync(actorsDirPath, { withFileTypes: true })
+            .filter(dirent => dirent.isDirectory())
+            .map(dirent => dirent.name);
+
+        const headshotPaths = actorDirs.map(actorId => {
+            // Construct path relative to the web server root for client access
+            // Assuming actorsDir in config is relative to project root, e.g., "./database/actors"
+            // And headshots are consistently named 'headshot.jpg'
+            const relativeActorsDir = config.actorsDir.startsWith('./') ? config.actorsDir.substring(2) : config.actorsDir;
+            return path.posix.join('/', relativeActorsDir, actorId, 'headshot.jpg');
+        });
+
+        console.log('Found headshot paths:', headshotPaths);
+        return headshotPaths;
+    } catch (error) {
+        console.error('Error reading actor headshot paths:', error);
+        broadcastConsole(`Error fetching all actor headshots: ${error.message}`, 'error');
+        return [];
+    }
+}
+
 module.exports = {
     initCallsheet,
     getActorsForScene,
     updateActorSceneCount,
     getCallsheet,
-    addActor, // Export the new function
-    saveCallsheet // Ensure saveCallsheet is exported if not already
+    addActor,
+    saveCallsheet,
+    getAllActorHeadshotPaths
 };

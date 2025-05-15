@@ -631,6 +631,19 @@ async function uploadCanvasVideo(req, res) {
 async function draftActorsForShot(sceneDirectory, shotIdentifier) {
     broadcastConsole(`Drafting actors for Scene: '${sceneDirectory}', Shot: '${shotIdentifier}'`, 'info');
 
+    // --- New: Get all actor headshots for shuffle effect ---
+    const allHeadshotPaths = callsheetService.getAllActorHeadshotPaths();
+    if (allHeadshotPaths && allHeadshotPaths.length > 0) {
+        broadcast({
+            type: 'INITIATE_ACTOR_SHUFFLE',
+            headshots: allHeadshotPaths
+        });
+        broadcastConsole(`Broadcasted INITIATE_ACTOR_SHUFFLE with ${allHeadshotPaths.length} headshots.`, 'info');
+    } else {
+        broadcastConsole('No actor headshots found for shuffle effect, or an error occurred.', 'warn');
+    }
+    // --- End new section for shuffle ---
+
     const serverIp = getLocalIpAddress();
     const port = config.port || 3000;
     const baseUrl = `http://${serverIp}:${port}`;
@@ -733,7 +746,7 @@ async function draftActorsForShot(sceneDirectory, shotIdentifier) {
             actors: actorCallData,
             scene: scene.directory,
             shot: shot.name || `shot_${shotIndex + 1}`,
-            revealSequentially: config.teleprompterRevealCardsSequentially // Added config option
+            revealSequentially: config.teleprompterRevealCardsSequentially
         });
     }
 
