@@ -111,7 +111,7 @@
     */
 
     // New function to display actor calls in a grid
-    function addActorCallsMessage(actors) { // This is for QR codes
+    function addActorCallsMessage(actors, revealSequentially) { // Added revealSequentially parameter
       const messageContainer = document.createElement("div");
       messageContainer.className = "message actor-calls-container";
 
@@ -122,8 +122,31 @@
 
       const gridContainer = document.createElement("div");
       gridContainer.className = "actor-grid";
+      messageContainer.appendChild(gridContainer);
 
-      actors.forEach((actor) => {
+      if (teleprompter.firstChild) {
+        teleprompter.insertBefore(messageContainer, teleprompter.firstChild);
+      } else {
+        teleprompter.appendChild(messageContainer);
+      }
+
+      requestAnimationFrame(() => {
+        messageContainer.classList.add("new");
+        setTimeout(() => {
+          messageContainer.classList.remove("new");
+        }, 50);
+      });
+
+      const maxMessages = 10;
+      while (teleprompter.children.length > maxMessages) {
+        const lastMessage = teleprompter.lastChild;
+        lastMessage.classList.add("old");
+        setTimeout(() => {
+          lastMessage.remove();
+        }, 500);
+      }
+
+      function buildAndAddCardToGrid(actor) {
         const actorCard = document.createElement("div");
         actorCard.className = "actor-card";
 
@@ -167,27 +190,37 @@
           errorText.textContent = actor.error;
           actorCard.appendChild(errorText);
         }
+
         gridContainer.appendChild(actorCard);
-      });
-      messageContainer.appendChild(gridContainer);
-      if (teleprompter.firstChild) {
-        teleprompter.insertBefore(messageContainer, teleprompter.firstChild);
-      } else {
-        teleprompter.appendChild(messageContainer);
+
+        actorCard.style.opacity = 0;
+        requestAnimationFrame(() => {
+          actorCard.style.transition = "opacity 0.5s ease-in-out";
+          actorCard.style.opacity = 1;
+        });
       }
-      requestAnimationFrame(() => {
-        messageContainer.classList.add("new");
-        setTimeout(() => {
-          messageContainer.classList.remove("new");
-        }, 50);
-      });
-      const maxMessages = 10;
-      while (teleprompter.children.length > maxMessages) {
-        const lastMessage = teleprompter.lastChild;
-        lastMessage.classList.add("old");
-        setTimeout(() => {
-          lastMessage.remove();
-        }, 500);
+
+      if (revealSequentially) {
+        let currentIndex = 0;
+        const delayBetweenCards = 1000;
+
+        function displayNextCard() {
+          if (currentIndex < actors.length) {
+            buildAndAddCardToGrid(actors[currentIndex]);
+            currentIndex++;
+            setTimeout(displayNextCard, delayBetweenCards);
+          }
+        }
+        if (actors && actors.length > 0) {
+          displayNextCard();
+        }
+      } else {
+        // Display all at once (original behavior, but with individual card animation)
+        if (actors && actors.length > 0) {
+          actors.forEach(actor => {
+            buildAndAddCardToGrid(actor);
+          });
+        }
       }
     }
 
@@ -196,8 +229,8 @@
       console.log("Teleprompter received via WebSocket:", data);
 
       if (data.type === "ACTOR_CALLS") {
-        console.log("Adding actor calls message:", data.actors);
-        addActorCallsMessage(data.actors);
+        console.log("Adding actor calls message:", data.actors, "Reveal sequentially:", data.revealSequentially);
+        addActorCallsMessage(data.actors, data.revealSequentially); // Pass the flag
       }
       else if (data.type === "CLEAR_TELEPROMPTER") {
         clearText();

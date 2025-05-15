@@ -732,7 +732,8 @@ async function draftActorsForShot(sceneDirectory, shotIdentifier) {
             type: 'ACTOR_CALLS', // This message type includes actor details for teleprompter
             actors: actorCallData,
             scene: scene.directory,
-            shot: shot.name || `shot_${shotIndex + 1}`
+            shot: shot.name || `shot_${shotIndex + 1}`,
+            revealSequentially: config.teleprompterRevealCardsSequentially // Added config option
         });
     }
 
