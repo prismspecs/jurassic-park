@@ -17,6 +17,10 @@ const POSE_CONNECTIONS = [
 const POSE_COLORS = ['lime', 'cyan', 'magenta', 'yellow', 'orange', 'red'];
 
 const DIFFERENCE_MASK_SCALEDOWN_FACTOR = 4; // e.g., 4 means 1/4 width & height (1/16th pixels)
+const TORSO_EXPANSION_FACTOR = 1.8; // Existing: Factor to expand the torso polygon
+const HEAD_EXPANSION_FACTOR = 1.0;  // New: Factor for head size. Note: A negative value will likely cause errors for arc radius.
+const ARM_EXPANSION_FACTOR = 1.0;   // New: Factor for arm thickness.
+const LEG_EXPANSION_FACTOR = 1.0;   // New: Factor for leg thickness.
 
 /**
  * Manages drawing multiple video/image sources and effects onto a target canvas.
@@ -721,11 +725,33 @@ export class VideoCompositor {
 
             // Torso
             if (lShoulder && rShoulder && rHip && lHip) {
+                // Calculate centroid of the torso
+                const centroidX = (lShoulder.x + rShoulder.x + rHip.x + lHip.x) / 4;
+                const centroidY = (lShoulder.y + rShoulder.y + rHip.y + lHip.y) / 4;
+
+                // Expand points from centroid
+                const expandedLShoulder = {
+                    x: centroidX + (lShoulder.x - centroidX) * TORSO_EXPANSION_FACTOR,
+                    y: centroidY + (lShoulder.y - centroidY) * TORSO_EXPANSION_FACTOR
+                };
+                const expandedRShoulder = {
+                    x: centroidX + (rShoulder.x - centroidX) * TORSO_EXPANSION_FACTOR,
+                    y: centroidY + (rShoulder.y - centroidY) * TORSO_EXPANSION_FACTOR
+                };
+                const expandedRHip = {
+                    x: centroidX + (rHip.x - centroidX) * TORSO_EXPANSION_FACTOR,
+                    y: centroidY + (rHip.y - centroidY) * TORSO_EXPANSION_FACTOR
+                };
+                const expandedLHip = {
+                    x: centroidX + (lHip.x - centroidX) * TORSO_EXPANSION_FACTOR,
+                    y: centroidY + (lHip.y - centroidY) * TORSO_EXPANSION_FACTOR
+                };
+
                 maskCtx.beginPath();
-                maskCtx.moveTo(lShoulder.x, lShoulder.y);
-                maskCtx.lineTo(rShoulder.x, rShoulder.y);
-                maskCtx.lineTo(rHip.x, rHip.y);
-                maskCtx.lineTo(lHip.x, lHip.y);
+                maskCtx.moveTo(expandedLShoulder.x, expandedLShoulder.y);
+                maskCtx.lineTo(expandedRShoulder.x, expandedRShoulder.y);
+                maskCtx.lineTo(expandedRHip.x, expandedRHip.y);
+                maskCtx.lineTo(expandedLHip.x, expandedLHip.y);
                 maskCtx.closePath();
                 maskCtx.fill();
             }
@@ -738,7 +764,9 @@ export class VideoCompositor {
                 }
                 headRadius = Math.max(headRadius, 10);
                 maskCtx.beginPath();
-                maskCtx.arc(nose.x, nose.y, headRadius, 0, 2 * Math.PI);
+                // Apply HEAD_EXPANSION_FACTOR to headRadius
+                // Note: If headRadius * HEAD_EXPANSION_FACTOR is negative, arc() will throw an error.
+                maskCtx.arc(nose.x, nose.y, headRadius * HEAD_EXPANSION_FACTOR, 0, 2 * Math.PI);
                 maskCtx.closePath();
                 maskCtx.fill();
             }
@@ -772,47 +800,47 @@ export class VideoCompositor {
             };
 
             // Arms
-            fillLimbPoly(lShoulder, lElbow, limbThickness);
-            fillLimbPoly(lElbow, lWrist, limbThickness);
-            fillLimbPoly(rShoulder, rElbow, limbThickness);
-            fillLimbPoly(rElbow, rWrist, limbThickness);
+            fillLimbPoly(lShoulder, lElbow, limbThickness * ARM_EXPANSION_FACTOR);
+            fillLimbPoly(lElbow, lWrist, limbThickness * ARM_EXPANSION_FACTOR);
+            fillLimbPoly(rShoulder, rElbow, limbThickness * ARM_EXPANSION_FACTOR);
+            fillLimbPoly(rElbow, rWrist, limbThickness * ARM_EXPANSION_FACTOR);
 
             // Hands
             if (lWrist && lElbow) {
-                const handLength = limbThickness * 1.0;
+                const handLength = limbThickness * 1.0; // Base hand length relative to limbThickness
                 const angle = Math.atan2(lWrist.y - lElbow.y, lWrist.x - lElbow.x);
                 const handEndX = lWrist.x + handLength * Math.cos(angle);
                 const handEndY = lWrist.y + handLength * Math.sin(angle);
-                fillLimbPoly(lWrist, { x: handEndX, y: handEndY }, limbThickness);
+                fillLimbPoly(lWrist, { x: handEndX, y: handEndY }, limbThickness * ARM_EXPANSION_FACTOR);
             }
             if (rWrist && rElbow) {
-                const handLength = limbThickness * 1.0;
+                const handLength = limbThickness * 1.0; // Base hand length relative to limbThickness
                 const angle = Math.atan2(rWrist.y - rElbow.y, rWrist.x - rElbow.x);
                 const handEndX = rWrist.x + handLength * Math.cos(angle);
                 const handEndY = rWrist.y + handLength * Math.sin(angle);
-                fillLimbPoly(rWrist, { x: handEndX, y: handEndY }, limbThickness);
+                fillLimbPoly(rWrist, { x: handEndX, y: handEndY }, limbThickness * ARM_EXPANSION_FACTOR);
             }
 
             // Legs
-            fillLimbPoly(lHip, lKnee, limbThickness);
-            fillLimbPoly(lKnee, lAnkle, limbThickness * 0.9);
-            fillLimbPoly(rHip, rKnee, limbThickness);
-            fillLimbPoly(rKnee, rAnkle, limbThickness * 0.9);
+            fillLimbPoly(lHip, lKnee, limbThickness * LEG_EXPANSION_FACTOR);
+            fillLimbPoly(lKnee, lAnkle, limbThickness * 0.9 * LEG_EXPANSION_FACTOR);
+            fillLimbPoly(rHip, rKnee, limbThickness * LEG_EXPANSION_FACTOR);
+            fillLimbPoly(rKnee, rAnkle, limbThickness * 0.9 * LEG_EXPANSION_FACTOR);
 
             // Feet
             if (lAnkle && lKnee) {
-                const footLength = limbThickness * 0.75;
+                const footLength = limbThickness * 0.75; // Base foot length relative to limbThickness
                 const angle = Math.atan2(lAnkle.y - lKnee.y, lAnkle.x - lKnee.x);
                 const footEndX = lAnkle.x + footLength * Math.cos(angle);
                 const footEndY = lAnkle.y + footLength * Math.sin(angle);
-                fillLimbPoly(lAnkle, { x: footEndX, y: footEndY }, limbThickness * 0.7);
+                fillLimbPoly(lAnkle, { x: footEndX, y: footEndY }, limbThickness * 0.7 * LEG_EXPANSION_FACTOR);
             }
             if (rAnkle && rKnee) {
-                const footLength = limbThickness * 0.75;
+                const footLength = limbThickness * 0.75; // Base foot length relative to limbThickness
                 const angle = Math.atan2(rAnkle.y - rKnee.y, rAnkle.x - rKnee.x);
                 const footEndX = rAnkle.x + footLength * Math.cos(angle);
                 const footEndY = rAnkle.y + footLength * Math.sin(angle);
-                fillLimbPoly(rAnkle, { x: footEndX, y: footEndY }, limbThickness * 0.7);
+                fillLimbPoly(rAnkle, { x: footEndX, y: footEndY }, limbThickness * 0.7 * LEG_EXPANSION_FACTOR);
             }
         });
     }
