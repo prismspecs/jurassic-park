@@ -148,9 +148,9 @@
             {
                 "name": "Brachiosaurus",
                 "type": "dinosaur",
-                "dinosaur": "longneck-2",
+                "dinosaur": "longneck-full",
                 "number": 1,
-                "duration": "0:25",
+                "duration": "0:37",
                 "description": "Dinosaur from the first shot",
                 "setup": "Setup for dinosaur...",
                 "cameras": [
