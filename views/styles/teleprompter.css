@@ -214,8 +214,8 @@ body {
 }
 
 .actor-card-text strong {
-    color: #eee;
-    /* Slightly lighter name */
+    color: yellow;
+    /* Slightly lighter name -> Now yellow */
 }
 
 .actor-card-error {

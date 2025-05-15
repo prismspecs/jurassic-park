@@ -137,8 +137,8 @@
 
         const textInfo = document.createElement("p");
         textInfo.className = "actor-card-text";
-        textInfo.innerHTML = `<strong>${actor.name || "Unknown"}
-          </strong><br>as ${actor.character || "Unknown"}`;
+        const displayName = actor.characterFullName || actor.character || "Unknown Character";
+        textInfo.innerHTML = `<strong>${actor.name || "Unknown Actor"}</strong> as ${displayName}`;
         actorCard.appendChild(textInfo);
 
         if (actor.propImages && Array.isArray(actor.propImages) && actor.propImages.length > 0) {
@@ -218,7 +218,7 @@
       };
       ws.onclose = function () {
         console.log("Teleprompter WebSocket closed");
-        setTimeout(connectWebSocket, 5000);
+        setTimeout(connectWebSocket, 5000)
       };
     }
     connectWebSocket();

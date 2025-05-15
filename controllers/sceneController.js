@@ -680,6 +680,8 @@ async function draftActorsForShot(sceneDirectory, shotIdentifier) {
         const characterData = characters[characterName];
         const propsValue = characterData ? characterData.props : null;
 
+        const characterFullName = characterData ? characterData['full-name'] : characterName; // Get full name, fallback to key
+
         const characterUrl = `${baseUrl}/teleprompter/${encodeURIComponent(characterName)}`;
         const headshotUrl = `/database/actors/${encodeURIComponent(actor.id)}/headshot.jpg`;
 
@@ -710,6 +712,7 @@ async function draftActorsForShot(sceneDirectory, shotIdentifier) {
             name: actor.name,
             id: actor.id,
             character: characterName,
+            characterFullName: characterFullName,
             headshotImage: headshotUrl,
             qrCodeImage: qrCodeDataUrl, // This will be null for non-normal shots or if QR generation failed
             propImages: propImageUrls,
