@@ -700,7 +700,7 @@ export class VideoCompositor {
         poses.forEach(pose => {
             if (!pose || !pose.keypoints) return;
             const keypoints = pose.keypoints;
-            const confidenceThreshold = 0.12; // Current value, user might want to adjust this later
+            const confidenceThreshold = this.dinosaurMaskActive ? 0.05 : 0.12; // Lower threshold for dino mode
 
             const kp = (index) => {
                 if (keypoints[index] && keypoints[index].score > confidenceThreshold) {
