@@ -156,18 +156,61 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('addCameraBtn')?.addEventListener('click', () => cameraManager?.addCamera());
   document.getElementById('addAudioDeviceBtn')?.addEventListener('click', () => audioManager?.addDeviceCard());
 
-  document.getElementById('playThemeBtn')?.addEventListener('click', () => {
-    const audio = new Audio('/jurassic_theme.mp3');
-    audio.play()
-      .then(() => {
-        logToConsole('Jurassic Park theme started playing.', 'info');
-      })
-      .catch(error => {
-        logToConsole(`Error playing Jurassic Park theme: ${error}`, 'error');
-        // Optionally, inform the user via an alert or a status message on the UI
-        alert('Could not play the theme music. Check the console for errors.');
-      });
-  });
+  // --- Jurassic Park Theme Button ---
+  const playThemeBtn = document.getElementById('playThemeBtn');
+  let themeAudio = null; // Store the Audio object
+
+  if (playThemeBtn) {
+    playThemeBtn.addEventListener('click', () => {
+      if (themeAudio && !themeAudio.paused) {
+        // Music is playing, so stop it
+        themeAudio.pause();
+        themeAudio.currentTime = 0; // Reset to start
+        playThemeBtn.textContent = 'Play Jurassic Theme';
+        playThemeBtn.classList.remove('btn-danger');
+        playThemeBtn.classList.add('btn-info');
+        logToConsole('Jurassic Park theme stopped by user.', 'info');
+      } else {
+        // Music is not playing or not initialized, so start it
+        if (!themeAudio) {
+          themeAudio = new Audio('/jurassic_theme.mp3');
+          themeAudio.addEventListener('ended', () => {
+            // Reset button when music finishes naturally
+            playThemeBtn.textContent = 'Play Jurassic Theme';
+            playThemeBtn.classList.remove('btn-danger');
+            playThemeBtn.classList.add('btn-info');
+            logToConsole('Jurassic Park theme finished playing.', 'info');
+          });
+          themeAudio.addEventListener('error', (e) => {
+            logToConsole(`Error with Jurassic Park theme audio: ${e.message}`, 'error');
+            alert('Could not play/load the theme music. Check the console for errors.');
+            // Reset button in case of error
+            playThemeBtn.textContent = 'Play Jurassic Theme';
+            playThemeBtn.classList.remove('btn-danger');
+            playThemeBtn.classList.add('btn-info');
+            themeAudio = null; // Allow re-initialization
+          });
+        }
+        themeAudio.play()
+          .then(() => {
+            playThemeBtn.textContent = 'Stop Playing Theme';
+            playThemeBtn.classList.remove('btn-info');
+            playThemeBtn.classList.add('btn-danger');
+            logToConsole('Jurassic Park theme started playing.', 'info');
+          })
+          .catch(error => {
+            logToConsole(`Error playing Jurassic Park theme: ${error}`, 'error');
+            alert('Could not play the theme music. Check the console for errors.');
+            // Ensure button is reset on play error
+            playThemeBtn.textContent = 'Play Jurassic Theme';
+            playThemeBtn.classList.remove('btn-danger');
+            playThemeBtn.classList.add('btn-info');
+            themeAudio = null; // Allow re-initialization if play fails
+          });
+      }
+    });
+  }
+  // --- End Jurassic Park Theme Button ---
 
   // Test Dinosaur Mask Button
   const testDinoMaskBtn = document.getElementById('test-dinosaur-mask-btn');

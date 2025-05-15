@@ -41,18 +41,11 @@
     ],
     "audioDefaults": [
         {
-            "device": "MacBook Air Microphone",
-            "gainDb": 0,
-            "channels": [
-                1
-            ]
-        },
-        {
             "device": "X-USB",
             "gainDb": 6,
             "channels": [
                 1,
-                10
+                2
             ]
         }
     ],
