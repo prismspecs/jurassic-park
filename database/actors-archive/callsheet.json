@@ -3,7 +3,7 @@
     "id": "Grayson-2767b645",
     "name": "Grayson",
     "available": true,
-    "sceneCount": 3
+    "sceneCount": 2
   },
   {
     "id": "Name-Here-4f97ae31",
@@ -52,35 +52,5 @@
     "name": "Sam",
     "available": true,
     "sceneCount": 2
-  },
-  {
-    "id": "Garrett-50d1f3e4",
-    "name": "Garrett",
-    "available": true,
-    "sceneCount": 2
-  },
-  {
-    "id": "KHB-de6b91a9",
-    "name": "KHB",
-    "available": true,
-    "sceneCount": 2
-  },
-  {
-    "id": "Max-f794dcdb",
-    "name": "Max",
-    "available": true,
-    "sceneCount": 1
-  },
-  {
-    "id": "Solomon-a04cc721",
-    "name": "Solomon",
-    "available": true,
-    "sceneCount": 1
-  },
-  {
-    "id": "Jessie-d6c06180",
-    "name": "Jessie",
-    "available": true,
-    "sceneCount": 1
   }
 ]

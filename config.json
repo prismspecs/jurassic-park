@@ -18,6 +18,7 @@
     "scenes": "./database/scenes.json",
     "actorsDir": "./database/actors",
     "callsheet": "./database/actors/callsheet.json",
+    "characterAssignments": "./database/characterAssignments.json",
     "recordingsDir": "./recordings",
     "waitTime": 1000,
     "piperDir": "external_tools/piper",

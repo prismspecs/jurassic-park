@@ -190,3 +190,8 @@ The application is built with **Node.js**, acting as the core event controller:
 - `POST /api/audio/active-devices`: Activates a device for recording.
 - `DELETE /api/audio/active-devices/:deviceId`: Deactivates a device.
 - `POST /api/audio/config/:deviceId`: Sets gain (dB) and channel selection (array) for an active device.
+
+### Character Assignments API Endpoints
+- `GET /api/character-assignments`: Gets all character assignments.
+- `POST /api/character-assignments`: Adds a new fixed character assignment (requires actorName and characterName in the request body).
+- `DELETE /api/character-assignments`: Removes a fixed character assignment (requires actorName and characterName in the request body).

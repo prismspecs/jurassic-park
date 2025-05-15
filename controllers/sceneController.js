@@ -683,12 +683,57 @@ async function draftActorsForShot(sceneDirectory, shotIdentifier) {
     const characterNames = Object.keys(characters);
     const actorsNeeded = characterNames.length;
     broadcastConsole(`Actors needed: ${actorsNeeded} for characters: ${characterNames.join(', ')}`);
-    const actorsToCall = callsheetService.getActorsForScene(actorsNeeded);
+
+    // Get all available actors from the callsheet
+    const availableActors = callsheetService.getActorsForScene(actorsNeeded);
+
+    // Get fixed character assignments from the JSON file
+    const fixedAssignments = callsheetService.getFixedCharacterAssignments(characterNames);
+    broadcastConsole(`Found ${fixedAssignments.length} fixed character assignments for this shot`, 'info');
+
+    // Array to hold the final actors to call
+    const actorsToCall = new Array(characterNames.length);
+
+    // Handle fixed assignments first
+    if (fixedAssignments.length > 0) {
+        // Create a copy of availableActors that we can modify
+        const remainingActors = [...availableActors];
+
+        // Process each fixed assignment
+        for (const assignment of fixedAssignments) {
+            // Find the actor with the specified name
+            const actorIndex = remainingActors.findIndex(actor => actor.name === assignment.actorName);
+
+            if (actorIndex !== -1) {
+                // Actor found, assign them to their character
+                const actor = remainingActors.splice(actorIndex, 1)[0]; // Remove from remaining
+                actorsToCall[assignment.characterIndex] = actor;
+                broadcastConsole(`Fixed assignment: ${actor.name} will play ${assignment.characterName}`, 'info');
+            } else {
+                broadcastConsole(`Fixed assignment actor ${assignment.actorName} not available for ${assignment.characterName}`, 'warn');
+            }
+        }
+
+        // Fill in remaining roles with remaining actors
+        let remainingIndex = 0;
+        for (let i = 0; i < characterNames.length; i++) {
+            if (!actorsToCall[i] && remainingIndex < remainingActors.length) {
+                actorsToCall[i] = remainingActors[remainingIndex++];
+            }
+        }
+    } else {
+        // No fixed assignments, use default assignment logic
+        for (let i = 0; i < availableActors.length && i < characterNames.length; i++) {
+            actorsToCall[i] = availableActors[i];
+        }
+    }
 
     const actorCallData = [];
 
     for (let index = 0; index < actorsToCall.length; index++) {
         const actor = actorsToCall[index];
+        if (!actor) continue; // Skip if no actor assigned (shouldn't happen, but just in case)
+
         const characterName = characterNames[index];
         const characterData = characters[characterName];
         const propsValue = characterData ? characterData.props : null;

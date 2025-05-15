@@ -1,0 +1,13 @@
+{
+    "fixedAssignments": [
+        {
+            "actorName": "Jen",
+            "characterName": "alan"
+        },
+        {
+            "actorName": "Jessie",
+            "characterName": "hammond"
+        }
+    ],
+    "comments": "This file defines fixed actor-to-character assignments. When a character listed here appears in a shot, the specified actor will always be assigned to that role if available."
+}

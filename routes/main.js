@@ -411,30 +411,40 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
             currentCallsheet = callsheetService.getCallsheet(); // Refresh callsheet
         }
 
-        // Group uploaded files
-        const fileGroups = req.files.reduce((acc, file) => {
-            const baseName = path.parse(file.originalname).name; // Gets 'ActorName' from 'ActorName.json'
-            // More robust baseName extraction might be needed if there are timestamps or unique IDs in the name before the extension.
-            // This simple version assumes the part before the last dot is the common identifier for grouping.
-            // e.g. "Actor One.json" and "Actor One.jpg" will both use "Actor One" as baseName.
+        // Group uploaded files by actor name (strip timestamps and _survey suffix)
+        const fileGroups = {};
+        req.files.forEach(file => {
+            const filename = path.parse(file.originalname).name; // Gets 'ActorName_timestamp' or 'ActorName_survey_timestamp'
 
-            if (!acc[baseName]) {
-                acc[baseName] = [];
+            // Extract the actor name by removing timestamp and _survey suffix if present
+            let actorName;
+            if (filename.includes('_survey_')) {
+                actorName = filename.split('_survey_')[0]; // Extract 'ActorName' from 'ActorName_survey_timestamp'
+            } else if (filename.includes('_')) {
+                actorName = filename.split('_')[0]; // Extract 'ActorName' from 'ActorName_timestamp'
+            } else {
+                actorName = filename; // Just use the filename as is if no pattern matches
             }
-            acc[baseName].push(file);
-            return acc;
-        }, {});
-        console.log('[POST /loadActors] Grouped files:', JSON.stringify(fileGroups, null, 2));
 
-        for (const [baseName, groupFiles] of Object.entries(fileGroups)) {
-            // More robust baseName extraction might be needed if there are timestamps or unique IDs in the name before the extension.
-            // This simple version assumes the part before the last dot is the common identifier for grouping.
-            // e.g. "Actor One.json" and "Actor One.jpg" will both use "Actor One" as baseName.
+            if (!fileGroups[actorName]) {
+                fileGroups[actorName] = [];
+            }
+            fileGroups[actorName].push(file);
+        });
+        console.log('[POST /loadActors] Grouped files by actor name:', JSON.stringify(fileGroups, null, 2));
+
+        for (const [actorName, groupFiles] of Object.entries(fileGroups)) {
             const jsonFile = groupFiles.find(f => f.mimetype === 'application/json' || f.originalname.endsWith('.json'));
+            const imageFile = groupFiles.find(f => f.mimetype && f.mimetype.startsWith('image/'));
+
             if (!jsonFile) {
-                console.warn(`No JSON file found for group ${baseName}, skipping.`);
-                skippedActors.push(baseName + " (no JSON)");
+                console.warn(`No JSON file found for actor ${actorName}, skipping.`);
+                skippedActors.push(actorName + " (no JSON)");
                 continue;
+            }
+
+            if (!imageFile) {
+                console.warn(`No image file found for actor ${actorName}, but proceeding anyway.`);
             }
 
             let actorData;
@@ -442,7 +452,7 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
                 actorData = JSON.parse(fs.readFileSync(jsonFile.path, 'utf8'));
             } catch (e) {
                 console.error(`Error reading or parsing JSON file ${jsonFile.originalname}:`, e);
-                skippedActors.push(baseName + " (JSON read error)");
+                skippedActors.push(actorName + " (JSON read error)");
                 continue;
             }
 
@@ -462,14 +472,18 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
                 fs.mkdirSync(newActorDir, { recursive: true });
             }
 
-            const imageFile = groupFiles.find(f => f.mimetype && f.mimetype.startsWith('image/'));
             if (imageFile) {
                 try {
+                    // Always save the headshot as headshot.jpg (or keep the original extension)
                     const imageExt = path.extname(imageFile.originalname);
-                    fs.copyFileSync(imageFile.path, path.join(newActorDir, `headshot${imageExt}`));
+                    const headshotPath = path.join(newActorDir, `headshot${imageExt}`);
+                    fs.copyFileSync(imageFile.path, headshotPath);
+                    console.log(`Copied headshot for ${actorData.name} to ${headshotPath}`);
                 } catch (e) {
                     console.error(`Error copying image for actor ${actorData.name}:`, e);
                 }
+            } else {
+                console.warn(`No image file available for actor ${actorData.name}.`);
             }
 
             const infoJsonContent = {
@@ -518,15 +532,10 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
         if (processedActors.length > 0 || recoveredActors.length > 0 || skippedActors.length > 0) {
             message = `Actors processed. Recovered: ${recoveredActors.length}, Newly Added: ${processedActors.length}, Skipped: ${skippedActors.length}.`;
         } else if (req.files && req.files.length > 0) {
-            message = 'Files were uploaded, but no new actors were processed. Check server logs for details and ensure file grouping logic is implemented.';
+            message = 'Files were uploaded, but no new actors were processed. Check server logs for details.';
         } else {
             message = 'No actor files were uploaded or processed.';
         }
-
-        if (Object.keys(fileGroups).length === 0 && req.files && req.files.length > 0) {
-            message += " (Note: File grouping logic is currently a placeholder; uploaded files were not grouped and processed).";
-        }
-
 
         console.log('[POST /loadActors] Attempting to send response:', { success: true, message, recoveredActors, processedActors, skippedActors });
         res.json({
@@ -777,6 +786,67 @@ router.get('/api/app-config', (req, res) => {
     } catch (error) {
         console.error("Error fetching client app configuration:", error);
         res.status(500).json({ error: "Failed to retrieve app configuration" });
+    }
+});
+
+// Character Assignments API
+router.get('/api/character-assignments', (req, res) => {
+    const assignments = callsheetService.getCharacterAssignments();
+    res.json({
+        success: true,
+        assignments
+    });
+});
+
+// Add a fixed character assignment
+router.post('/api/character-assignments', (req, res) => {
+    const { actorName, characterName } = req.body;
+
+    if (!actorName || !characterName) {
+        return res.status(400).json({
+            success: false,
+            message: 'Actor name and character name are required'
+        });
+    }
+
+    const success = callsheetService.addFixedCharacterAssignment(actorName, characterName);
+
+    if (success) {
+        return res.json({
+            success: true,
+            message: `Assignment added: ${actorName} will play ${characterName}`
+        });
+    } else {
+        return res.status(400).json({
+            success: false,
+            message: 'Failed to add assignment. It may already exist.'
+        });
+    }
+});
+
+// Remove a fixed character assignment
+router.delete('/api/character-assignments', (req, res) => {
+    const { actorName, characterName } = req.body;
+
+    if (!actorName || !characterName) {
+        return res.status(400).json({
+            success: false,
+            message: 'Actor name and character name are required'
+        });
+    }
+
+    const success = callsheetService.removeFixedCharacterAssignment(actorName, characterName);
+
+    if (success) {
+        return res.json({
+            success: true,
+            message: `Assignment removed: ${actorName} no longer fixed to ${characterName}`
+        });
+    } else {
+        return res.status(400).json({
+            success: false,
+            message: 'Failed to remove assignment. It may not exist.'
+        });
     }
 });
 

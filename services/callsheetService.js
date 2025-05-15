@@ -4,6 +4,7 @@ const config = require('../config.json');
 const { broadcast, broadcastConsole } = require('../websocket/broadcaster');
 
 let callsheet = [];
+let characterAssignments = { fixedAssignments: [] };
 
 // Initialize the callsheet from file
 function initCallsheet() {
@@ -23,8 +24,32 @@ function initCallsheet() {
         console.log('Loaded callsheet:', callsheet);
     } catch (err) {
         console.error('Error loading callsheet:', err);
-        broadcastConsole('Error loading callsheet: ' + err.message, 'error');
         callsheet = [];
+    }
+
+    // Also load character assignments when initializing callsheet
+    loadCharacterAssignments();
+}
+
+// Load character assignments from JSON file
+function loadCharacterAssignments() {
+    try {
+        const assignmentsPath = path.join(__dirname, '..', config.characterAssignments);
+        console.log('Loading character assignments from:', assignmentsPath);
+
+        if (!fs.existsSync(assignmentsPath)) {
+            console.log('Character assignments file does not exist, using default empty assignments');
+            characterAssignments = { fixedAssignments: [] };
+            return;
+        }
+
+        const data = fs.readFileSync(assignmentsPath, 'utf8');
+        characterAssignments = JSON.parse(data);
+        console.log('Loaded character assignments:', characterAssignments);
+    } catch (err) {
+        console.error('Error loading character assignments:', err);
+        broadcastConsole('Error loading character assignments: ' + err.message, 'error');
+        characterAssignments = { fixedAssignments: [] };
     }
 }
 
@@ -46,6 +71,44 @@ function getActorsForScene(numActorsNeeded) {
     // Get the top actorsNeeded actors
     const selectedActors = sortedActors.slice(0, numActorsNeeded);
     return selectedActors;
+}
+
+// Get fixed assignments for characters
+function getFixedCharacterAssignments(characterNames) {
+    const assignments = [];
+
+    console.log('Looking for fixed assignments for characters:', characterNames);
+    console.log('Current character assignments:', JSON.stringify(characterAssignments));
+
+    if (!characterAssignments.fixedAssignments || !Array.isArray(characterAssignments.fixedAssignments)) {
+        console.log('No fixedAssignments array found in characterAssignments');
+        return assignments;
+    }
+
+    console.log('Fixed assignments available:', characterAssignments.fixedAssignments);
+
+    // For each character, check if there's a fixed assignment
+    characterNames.forEach((charName, index) => {
+        console.log(`Checking for fixed assignment for character: ${charName}`);
+
+        const fixedAssignment = characterAssignments.fixedAssignments.find(
+            assignment => assignment.characterName.toLowerCase() === charName.toLowerCase()
+        );
+
+        if (fixedAssignment) {
+            console.log(`Found fixed assignment: ${fixedAssignment.actorName} for ${charName}`);
+            assignments.push({
+                actorName: fixedAssignment.actorName,
+                characterIndex: index,
+                characterName: charName
+            });
+        } else {
+            console.log(`No fixed assignment found for ${charName}`);
+        }
+    });
+
+    console.log('Returning assignments:', assignments);
+    return assignments;
 }
 
 // Add a new actor to the callsheet if they don't exist
@@ -137,6 +200,79 @@ function getAllActorHeadshotPaths() {
     }
 }
 
+// Save character assignments to file
+function saveCharacterAssignments() {
+    try {
+        const assignmentsPath = path.join(__dirname, '..', config.characterAssignments);
+        console.log('Saving character assignments to:', assignmentsPath);
+
+        fs.writeFileSync(assignmentsPath, JSON.stringify(characterAssignments, null, 2));
+        broadcastConsole('Updated character assignments saved');
+        return true;
+    } catch (err) {
+        console.error('Error saving character assignments:', err);
+        broadcastConsole('Error saving character assignments: ' + err.message, 'error');
+        return false;
+    }
+}
+
+// Add a fixed character assignment
+function addFixedCharacterAssignment(actorName, characterName) {
+    if (!actorName || !characterName) {
+        console.error('Invalid actor or character name provided to addFixedCharacterAssignment');
+        return false;
+    }
+
+    // Ensure fixedAssignments exists
+    if (!characterAssignments.fixedAssignments) {
+        characterAssignments.fixedAssignments = [];
+    }
+
+    // Check if assignment already exists
+    const existingIndex = characterAssignments.fixedAssignments.findIndex(
+        a => a.actorName === actorName && a.characterName === characterName
+    );
+
+    if (existingIndex >= 0) {
+        console.log(`Assignment for ${actorName} as ${characterName} already exists`);
+        return false;
+    }
+
+    // Add the new assignment
+    characterAssignments.fixedAssignments.push({
+        actorName,
+        characterName
+    });
+
+    // Save the updated assignments
+    return saveCharacterAssignments();
+}
+
+// Remove a fixed character assignment
+function removeFixedCharacterAssignment(actorName, characterName) {
+    if (!characterAssignments.fixedAssignments) {
+        return false;
+    }
+
+    const initialLength = characterAssignments.fixedAssignments.length;
+
+    // Filter out the matching assignment
+    characterAssignments.fixedAssignments = characterAssignments.fixedAssignments.filter(
+        a => !(a.actorName === actorName && a.characterName === characterName)
+    );
+
+    if (characterAssignments.fixedAssignments.length < initialLength) {
+        return saveCharacterAssignments();
+    }
+
+    return false;
+}
+
+// Get character assignments object
+function getCharacterAssignments() {
+    return characterAssignments;
+}
+
 module.exports = {
     initCallsheet,
     getActorsForScene,
@@ -144,5 +280,11 @@ module.exports = {
     getCallsheet,
     addActor,
     saveCallsheet,
-    getAllActorHeadshotPaths
+    getAllActorHeadshotPaths,
+    getFixedCharacterAssignments,
+    loadCharacterAssignments,
+    saveCharacterAssignments,
+    addFixedCharacterAssignment,
+    removeFixedCharacterAssignment,
+    getCharacterAssignments
 };
