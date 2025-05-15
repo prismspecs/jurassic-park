@@ -197,8 +197,8 @@ body {
 
 /* Add styling for the prop image */
 .actor-card .message-image.prop-image {
-    max-width: 90px;
-    max-height: 90px;
+    max-width: 135px;
+    max-height: 135px;
     margin-top: 5px;
     /* Add some space above */
     object-fit: contain;
