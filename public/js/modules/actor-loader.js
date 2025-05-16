@@ -1,8 +1,14 @@
 export function initializeActorLoader() {
     const loadActorsBtn = document.getElementById('loadActorsBtn');
     const refreshActorsBtn = document.getElementById('refreshActorsBtn');
+    const showActorsBtn = document.getElementById('showActorsBtn');
     const actorFilesInput = document.getElementById('actorFiles');
     const loadActorsStatus = document.getElementById('loadActorsStatus');
+
+    // Modal elements
+    const actorsModal = document.getElementById('actorsModal');
+    const closeActorsModalBtn = document.getElementById('closeActorsModal');
+    const actorsPreviewArea = document.getElementById('actorsPreviewArea');
 
     if (loadActorsBtn && actorFilesInput && loadActorsStatus) {
         loadActorsBtn.addEventListener('click', async () => {
@@ -74,5 +80,77 @@ export function initializeActorLoader() {
         });
     } else {
         if (!refreshActorsBtn) console.warn('refreshActorsBtn not found for actor loader.');
+    }
+
+    // Functionality for Show Actors button
+    if (showActorsBtn && actorsModal && closeActorsModalBtn && actorsPreviewArea) {
+        showActorsBtn.addEventListener('click', async () => {
+            loadActorsStatus.textContent = 'Fetching actors...';
+            loadActorsStatus.style.color = '#aaa';
+            try {
+                const response = await fetch('/api/actors');
+                const result = await response.json();
+
+                if (!response.ok || !result.success) {
+                    throw new Error(result.message || `HTTP error ${response.status}`);
+                }
+
+                actorsPreviewArea.innerHTML = ''; // Clear previous actors
+
+                if (result.actors && result.actors.length > 0) {
+                    result.actors.forEach(actor => {
+                        const actorCard = document.createElement('div');
+                        actorCard.className = 'actor-card-preview';
+
+                        const img = document.createElement('img');
+                        img.src = actor.headshotUrl || 'https://via.placeholder.com/100x100.png?text=No+Image'; // Placeholder if no image
+                        img.alt = actor.name;
+                        img.style.width = '100px';
+                        img.style.height = '100px';
+                        img.style.objectFit = 'cover';
+                        img.onerror = () => {
+                            img.src = 'https://via.placeholder.com/100x100.png?text=Error';
+                            img.alt = 'Error loading image';
+                        };
+
+                        const name = document.createElement('p');
+                        name.textContent = actor.name;
+
+                        actorCard.appendChild(img);
+                        actorCard.appendChild(name);
+                        actorsPreviewArea.appendChild(actorCard);
+                    });
+                    loadActorsStatus.textContent = 'Actors loaded in preview.';
+                    loadActorsStatus.style.color = 'green';
+                } else {
+                    actorsPreviewArea.innerHTML = '<p>No actors found.</p>';
+                    loadActorsStatus.textContent = 'No actors to display.';
+                    loadActorsStatus.style.color = 'orange';
+                }
+                actorsModal.style.display = 'block';
+            } catch (error) {
+                console.error("Show Actors Error:", error);
+                loadActorsStatus.textContent = `Error: ${error.message}`;
+                loadActorsStatus.style.color = 'red';
+                actorsPreviewArea.innerHTML = '<p>Error loading actors.</p>';
+                actorsModal.style.display = 'block'; // Show modal even on error to display the error message
+            }
+        });
+
+        closeActorsModalBtn.addEventListener('click', () => {
+            actorsModal.style.display = 'none';
+        });
+
+        // Close modal if clicked outside of modal-content
+        window.addEventListener('click', (event) => {
+            if (event.target === actorsModal) {
+                actorsModal.style.display = 'none';
+            }
+        });
+    } else {
+        if (!showActorsBtn) console.warn('showActorsBtn not found.');
+        if (!actorsModal) console.warn('actorsModal not found.');
+        if (!closeActorsModalBtn) console.warn('closeActorsModalBtn not found.');
+        if (!actorsPreviewArea) console.warn('actorsPreviewArea not found.');
     }
 } 

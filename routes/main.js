@@ -863,4 +863,18 @@ router.get('/api/actors/refresh', (req, res) => {
     }
 });
 
+// API endpoint to get actors with their details (name, headshotUrl)
+router.get('/api/actors', (req, res) => {
+    try {
+        const actors = callsheetService.getActorsWithDetails();
+        res.json({ success: true, actors });
+    } catch (error) {
+        console.error('Error in /api/actors:', error);
+        res.status(500).json({
+            success: false,
+            message: 'An unexpected error occurred while fetching actors: ' + error.message
+        });
+    }
+});
+
 module.exports = router;

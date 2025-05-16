@@ -363,6 +363,61 @@ function getCharacterAssignments() {
     return characterAssignments;
 }
 
+// New function to get actor details including headshot URLs
+function getActorsWithDetails() {
+    const actorsDirPath = path.join(__dirname, '..', config.actorsDir);
+    const relativeActorsDirForClient = config.actorsDir.startsWith('./') ? config.actorsDir.substring(2) : config.actorsDir;
+    const actorsWithDetails = [];
+
+    if (!fs.existsSync(actorsDirPath)) {
+        console.warn(`Actors directory not found for getActorsWithDetails: ${actorsDirPath}`);
+        return [];
+    }
+
+    callsheet.forEach(actor => {
+        const actorId = actor.id;
+        const actorName = actor.name;
+        let headshotUrl = null;
+
+        if (actorId) {
+            const currentActorPath = path.join(actorsDirPath, actorId);
+            if (fs.existsSync(currentActorPath)) {
+                // Try to find a headshot image
+                const potentialHeadshots = ['headshot.jpg', 'headshot.png', 'headshot.jpeg'];
+                let foundHeadshotFile = null;
+
+                for (const hsFile of potentialHeadshots) {
+                    if (fs.existsSync(path.join(currentActorPath, hsFile))) {
+                        foundHeadshotFile = hsFile;
+                        break;
+                    }
+                }
+
+                // If not found by common names, try to find the first image file
+                if (!foundHeadshotFile) {
+                    try {
+                        const files = fs.readdirSync(currentActorPath);
+                        foundHeadshotFile = files.find(file => /\.(jpg|jpeg|png|gif)$/i.test(file));
+                    } catch (e) {
+                        console.error(`Error reading directory ${currentActorPath}:`, e);
+                    }
+                }
+
+                if (foundHeadshotFile) {
+                    headshotUrl = path.posix.join('/', relativeActorsDirForClient, actorId, foundHeadshotFile);
+                }
+            }
+        }
+        actorsWithDetails.push({
+            id: actorId,
+            name: actorName,
+            headshotUrl: headshotUrl
+        });
+    });
+
+    return actorsWithDetails;
+}
+
 module.exports = {
     initCallsheet,
     getActorsForScene,
@@ -377,5 +432,6 @@ module.exports = {
     addFixedCharacterAssignment,
     removeFixedCharacterAssignment,
     getCharacterAssignments,
-    refreshCallsheet
+    refreshCallsheet,
+    getActorsWithDetails
 };
