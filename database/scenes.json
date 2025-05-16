@@ -189,6 +189,9 @@
                 "characters": {
                     "dinosaur": {
                         "full-name": "Dinosaur"
+                    },
+                    "dinosaur2": {
+                        "full-name": "Also dinosaur"
                     }
                 }
             },

@@ -157,11 +157,10 @@ body {
 }
 
 .actor-grid {
-    display: grid;
-    /* Responsive grid: columns are at least 270px wide, fit as many as possible */
-    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
     gap: 20px;
-    /* Spacing between cards */
     width: 100%;
 }
 
@@ -169,13 +168,13 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    /* Center items horizontally */
     text-align: center;
     padding: 15px;
     background: #000;
-    /* Dark grey background for cards */
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.2);
+    flex: 0 1 30%;
+    box-sizing: border-box;
 }
 
 .actor-card .message-image {
