@@ -61,16 +61,15 @@ function getActorsForScene(numActorsNeeded) {
     const availableActors = callsheet.filter(actor => actor.available);
 
     if (availableActors.length < numActorsNeeded) {
-        broadcastConsole(`Not enough available actors. Needed: ${numActorsNeeded}, Available: ${availableActors.length}`, 'error');
-        return [];
+        broadcastConsole(`Not enough available actors to fill all roles. Needed: ${numActorsNeeded}, Available: ${availableActors.length}. Proceeding with available actors.`, 'warn');
+        // Intentionally proceed with the available actors, even if fewer than needed.
+        // The draftActorsForShot logic will handle assigning who it can and logging further warnings if roles remain unfilled.
     }
 
-    // Sort the available actors by sceneCount
-    const sortedActors = [...availableActors].sort((a, b) => a.sceneCount - b.sceneCount);
-
-    // Get the top actorsNeeded actors
-    const selectedActors = sortedActors.slice(0, numActorsNeeded);
-    return selectedActors;
+    // Return all actors that are currently available, without sorting by sceneCount here, and without slicing.
+    // The draftActorsForShot function in sceneController will handle fixed assignments first,
+    // and then fill remaining roles.
+    return availableActors;
 }
 
 // Get fixed assignments for characters
