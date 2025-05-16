@@ -133,7 +133,7 @@
                         "props": "john"
                     },
                     "malcolm": {
-                        "full-name": "Malcolm",
+                        "full-name": "Ian Malcolm",
                         "props": "malcolm"
                     },
                     "donald": {
@@ -141,7 +141,7 @@
                         "props": "donald"
                     },
                     "driver 1 and 2": {
-                        "full-name": "driver",
+                        "full-name": "The Driver",
                         "props": "driver"
                     }
                 }
