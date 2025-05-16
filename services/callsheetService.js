@@ -418,6 +418,60 @@ function getActorsWithDetails() {
     return actorsWithDetails;
 }
 
+// Function to completely remove an actor and their files
+function removeActorCompletely(actorId) {
+    if (!actorId) {
+        return { success: false, message: 'Actor ID is required.' };
+    }
+
+    const actorIndex = callsheet.findIndex(a => a.id === actorId);
+    if (actorIndex === -1) {
+        return { success: false, message: `Actor with ID ${actorId} not found in callsheet.` };
+    }
+
+    const actorToRemove = callsheet[actorIndex];
+    const actorName = actorToRemove.name;
+    const actorDirectoryPath = path.join(__dirname, '..', config.actorsDir, actorId);
+
+    try {
+        // 1. Delete actor's directory
+        if (fs.existsSync(actorDirectoryPath)) {
+            fs.rmSync(actorDirectoryPath, { recursive: true, force: true });
+            console.log(`Successfully deleted directory: ${actorDirectoryPath}`);
+        } else {
+            console.warn(`Actor directory not found, but proceeding to remove from callsheet: ${actorDirectoryPath}`);
+        }
+
+        // 2. Remove actor from callsheet
+        callsheet.splice(actorIndex, 1);
+        saveCallsheet(); // Save updated callsheet
+
+        // 3. Remove any fixed character assignments for this actor
+        if (characterAssignments.fixedAssignments && actorName) {
+            const initialAssignmentsCount = characterAssignments.fixedAssignments.length;
+            characterAssignments.fixedAssignments = characterAssignments.fixedAssignments.filter(
+                assignment => assignment.actorName !== actorName
+            );
+            if (characterAssignments.fixedAssignments.length < initialAssignmentsCount) {
+                saveCharacterAssignments(); // Save if assignments changed
+                console.log(`Removed fixed character assignments for actor: ${actorName}`);
+            }
+        }
+
+        const message = `Successfully removed actor ${actorName} (ID: ${actorId}) and their files.`;
+        broadcastConsole(message);
+        return { success: true, message };
+
+    } catch (error) {
+        console.error(`Error removing actor ${actorName} (ID: ${actorId}):`, error);
+        broadcastConsole(`Error removing actor ${actorName}: ${error.message}`, 'error');
+        // Attempt to restore callsheet to prevent inconsistent state if part of the process failed
+        // This is a simple rollback; more complex scenarios might need more robust transactions.
+        initCallsheet(); // Reload original callsheet and assignments
+        return { success: false, message: `Error removing actor ${actorName}: ${error.message}` };
+    }
+}
+
 module.exports = {
     initCallsheet,
     getActorsForScene,
@@ -433,5 +487,6 @@ module.exports = {
     removeFixedCharacterAssignment,
     getCharacterAssignments,
     refreshCallsheet,
-    getActorsWithDetails
+    getActorsWithDetails,
+    removeActorCompletely
 };

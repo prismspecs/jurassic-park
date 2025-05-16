@@ -101,6 +101,7 @@ export function initializeActorLoader() {
                     result.actors.forEach(actor => {
                         const actorCard = document.createElement('div');
                         actorCard.className = 'actor-card-preview';
+                        actorCard.dataset.actorId = actor.id; // Store ID on the card for easy access
 
                         const img = document.createElement('img');
                         img.src = actor.headshotUrl || 'https://via.placeholder.com/100x100.png?text=No+Image'; // Placeholder if no image
@@ -116,8 +117,15 @@ export function initializeActorLoader() {
                         const name = document.createElement('p');
                         name.textContent = actor.name;
 
+                        const removeBtn = document.createElement('button');
+                        removeBtn.className = 'remove-actor-btn';
+                        removeBtn.textContent = 'Remove';
+                        removeBtn.dataset.actorId = actor.id;
+                        removeBtn.dataset.actorName = actor.name; // For confirmation message
+
                         actorCard.appendChild(img);
                         actorCard.appendChild(name);
+                        actorCard.appendChild(removeBtn);
                         actorsPreviewArea.appendChild(actorCard);
                     });
                     loadActorsStatus.textContent = 'Actors loaded in preview.';
@@ -134,6 +142,45 @@ export function initializeActorLoader() {
                 loadActorsStatus.style.color = 'red';
                 actorsPreviewArea.innerHTML = '<p>Error loading actors.</p>';
                 actorsModal.style.display = 'block'; // Show modal even on error to display the error message
+            }
+        });
+
+        // Event delegation for remove buttons
+        actorsPreviewArea.addEventListener('click', async (event) => {
+            if (event.target.classList.contains('remove-actor-btn')) {
+                const actorId = event.target.dataset.actorId;
+                const actorName = event.target.dataset.actorName;
+
+                if (!actorId) return;
+
+                if (window.confirm(`Are you sure you want to remove ${actorName} and all their files? This action cannot be undone.`)) {
+                    loadActorsStatus.textContent = `Removing ${actorName}...`;
+                    loadActorsStatus.style.color = '#aaa';
+                    try {
+                        const response = await fetch(`/api/actors/${actorId}`, { method: 'DELETE' });
+                        const result = await response.json();
+
+                        if (!response.ok || !result.success) {
+                            throw new Error(result.message || `HTTP error ${response.status}`);
+                        }
+
+                        // Remove the card from the DOM
+                        const cardToRemove = document.querySelector(`.actor-card-preview[data-actor-id="${actorId}"]`);
+                        if (cardToRemove) {
+                            cardToRemove.remove();
+                        }
+                        loadActorsStatus.textContent = result.message || `${actorName} removed successfully.`;
+                        loadActorsStatus.style.color = 'green';
+
+                        // Optionally, refresh the main actor list if another part of the UI displays it
+                        // or if the number of actors changes, update a counter etc.
+
+                    } catch (error) {
+                        console.error("Remove Actor Error:", error);
+                        loadActorsStatus.textContent = `Error removing ${actorName}: ${error.message}`;
+                        loadActorsStatus.style.color = 'red';
+                    }
+                }
             }
         });
 

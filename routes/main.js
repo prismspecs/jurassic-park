@@ -877,4 +877,28 @@ router.get('/api/actors', (req, res) => {
     }
 });
 
+// API endpoint to delete an actor and their files
+router.delete('/api/actors/:actorId', (req, res) => {
+    const { actorId } = req.params;
+    if (!actorId) {
+        return res.status(400).json({ success: false, message: 'Actor ID parameter is required.' });
+    }
+    try {
+        const result = callsheetService.removeActorCompletely(actorId);
+        if (result.success) {
+            res.json({ success: true, message: result.message });
+        } else {
+            // Use 404 if actor not found, 500 for other errors based on service message perhaps
+            const statusCode = result.message.includes('not found') ? 404 : 500;
+            res.status(statusCode).json({ success: false, message: result.message });
+        }
+    } catch (error) {
+        console.error(`Error in DELETE /api/actors/${actorId}:`, error);
+        res.status(500).json({
+            success: false,
+            message: 'An unexpected server error occurred while deleting the actor: ' + error.message
+        });
+    }
+});
+
 module.exports = router;

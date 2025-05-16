@@ -1286,17 +1286,32 @@ body.color-scheme-inverted #console-output-display .log-entry.log-debug {
   word-wrap: break-word;
 }
 
+/* Style for the Remove button on actor cards */
+.remove-actor-btn {
+  background-color: #552222;
+  /* Dark red background */
+  color: #f1f1f1;
+  /* Light text */
+  border: 1px solid #773333;
+  /* Slightly lighter red border */
+  padding: 5px 10px;
+  font-size: 0.8em;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 8px;
+  /* Space above the button */
+  width: auto;
+  /* Don't take full width of card */
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.remove-actor-btn:hover {
+  background-color: #773333;
+  /* Lighter red on hover */
+  border-color: #994444;
+}
+
 /* Custom scrollbar for modal content if needed */
 .actors-preview-grid::-webkit-scrollbar {
   width: 8px;
-}
-
-.actors-preview-grid::-webkit-scrollbar-track {
-  background: #2c2c2c;
-}
-
-.actors-preview-grid::-webkit-scrollbar-thumb {
-  background-color: #555;
-  border-radius: 4px;
-  border: 2px solid #2c2c2c;
 }
