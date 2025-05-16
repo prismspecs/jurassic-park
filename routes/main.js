@@ -456,16 +456,19 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
                 continue;
             }
 
-            const existingActorEntry = currentCallsheet.find(a => a.name === actorData.name);
+            // Determine the actor's name: prioritize userName from JSON, then name from JSON, then actorName from filename
+            const actorNameToUse = actorData.userName || actorData.name || actorName;
+
+            const existingActorEntry = currentCallsheet.find(a => a.name === actorNameToUse);
             if (existingActorEntry) {
-                skippedActors.push(actorData.name + " (already exists)");
-                console.log(`Actor ${actorData.name} already exists, skipping.`);
+                skippedActors.push(actorNameToUse + " (already exists)");
+                console.log(`Actor ${actorNameToUse} already exists, skipping.`);
                 continue;
             }
 
             // --- If actor does NOT exist, proceed with creation ---
             const randomId = crypto.randomBytes(4).toString('hex');
-            const actorId = `${actorData.name.replace(/\s+/g, '-')}-${randomId}`;
+            const actorId = `${actorNameToUse.replace(/\s+/g, '-')}-${randomId}`;
 
             const newActorDir = path.join(actorsDir, actorId);
             if (!fs.existsSync(newActorDir)) {
@@ -478,33 +481,33 @@ router.post('/loadActors', upload.array('files'), async (req, res) => {
                     const imageExt = path.extname(imageFile.originalname);
                     const headshotPath = path.join(newActorDir, `headshot${imageExt}`);
                     fs.copyFileSync(imageFile.path, headshotPath);
-                    console.log(`Copied headshot for ${actorData.name} to ${headshotPath}`);
+                    console.log(`Copied headshot for ${actorNameToUse} to ${headshotPath}`);
                 } catch (e) {
-                    console.error(`Error copying image for actor ${actorData.name}:`, e);
+                    console.error(`Error copying image for actor ${actorNameToUse}:`, e);
                 }
             } else {
-                console.warn(`No image file available for actor ${actorData.name}.`);
+                console.warn(`No image file available for actor ${actorNameToUse}.`);
             }
 
             const infoJsonContent = {
                 id: actorId,
-                name: actorData.name,
+                name: actorNameToUse,
                 // Add other details from actorData if they were part of original logic
             };
             try {
                 fs.writeFileSync(path.join(newActorDir, 'info.json'), JSON.stringify(infoJsonContent, null, 2));
             } catch (e) {
-                console.error(`Error writing info.json for actor ${actorData.name}:`, e);
+                console.error(`Error writing info.json for actor ${actorNameToUse}:`, e);
             }
 
             const added = callsheetService.addActor({
                 id: actorId,
-                name: actorData.name,
+                name: actorNameToUse,
                 available: true,
                 sceneCount: 0 // Default, or from actorData if available
             });
             if (added) {
-                processedActors.push(actorData.name);
+                processedActors.push(actorNameToUse);
                 callsheetUpdatedByUpload = true;
             }
         }
@@ -826,26 +829,36 @@ router.post('/api/character-assignments', (req, res) => {
 
 // Remove a fixed character assignment
 router.delete('/api/character-assignments', (req, res) => {
-    const { actorName, characterName } = req.body;
+    try {
+        const { actorName, characterName } = req.body;
 
-    if (!actorName || !characterName) {
-        return res.status(400).json({
-            success: false,
-            message: 'Actor name and character name are required'
-        });
+        if (!actorName || !characterName) {
+            return res.status(400).json({ success: false, message: "Both actorName and characterName are required" });
+        }
+
+        const removed = callsheetService.removeFixedCharacterAssignment(actorName, characterName);
+
+        if (removed) {
+            res.json({ success: true, message: `Removed assignment for ${actorName} as ${characterName}` });
+        } else {
+            res.status(404).json({ success: false, message: `Assignment not found for ${actorName} as ${characterName}` });
+        }
+    } catch (error) {
+        console.error('Error removing character assignment:', error);
+        res.status(500).json({ success: false, message: error.message });
     }
+});
 
-    const success = callsheetService.removeFixedCharacterAssignment(actorName, characterName);
-
-    if (success) {
-        return res.json({
-            success: true,
-            message: `Assignment removed: ${actorName} no longer fixed to ${characterName}`
-        });
-    } else {
-        return res.status(400).json({
+// API endpoint to refresh actors based on the actors directory
+router.get('/api/actors/refresh', (req, res) => {
+    try {
+        const result = callsheetService.refreshCallsheet();
+        res.json(result);
+    } catch (error) {
+        console.error('Error in /api/actors/refresh:', error);
+        res.status(500).json({
             success: false,
-            message: 'Failed to remove assignment. It may not exist.'
+            message: 'An unexpected error occurred while refreshing actors: ' + error.message
         });
     }
 });

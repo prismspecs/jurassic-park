@@ -268,6 +268,96 @@ function removeFixedCharacterAssignment(actorName, characterName) {
     return false;
 }
 
+// Refresh callsheet based on actors directory contents
+function refreshCallsheet() {
+    try {
+        const actorsDirPath = path.join(__dirname, '..', config.actorsDir);
+        console.log('Refreshing callsheet based on actors directory:', actorsDirPath);
+
+        // Check if actors directory exists
+        if (!fs.existsSync(actorsDirPath)) {
+            console.warn(`Actors directory not found: ${actorsDirPath}`);
+            broadcastConsole(`Actors directory not found: ${actorsDirPath}`, 'warn');
+            return { success: false, message: 'Actors directory not found' };
+        }
+
+        // Create a map of existing actors in the callsheet for easy lookup
+        const existingActorsMap = {};
+        callsheet.forEach(actor => {
+            existingActorsMap[actor.id] = actor;
+        });
+
+        // Get all actor directories
+        const actorDirs = fs.readdirSync(actorsDirPath, { withFileTypes: true })
+            .filter(dirent => dirent.isDirectory())
+            .map(dirent => dirent.name);
+
+        // Track metrics for the result
+        const added = [];
+        const unchanged = [];
+        const removed = [];
+
+        // Process each actor directory
+        const newCallsheet = [];
+        for (const actorDirName of actorDirs) {
+            const infoPath = path.join(actorsDirPath, actorDirName, 'info.json');
+
+            // Skip if no info.json exists
+            if (!fs.existsSync(infoPath)) continue;
+
+            try {
+                const info = JSON.parse(fs.readFileSync(infoPath, 'utf8'));
+
+                if (existingActorsMap[actorDirName]) {
+                    // Actor already exists in callsheet
+                    newCallsheet.push(existingActorsMap[actorDirName]);
+                    unchanged.push(info.name);
+                } else {
+                    // New actor, add to callsheet
+                    const newActor = {
+                        id: actorDirName,
+                        name: info.name,
+                        available: true,
+                        sceneCount: 0
+                    };
+                    newCallsheet.push(newActor);
+                    added.push(info.name);
+                }
+            } catch (e) {
+                console.error(`Error processing actor directory ${actorDirName}:`, e);
+            }
+        }
+
+        // Find removed actors
+        callsheet.forEach(actor => {
+            const actorExists = actorDirs.includes(actor.id);
+            if (!actorExists) {
+                removed.push(actor.name);
+            }
+        });
+
+        // Update callsheet
+        callsheet = newCallsheet;
+        saveCallsheet();
+
+        // Return results
+        const resultsMessage = `Callsheet refreshed: ${added.length} actors added, ${unchanged.length} unchanged, ${removed.length} removed`;
+        broadcastConsole(resultsMessage);
+
+        return {
+            success: true,
+            message: resultsMessage,
+            added,
+            unchanged,
+            removed
+        };
+    } catch (error) {
+        console.error('Error refreshing callsheet:', error);
+        broadcastConsole('Error refreshing callsheet: ' + error.message, 'error');
+        return { success: false, message: 'Error refreshing callsheet: ' + error.message };
+    }
+}
+
 // Get character assignments object
 function getCharacterAssignments() {
     return characterAssignments;
@@ -286,5 +376,6 @@ module.exports = {
     saveCharacterAssignments,
     addFixedCharacterAssignment,
     removeFixedCharacterAssignment,
-    getCharacterAssignments
+    getCharacterAssignments,
+    refreshCallsheet
 };
