@@ -41,5 +41,10 @@ Thumbs.db
 .vscode/
 .cursor/*
 
+# actors
+database/actors/*
+database/actors-archive/*
+
+# model files etc.
 modules/skeletor-py/skeletor_debug_output/
 public/models/
