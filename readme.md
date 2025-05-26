@@ -1,5 +1,11 @@
 # AI-Directed Performance System
 
+<p align="center">
+  <img src="docs/dino1.jpg" alt="Dinosaur 1" height="300" style="margin-right: 10px;"/>
+  <img src="docs/dino2.jpg" alt="Dinosaur 2" height="300" style="margin-right: 10px;"/>
+  <img src="docs/stage1.jpg" alt="Stage" height="300"/>
+</p>
+
 ## Overview
 
 The AI-Directed Performance System is an interactive, real-time performance tool designed to recreate scenes from _Jurassic Park_ using pose tracking, audience-generated sound effects, and an automated camera and editing system. The system guides actors through shots using a main teleprompter and individual character teleprompters, and compiles the recorded audiovisual assets into a final video.
